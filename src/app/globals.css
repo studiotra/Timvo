@@ -1,0 +1,100 @@
+@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Playfair+Display:wght@700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-sans: "Space Grotesk", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  --font-serif: "Playfair Display", Georgia, serif;
+}
+
+@layer base {
+  :root {
+    --bg-app: #111827;
+    --bg-sidebar: #0d1424;
+    --bg-card: rgba(255, 255, 255, 0.03);
+    --text-primary: #f9fafb;
+    --text-secondary: #9ca3af;
+    --text-muted: #6b7280;
+    --accent: #6366f1;
+    --accent-hover: #818cf8;
+    --success: #10b981;
+    --amber: #f59e0b;
+    --red: #ef4444;
+    --border: rgba(255, 255, 255, 0.08);
+    --border-strong: rgba(255, 255, 255, 0.12);
+  }
+
+  .light {
+    --bg-app: #f8fafc;
+    --bg-sidebar: #ffffff;
+    --bg-card: rgba(255, 255, 255, 0.9);
+    --text-primary: #111827;
+    --text-secondary: #4b5563;
+    --text-muted: #6b7280;
+    --border: rgba(0, 0, 0, 0.08);
+    --border-strong: rgba(0, 0, 0, 0.12);
+  }
+
+  /* Status badge colors (theme-aware) */
+  :root {
+    --status-draft-bg: rgba(156, 163, 175, 0.2);
+    --status-draft-text: #9ca3af;
+    --status-sent-bg: rgba(99, 102, 241, 0.25);
+    --status-sent-text: #a5b4fc;
+    --status-paid-bg: rgba(16, 185, 129, 0.2);
+    --status-paid-text: #34d399;
+    --status-overdue-bg: rgba(239, 68, 68, 0.25);
+    --status-overdue-text: #f87171;
+  }
+  .light {
+    --status-draft-bg: rgba(107, 114, 128, 0.15);
+    --status-draft-text: #4b5563;
+    --status-sent-bg: rgba(99, 102, 241, 0.15);
+    --status-sent-text: #4338ca;
+    --status-paid-bg: rgba(16, 185, 129, 0.15);
+    --status-paid-text: #047857;
+    --status-overdue-bg: rgba(239, 68, 68, 0.2);
+    --status-overdue-text: #dc2626;
+  }
+
+  html {
+    @apply antialiased;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    @apply bg-[var(--bg-app)] text-[var(--text-primary)];
+  }
+}
+
+@media print {
+  aside,
+  header,
+  nav,
+  .no-print,
+  a[href="/invoices"] {
+    display: none !important;
+  }
+  #invoice-print {
+    box-shadow: none;
+    background: white !important;
+    border: 1px solid #e5e7eb !important;
+    /* Override theme vars so invoice prints with dark text */
+    --text-primary: #111827;
+    --text-secondary: #6b7280;
+    --text-muted: #6b7280;
+    --border: #e5e7eb;
+    --border-strong: #e5e7eb;
+    --status-draft-bg: #f3f4f6;
+    --status-draft-text: #4b5563;
+    --status-sent-bg: #e0e7ff;
+    --status-sent-text: #4338ca;
+    --status-paid-bg: #d1fae5;
+    --status-paid-text: #047857;
+    --status-overdue-bg: #fee2e2;
+    --status-overdue-text: #dc2626;
+  }
+}
