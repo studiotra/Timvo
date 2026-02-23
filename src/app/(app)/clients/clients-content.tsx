@@ -30,9 +30,11 @@ type ProjectRow = {
 export function ClientsContent({
   clients,
   projects,
+  onRefresh,
 }: {
   clients: ClientListItem[];
   projects: ProjectRow[];
+  onRefresh?: () => void;
 }) {
   const [slideOpen, setSlideOpen] = useState(false);
   const [editing, setEditing] = useState<ClientListItem | null>(null);
@@ -72,6 +74,7 @@ export function ClientsContent({
           setSlideOpen(false);
           setEditing(null);
         }}
+        onSuccess={onRefresh}
         client={editing}
       />
 

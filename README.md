@@ -71,6 +71,9 @@ In Supabase: **SQL Editor** → New query → paste and run the contents of:
 3. `supabase/migrations/20250218200000_business_settings.sql` (Settings: logo, bank, tax)
 4. `supabase/migrations/20250219000000_invoice_extras.sql` (footer, terms, overdue status)
 5. `supabase/migrations/20250219010000_invoice_settings.sql` (default footer, terms, due days)
+6. `supabase/migrations/20250220000000_client_portal.sql` (client invites & portal access)
+7. `supabase/migrations/20250221000000_fix_clients_rls.sql` (fix clients RLS for owner insert)
+8. `supabase/migrations/20250222000000_clients_rls_simplify.sql` (simplify clients RLS policies)
 
 ### 4. Configure Auth (optional)
 
@@ -90,7 +93,20 @@ In Supabase: **Authentication** → **Providers** — enable Email and any OAuth
 
 When you send an invoice, a Stripe Checkout link is created and included in the email. The webhook updates the invoice to "Paid" when the customer completes payment.
 
-### 6. Run the app
+### 6. Resend (for invoices & invite emails)
+
+1. Create an account at [resend.com](https://resend.com) and get an API key
+2. Add to `.env.local`:
+   - `RESEND_API_KEY` (your API key)
+   - `EMAIL_FROM` (defaults to `onboarding@resend.dev` if omitted)
+
+**Invite emails:** Resend's default sender (`onboarding@resend.dev`) can only send to:
+- The email address of your Resend account, or
+- `delivered@resend.dev` (test address)
+
+To send invites to real client emails, [verify your domain](https://resend.com/domains) in Resend and set `EMAIL_FROM` to e.g. `noreply@yourdomain.com`.
+
+### 7. Run the app
 
 ```bash
 npm run dev
@@ -124,6 +140,4 @@ supabase/migrations/      # SQL schema
 
 See [BUILD_PLAN.md](./BUILD_PLAN.md) for the full roadmap.
 
-API Keys
-https://resend.com/api-keys : re_6mpfDZM6_EwEBJdg7bJFetHL7TH9sVmN9
-OPEN AI: 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# Timvo
+

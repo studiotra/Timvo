@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect, notFound } from "next/navigation";
 import { ProjectContent } from "./project-content";
+import { getClientInvites } from "@/app/actions/client-invites";
 
 export default async function ClientDetailPage({
   params,
@@ -26,15 +27,19 @@ export default async function ClientDetailPage({
     notFound();
   }
 
-  const { data: projects } = await supabase
-    .from("projects")
-    .select("id, name, hourly_rate, billing_type, status")
-    .eq("client_id", id)
-    .order("name");
+  const [projects, invites] = await Promise.all([
+    supabase
+      .from("projects")
+      .select("id, name, hourly_rate, billing_type, status")
+      .eq("client_id", id)
+      .order("name")
+      .then((r) => r.data ?? []),
+    getClientInvites(id),
+  ]);
 
   return (
     <div className="p-6">
-      <ProjectContent client={client} projects={projects ?? []} />
+      <ProjectContent client={client} projects={projects} invites={invites} />
     </div>
   );
 }

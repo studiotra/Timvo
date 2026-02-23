@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useFormStatus } from "react-dom";
+import { useRouter } from "next/navigation";
 import { SlideOver } from "./slide-over";
 import { addClient, updateClient } from "@/app/actions/clients";
 import type { ClientListItem } from "@/types/database";
@@ -24,10 +25,12 @@ function SubmitButton() {
 type ClientSlideOverProps = {
   open: boolean;
   onClose: () => void;
+  onSuccess?: () => void;
   client?: ClientListItem | null;
 };
 
-export function ClientSlideOver({ open, onClose, client }: ClientSlideOverProps) {
+export function ClientSlideOver({ open, onClose, onSuccess, client }: ClientSlideOverProps) {
+  const router = useRouter();
   const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(formData: FormData) {
@@ -39,6 +42,8 @@ export function ClientSlideOver({ open, onClose, client }: ClientSlideOverProps)
       setError(result.error);
       return;
     }
+    onSuccess?.();
+    router.refresh();
     onClose();
   }
 

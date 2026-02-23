@@ -33,10 +33,12 @@ export async function updateSession(request: NextRequest) {
   );
 
   const { data } = await supabase.auth.getUser();
+  const path = request.nextUrl.pathname;
   const isAuthPage =
-    request.nextUrl.pathname.startsWith("/login") ||
-    request.nextUrl.pathname.startsWith("/auth");
-  const isApiRoute = request.nextUrl.pathname.startsWith("/api");
+    path.startsWith("/login") ||
+    path.startsWith("/auth") ||
+    path.startsWith("/accept-invite");
+  const isApiRoute = path.startsWith("/api");
 
   if (!data.user && !isAuthPage && !isApiRoute) {
     const url = request.nextUrl.clone();
@@ -44,10 +46,30 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (data.user && isAuthPage && request.nextUrl.pathname === "/login") {
+  if (data.user && isAuthPage && path === "/login") {
     const url = request.nextUrl.clone();
     url.pathname = "/";
     return NextResponse.redirect(url);
+  }
+
+  if (data.user && path === "/" && !path.startsWith("/client")) {
+    const { data: ownerClient } = await supabase
+      .from("clients")
+      .select("id")
+      .eq("user_id", data.user.id)
+      .limit(1)
+      .maybeSingle();
+    const { data: portalAccess } = await supabase
+      .from("client_portal_access")
+      .select("id")
+      .eq("user_id", data.user.id)
+      .limit(1)
+      .maybeSingle();
+    if (!ownerClient && portalAccess) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/client";
+      return NextResponse.redirect(url);
+    }
   }
 
   return supabaseResponse;
