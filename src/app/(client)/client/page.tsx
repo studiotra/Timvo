@@ -14,10 +14,10 @@ export default async function ClientPortalPage() {
 
   const clients = (accessList ?? [])
     .filter((a) => a.clients)
-    .map((a) => ({
-      id: (a.clients as { id: string; name: string }).id,
-      name: (a.clients as { id: string; name: string }).name,
-    }));
+    .map((a) => {
+      const c = a.clients as unknown as { id: string; name: string };
+      return { id: c.id, name: c.name };
+    });
 
   return (
     <div className="space-y-6">

@@ -137,7 +137,7 @@ export async function inviteClientToPortal(clientId: string, email: string) {
   }
 
   const resend = new Resend(resendKey);
-  const { data: sendData, error: sendError } = await resend.emails.send({
+  const { error: sendError } = await resend.emails.send({
     from: fromEmail,
     to: emailTrimmed,
     subject: `You're invited to view time records for ${client.name}`,

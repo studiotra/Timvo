@@ -30,6 +30,18 @@ export async function sendInvoice(invoiceId: string) {
   const client = inv.clients as unknown as { name?: string; email?: string } | null;
   const project = inv.projects as unknown as { name?: string } | null;
   const clientEmail = client?.email;
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("business_name, full_name, phone_number, address")
+    .eq("id", user.id)
+    .single();
+  const businessName = profile?.business_name?.trim() || profile?.full_name?.trim() || "Your Business";
+  const business = {
+    name: businessName,
+    phone: profile?.phone_number ?? null,
+    address: profile?.address ?? null,
+  };
   if (!clientEmail?.trim()) return { error: "Client has no email" };
 
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
@@ -97,6 +109,7 @@ export async function sendInvoice(invoiceId: string) {
       projectName: project?.name ?? undefined,
       footer: inv.footer,
       terms_and_conditions: inv.terms_and_conditions,
+      business,
       items: (items ?? []).map((i) => ({
         description: i.description ?? "",
         quantity: Number(i.quantity) ?? 0,
@@ -121,7 +134,7 @@ export async function sendInvoice(invoiceId: string) {
     await resend.emails.send({
       from: fromEmail,
       to: clientEmail,
-      subject: `Invoice #${invoiceId.slice(0, 8)} from Timvo`,
+      subject: `Invoice #${invoiceId.slice(0, 8)} from ${businessName}`,
       ...(pdfBuffer && {
         attachments: [
           {
@@ -138,7 +151,7 @@ export async function sendInvoice(invoiceId: string) {
           <a href="${invoiceUrl}" style="display:inline-block;padding:12px 24px;background:#6366f1;color:white;text-decoration:none;border-radius:8px;font-weight:600;">View Invoice</a>
         </p>
         ${paymentUrl ? `<p><a href="${paymentUrl}" style="color:#10b981;font-weight:600;">Pay online with card</a></p>` : ""}
-        <p>— Timvo</p>
+        <p>— {businessName}</p>
       `,
     });
   } catch (e) {

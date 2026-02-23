@@ -8,7 +8,10 @@ export async function updateProfile(formData: FormData) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Unauthorized" };
 
+  const fullName = (formData.get("full_name") as string)?.trim() || null;
   const businessName = (formData.get("business_name") as string)?.trim() || null;
+  const phoneNumber = (formData.get("phone_number") as string)?.trim() || null;
+  const address = (formData.get("address") as string)?.trim() || null;
   const defaultCurrency = (formData.get("default_currency") as string)?.trim() || "USD";
   const invoicePrefix = (formData.get("invoice_prefix") as string)?.trim() || "INV-";
   const defaultInvoiceFooter = (formData.get("default_invoice_footer") as string)?.trim() || null;
@@ -26,7 +29,10 @@ export async function updateProfile(formData: FormData) {
     .upsert(
       {
         id: user.id,
+        full_name: fullName,
         business_name: businessName,
+        phone_number: phoneNumber,
+        address,
         default_currency: defaultCurrency,
         invoice_prefix: invoicePrefix,
         tax_rate: taxRate,

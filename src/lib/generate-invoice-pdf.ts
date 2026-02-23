@@ -1,5 +1,12 @@
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 
+type BusinessInfo = {
+  name: string;
+  logoUrl?: string | null;
+  phone?: string | null;
+  address?: string | null;
+};
+
 type InvoiceData = {
   id: string;
   total_amount: number;
@@ -11,6 +18,7 @@ type InvoiceData = {
   projectName?: string;
   footer?: string | null;
   terms_and_conditions?: string | null;
+  business?: BusinessInfo;
   items: Array<{
     description: string;
     quantity: number;
@@ -33,19 +41,38 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
     y -= size + 4;
   };
 
+  const businessName = data.business?.name || "Your Business";
+
   // Header
-  drawText("Timvo", 50, 20, true);
+  drawText(businessName, 50, 20, true);
   drawText("Invoice", 50, 12);
   y -= 10;
 
   drawText(`Invoice #${data.id.slice(0, 8)}`, width - 120, 11);
   y -= 8;
 
-  // Bill To (left) and Dates (right)
+  // Bill From (left), Bill To (middle), Dates (right)
   const rightX = width - 150;
-  page.drawText("Bill To", { x: 50, y: 770, size: 9, font: fontBold });
-  page.drawText(data.clientName, { x: 50, y: 758, size: 11, font });
-  if (data.clientEmail) page.drawText(data.clientEmail, { x: 50, y: 744, size: 9, font });
+  const fromY = 770;
+  page.drawText("Bill From", { x: 50, y: fromY, size: 9, font: fontBold });
+  page.drawText(businessName, { x: 50, y: fromY - 12, size: 11, font });
+  let by = fromY - 24;
+  if (data.business?.address) {
+    const addrLines = data.business.address.split("\n").filter(Boolean).slice(0, 2);
+    for (const line of addrLines) {
+      page.drawText(line.slice(0, 50), { x: 50, y: by, size: 9, font });
+      by -= 12;
+    }
+  }
+  if (data.business?.phone) {
+    page.drawText(data.business.phone, { x: 50, y: by, size: 9, font });
+    by -= 12;
+  }
+
+  const billToX = 280;
+  page.drawText("Bill To", { x: billToX, y: 770, size: 9, font: fontBold });
+  page.drawText(data.clientName, { x: billToX, y: 758, size: 11, font });
+  if (data.clientEmail) page.drawText(data.clientEmail, { x: billToX, y: 744, size: 9, font });
   page.drawText("Issued:", { x: rightX, y: 770, size: 9, font, color: rgb(0.4, 0.4, 0.4) });
   page.drawText(data.issued_at ?? "—", { x: rightX + 50, y: 770, size: 9, font });
   page.drawText("Due:", { x: rightX, y: 756, size: 9, font, color: rgb(0.4, 0.4, 0.4) });
@@ -120,7 +147,7 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
     page.drawText(footerLine, { x: 50, y, size: 8, font, color: rgb(0.4, 0.4, 0.4) });
     y -= 12;
   }
-  page.drawText("— Timvo", { x: 50, y, size: 9, font, color: rgb(0.5, 0.5, 0.5) });
+  page.drawText(`— ${businessName}`, { x: 50, y, size: 9, font, color: rgb(0.5, 0.5, 0.5) });
 
   const pdfBytes = await doc.save();
   return Buffer.from(pdfBytes);

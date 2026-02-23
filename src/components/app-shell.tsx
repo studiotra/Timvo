@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
@@ -18,7 +19,13 @@ const navItems = [
   { href: "/settings", label: "Settings", icon: "⚙️", id: "settings" },
 ] as const;
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+type AppShellProps = {
+  children: React.ReactNode;
+  logoUrl?: string | null;
+  displayName?: string;
+};
+
+export function AppShell({ children, logoUrl, displayName = "?" }: AppShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const supabase = createClient();
@@ -116,9 +123,26 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               {today}
             </span>
             <ThemeToggle />
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-accent to-pink-500 text-[13px] font-bold text-white">
-              JD
-            </div>
+            {logoUrl ? (
+              <div className="relative h-8 w-8 overflow-hidden rounded-full">
+                <Image
+                  src={logoUrl}
+                  alt={displayName}
+                  fill
+                  className="object-cover"
+                  unoptimized
+                />
+              </div>
+            ) : (
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-accent to-pink-500 text-[13px] font-bold text-white">
+                {displayName
+                  .split(/\s+/)
+                  .map((w) => w[0])
+                  .join("")
+                  .toUpperCase()
+                  .slice(0, 2) || "?"}
+              </div>
+            )}
           </div>
         </header>
 

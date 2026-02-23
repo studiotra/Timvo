@@ -4,7 +4,13 @@ import { createClient } from "@/lib/supabase/server";
 import { getClientsForSelect, getProjectsByClient } from "./clients-projects";
 
 export type ClientOption = { id: string; name: string };
-export type ProjectOption = { id: string; name: string; client_id: string };
+export type ProjectOption = {
+  id: string;
+  name: string;
+  client_id: string;
+  clientName?: string;
+  displayName?: string;
+};
 
 export async function getClientsForTimer(): Promise<ClientOption[]> {
   return getClientsForSelect();
@@ -12,6 +18,23 @@ export async function getClientsForTimer(): Promise<ClientOption[]> {
 
 export async function getProjectsForTimer(clientId: string): Promise<ProjectOption[]> {
   return getProjectsByClient(clientId);
+}
+
+/** Fetch all projects across clients for the timer bar (no client filter). */
+export async function getAllProjectsForTimer(): Promise<ProjectOption[]> {
+  const clients = await getClientsForSelect();
+  const allProjects: ProjectOption[] = [];
+  for (const c of clients) {
+    const projs = await getProjectsByClient(c.id);
+    for (const p of projs) {
+      allProjects.push({
+        ...p,
+        clientName: c.name,
+        displayName: `${p.name} (${c.name})`,
+      });
+    }
+  }
+  return allProjects;
 }
 
 export type ActiveTimer = {

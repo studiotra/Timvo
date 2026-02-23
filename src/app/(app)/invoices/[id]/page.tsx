@@ -68,6 +68,20 @@ export default async function InvoiceDetailPage({
     .eq("invoice_id", id)
     .order("sort_order");
 
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("business_name, logo_url, full_name, phone_number, address")
+    .eq("id", user.id)
+    .single();
+
+  const businessName = profile?.business_name?.trim() || profile?.full_name?.trim() || "Your Business";
+  const businessInfo = {
+    name: businessName,
+    logoUrl: profile?.logo_url ?? null,
+    phone: profile?.phone_number ?? null,
+    address: profile?.address ?? null,
+  };
+
   return (
     <div className="max-w-3xl">
       <Link
@@ -78,6 +92,7 @@ export default async function InvoiceDetailPage({
       </Link>
 
       <InvoiceDetailContent
+        businessInfo={businessInfo}
         invoice={{
           id: inv.id,
           status: inv.status ?? "draft",

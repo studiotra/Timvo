@@ -48,8 +48,8 @@ export default async function ClientPortalDetailPage({
         .limit(200)
     : { data: [] };
 
-  const logsList = (logs?.data ?? []).map((l) => {
-    const p = l.projects as { id: string; name: string } | null;
+  const logsList = (logs ?? []).map((l) => {
+    const p = l.projects as unknown as { id: string; name: string } | null;
     return {
       id: l.id,
       project_id: l.project_id,

@@ -74,6 +74,7 @@ In Supabase: **SQL Editor** → New query → paste and run the contents of:
 6. `supabase/migrations/20250220000000_client_portal.sql` (client invites & portal access)
 7. `supabase/migrations/20250221000000_fix_clients_rls.sql` (fix clients RLS for owner insert)
 8. `supabase/migrations/20250222000000_clients_rls_simplify.sql` (simplify clients RLS policies)
+9. `supabase/migrations/20250224000000_add_business_contact_fields.sql` (phone, address for Bill From)
 
 ### 4. Configure Auth (optional)
 

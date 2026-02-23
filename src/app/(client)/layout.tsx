@@ -1,6 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import { ClientPortalShell } from "./client-portal-shell";
 
 export default async function ClientPortalLayout({

@@ -61,9 +61,9 @@ export async function getTimeLogs(
 
   if (!data) return [];
   return data
-    .filter((r) => r.projects && typeof (r.projects as { client_id?: string }).client_id === "string")
+    .filter((r) => r.projects && typeof (r.projects as unknown as { client_id?: string }).client_id === "string")
     .map((r) => {
-      const p = r.projects as { id: string; name: string; client_id: string; clients?: { id: string; name: string } };
+      const p = r.projects as unknown as { id: string; name: string; client_id: string; clients?: { id: string; name: string } };
       return {
         id: r.id,
         project_id: r.project_id,

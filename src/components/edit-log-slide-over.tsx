@@ -74,7 +74,7 @@ export function EditLogSlideOver({
       project_id: projectId,
       date,
       duration_minutes: duration,
-      description,
+      description: description ?? undefined,
       is_billable: isBillable,
     });
     if (result.error) {

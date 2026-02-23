@@ -1,11 +1,15 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { updateProfile } from "@/app/actions/settings";
 
 type Profile = {
+  full_name: string | null;
   business_name: string | null;
   logo_url: string | null;
+  phone_number: string | null;
+  address: string | null;
   bank_name: string | null;
   bank_account: string | null;
   bank_routing: string | null;
@@ -46,6 +50,18 @@ export function SettingsForm({ profile }: { profile: Profile | null }) {
         <div className="space-y-2">
           <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-4">
             <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+              Full Name
+            </label>
+            <input
+              name="full_name"
+              type="text"
+              placeholder="Your name"
+              defaultValue={profile?.full_name ?? ""}
+              className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
+            />
+          </div>
+          <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-4">
+            <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
               Logo URL
             </label>
             <input
@@ -56,10 +72,13 @@ export function SettingsForm({ profile }: { profile: Profile | null }) {
               className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
             />
             {profile?.logo_url && (
-              <img
+              <Image
                 src={profile.logo_url}
                 alt="Logo"
-                className="mt-2 h-12 object-contain"
+                width={48}
+                height={48}
+                className="mt-2 h-12 w-auto object-contain"
+                unoptimized
               />
             )}
           </div>
@@ -72,6 +91,30 @@ export function SettingsForm({ profile }: { profile: Profile | null }) {
               type="text"
               placeholder="Your Business Name"
               defaultValue={profile?.business_name ?? ""}
+              className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
+            />
+          </div>
+          <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-4">
+            <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+              Phone Number
+            </label>
+            <input
+              name="phone_number"
+              type="tel"
+              placeholder="+1 (555) 123-4567"
+              defaultValue={profile?.phone_number ?? ""}
+              className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
+            />
+          </div>
+          <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-4">
+            <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+              Address
+            </label>
+            <textarea
+              name="address"
+              rows={3}
+              placeholder="Street, City, State, ZIP"
+              defaultValue={profile?.address ?? ""}
               className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
             />
           </div>

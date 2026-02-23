@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { startTimer, stopTimer } from "@/app/actions/time-logs";
 import {
-  getProjectsForTimer,
+  getAllProjectsForTimer,
   getActiveTimer,
   type ProjectOption,
   type ActiveTimer,
@@ -20,7 +20,7 @@ export function TimerBar() {
 
   const load = useCallback(async () => {
     const [projs, active] = await Promise.all([
-      getProjectsForTimer(),
+      getAllProjectsForTimer(),
       getActiveTimer(),
     ]);
     setProjects(projs);

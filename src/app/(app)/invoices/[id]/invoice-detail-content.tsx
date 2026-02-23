@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { PrintInvoiceButton } from "@/components/print-invoice-button";
 import { SendInvoiceButton } from "@/components/send-invoice-button";
@@ -30,12 +31,21 @@ type ItemData = {
   sort_order: number;
 };
 
+type BusinessInfo = {
+  name: string;
+  logoUrl: string | null;
+  phone: string | null;
+  address: string | null;
+};
+
 export function InvoiceDetailContent({
+  businessInfo,
   invoice,
   client,
   project,
   items,
 }: {
+  businessInfo: BusinessInfo;
   invoice: InvoiceData;
   client: { name?: string; email?: string } | null;
   project: { name?: string } | null;
@@ -82,7 +92,19 @@ export function InvoiceDetailContent({
       >
         <div className="mb-8 flex items-start justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-[var(--text-primary)]">Timvo</h1>
+            {businessInfo.logoUrl ? (
+              <div className="relative h-12 w-32">
+                <Image
+                  src={businessInfo.logoUrl}
+                  alt={businessInfo.name}
+                  fill
+                  className="object-contain object-left"
+                  unoptimized
+                />
+              </div>
+            ) : (
+              <h1 className="text-2xl font-bold text-[var(--text-primary)]">{businessInfo.name}</h1>
+            )}
             <p className="mt-1 text-sm text-[var(--text-secondary)]">Invoice</p>
           </div>
           <div className="text-right">
@@ -111,6 +133,18 @@ export function InvoiceDetailContent({
         <div className="grid grid-cols-2 gap-8 mb-8">
           <div>
             <p className="text-xs font-semibold text-[var(--text-secondary)] uppercase mb-1">
+              Bill From
+            </p>
+            <p className="font-semibold text-[var(--text-primary)]">{businessInfo.name}</p>
+            {(businessInfo.address || businessInfo.phone) && (
+              <div className="mt-1 text-sm text-[var(--text-secondary)] space-y-0.5">
+                {businessInfo.address && <p>{businessInfo.address}</p>}
+                {businessInfo.phone && <p>{businessInfo.phone}</p>}
+              </div>
+            )}
+          </div>
+          <div>
+            <p className="text-xs font-semibold text-[var(--text-secondary)] uppercase mb-1">
               Bill To
             </p>
             <p className="font-semibold text-[var(--text-primary)]">{client?.name ?? "—"}</p>
@@ -118,13 +152,11 @@ export function InvoiceDetailContent({
               <p className="text-sm text-[var(--text-secondary)]">{client.email}</p>
             )}
           </div>
-          <div className="text-right">
-            <p className="text-xs text-[var(--text-secondary)]">Issued: {invoice.issued_at || "—"}</p>
-            <p className="text-xs text-[var(--text-secondary)]">Due: {invoice.due_at || "—"}</p>
-            {project?.name && (
-              <p className="text-sm mt-2 text-[var(--text-primary)]">Project: {project.name}</p>
-            )}
-          </div>
+        </div>
+        <div className="flex justify-end gap-8 mb-8 text-sm text-[var(--text-secondary)]">
+          <span>Issued: {invoice.issued_at || "—"}</span>
+          <span>Due: {invoice.due_at || "—"}</span>
+          {project?.name && <span>Project: {project.name}</span>}
         </div>
 
         <table className="w-full text-sm">
