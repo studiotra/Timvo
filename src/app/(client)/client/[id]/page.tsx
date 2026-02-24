@@ -36,7 +36,7 @@ export default async function ClientPortalDetailPage({
     .order("name");
 
   const projectIds = (projects ?? []).map((p) => p.id);
-  const { data: logs } = projectIds.length > 0
+  const logsResponse = projectIds.length > 0
     ? await supabase
         .from("time_logs")
         .select(`
@@ -46,9 +46,10 @@ export default async function ClientPortalDetailPage({
         .in("project_id", projectIds)
         .order("started_at", { ascending: false })
         .limit(200)
-    : { data: [] };
+    : { data: [] as const };
 
-  const logsList = (logs ?? []).map((l) => {
+  const logs = logsResponse.data ?? [];
+  const logsList = logs.map((l) => {
     const p = l.projects as unknown as { id: string; name: string } | null;
     return {
       id: l.id,
