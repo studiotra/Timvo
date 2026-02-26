@@ -31,7 +31,7 @@ export default async function ClientDetailPage({
   const [projectsRes, invites, projectRates] = await Promise.all([
     supabase
       .from("projects")
-      .select("id, name, hourly_rate, billing_type, status, description, retainer_amount, retainer_hours, agreed_fee, estimated_hours")
+      .select("id, name, hourly_rate, billing_type, status, description, retainer_amount, retainer_hours, agreed_fee, estimated_hours, tax_rate")
       .eq("client_id", id)
       .order("name"),
     getClientInvites(id),

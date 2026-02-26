@@ -1,6 +1,6 @@
 # Timvo
 
-Track work. Invoice fast. Get paid. A Track-to-Bill web app for freelancers.
+See what your time is really worth — not just how long you worked. A Track-to-Bill web app for freelancers.
 
 ## Phase 1 — Complete ✓
 

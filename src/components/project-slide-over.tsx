@@ -124,6 +124,22 @@ export function ProjectSlideOver({
           </div>
           <div>
             <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
+              Tax Rate (%)
+            </label>
+            <input
+              name="tax_rate"
+              type="number"
+              min="0"
+              max="100"
+              step="0.01"
+              placeholder="e.g. 8.5"
+              defaultValue={project?.tax_rate ?? ""}
+              className="w-full px-3 py-2 bg-[var(--bg-app)] border border-[var(--border)] rounded-lg text-[var(--text-primary)]"
+            />
+            <p className="mt-1 text-xs text-[var(--text-muted)]">Leave empty to use profile default</p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
               Agreed Fee / Estimated Hours
             </label>
             <div className="grid grid-cols-2 gap-2">

@@ -95,7 +95,7 @@ export function LoginForm({ error }: { error: string | null }) {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold text-white">Timvo</h1>
-          <p className="text-gray-400 text-sm mt-1">Track work. Invoice fast. Get paid.</p>
+          <p className="text-gray-400 text-sm mt-1">See what your time is really worth — not just how long you worked.</p>
           <p className="text-gray-500 text-sm mt-2">Sign in to access your client dashboard.</p>
         </div>
         <div className="bg-[var(--bg-card)] backdrop-blur-xl border border-[var(--border)] rounded-xl p-6 shadow-xl">

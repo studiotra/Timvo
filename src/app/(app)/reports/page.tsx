@@ -3,6 +3,13 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { getRevenueByPeriod, getRevenueByClient } from "@/app/actions/reports";
 import { getClientEffectiveRates } from "@/app/actions/effective-rates";
+import { getProjectedAnnual } from "@/app/actions/income-summary";
+import {
+  RevenueByClientChart,
+  RevenueByPeriodChart,
+  ClientRevenuePieChart,
+  GoalsVsRealizedChart,
+} from "./reports-charts";
 
 export default async function ReportsPage() {
   const supabase = await createClient();
@@ -12,10 +19,11 @@ export default async function ReportsPage() {
     redirect("/login");
   }
 
-  const [byPeriod, byClient, clientRates] = await Promise.all([
+  const [byPeriod, byClient, clientRates, projectedData] = await Promise.all([
     getRevenueByPeriod(),
     getRevenueByClient(),
     getClientEffectiveRates(),
+    getProjectedAnnual(),
   ]);
 
   const totalYTD = byPeriod.find((p) => p.period.endsWith(" YTD"))?.amount ?? 0;
@@ -26,7 +34,8 @@ export default async function ReportsPage() {
 
   return (
     <>
-      <div className="mb-7 grid grid-cols-3 gap-4">
+      {/* Summary cards */}
+      <div className="mb-7 grid grid-cols-2 gap-4 sm:grid-cols-3">
         <div className="rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] p-5">
           <div className="mb-3.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
             YTD Revenue
@@ -62,6 +71,48 @@ export default async function ReportsPage() {
         </div>
       </div>
 
+      {/* Charts section */}
+      <div className="mb-7 grid gap-6 lg:grid-cols-2">
+        <div className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] p-4">
+          <h2 className="mb-1 font-semibold text-[var(--text-primary)]">Revenue by client</h2>
+          <p className="mb-4 text-xs text-[var(--text-muted)]">Top clients by paid revenue</p>
+          {byClient.length === 0 ? (
+            <p className="py-12 text-center text-sm text-[var(--text-muted)]">No paid invoices yet</p>
+          ) : (
+            <RevenueByClientChart data={byClient} />
+          )}
+        </div>
+        <div className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] p-4">
+          <h2 className="mb-1 font-semibold text-[var(--text-primary)]">Revenue by period</h2>
+          <p className="mb-4 text-xs text-[var(--text-muted)]">This month, last month, YTD</p>
+          {byPeriod.length === 0 ? (
+            <p className="py-12 text-center text-sm text-[var(--text-muted)]">No paid invoices yet</p>
+          ) : (
+            <RevenueByPeriodChart data={byPeriod} />
+          )}
+        </div>
+      </div>
+
+      <div className="mb-7 grid gap-6 lg:grid-cols-2">
+        <div className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] p-4">
+          <h2 className="mb-1 font-semibold text-[var(--text-primary)]">Client revenue share</h2>
+          <p className="mb-2 text-xs text-[var(--text-muted)]">Distribution across top 6 clients</p>
+          {byClient.length === 0 ? (
+            <p className="py-12 text-center text-sm text-[var(--text-muted)]">No paid invoices yet</p>
+          ) : (
+            <ClientRevenuePieChart data={byClient} />
+          )}
+        </div>
+        {projectedData.annualGoal != null && projectedData.annualGoal > 0 && (
+          <div className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] p-4">
+            <h2 className="mb-1 font-semibold text-[var(--text-primary)]">Goals vs realized</h2>
+            <p className="mb-4 text-xs text-[var(--text-muted)]">Projected annual vs your goal</p>
+            <GoalsVsRealizedChart projected={projectedData.projected} goal={projectedData.annualGoal} />
+          </div>
+        )}
+      </div>
+
+      {/* Detailed tables */}
       <div className="grid gap-6 md:grid-cols-2">
         <div className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg-card)]">
           <div className="p-4 border-b border-[var(--border)]">
@@ -97,7 +148,7 @@ export default async function ReportsPage() {
           <div className="p-4 border-b border-[var(--border)]">
             <h2 className="font-semibold">Client profitability</h2>
             <p className="text-xs text-[var(--text-muted)] mt-0.5">
-              Sorted by effective hourly rate (revenue ÷ hours)
+              Total time spent (incl. non-billable) · Revenue · Effective rate (revenue ÷ total hours)
             </p>
           </div>
           <div className="divide-y divide-[var(--border)] max-h-80 overflow-y-auto">
@@ -106,7 +157,7 @@ export default async function ReportsPage() {
                 No clients with logged hours and paid invoices yet
               </p>
             ) : (
-              sortedByProfitability.map(({ clientId, clientName, revenue, totalHours, effectiveRate }) => {
+              sortedByProfitability.map(({ clientId, clientName, revenue, totalHours, billableHours, effectiveRate }) => {
                 const pct = totalRevenue > 0 ? (revenue / totalRevenue) * 100 : 0;
                 const rateColor =
                   effectiveRate != null && effectiveRate >= 100
@@ -114,6 +165,9 @@ export default async function ReportsPage() {
                     : effectiveRate != null && effectiveRate >= 50
                       ? "text-amber-400"
                       : "text-red-400";
+                const hoursLabel = Math.abs(totalHours - billableHours) < 0.01
+                  ? `${totalHours.toFixed(1)}h`
+                  : `${totalHours.toFixed(1)}h total (${billableHours.toFixed(1)}h billable)`;
                 return (
                   <Link
                     key={clientId}
@@ -125,7 +179,7 @@ export default async function ReportsPage() {
                         {clientName}
                       </span>
                       <span className="text-[11px] text-[var(--text-muted)]">
-                        {totalHours.toFixed(1)}h · ${revenue.toLocaleString()} · {pct.toFixed(0)}% of total
+                        {hoursLabel} · ${revenue.toLocaleString()} · {pct.toFixed(0)}% of total
                       </span>
                     </div>
                     <span className={`font-mono text-sm font-bold flex-shrink-0 ${rateColor}`}>

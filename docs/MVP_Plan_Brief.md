@@ -137,6 +137,18 @@ Team accounts
 Invoice generation PDFs
 Definition of Success (MVP)
 
+Add features that don’t exist yet
+
+(if missing)
+
+🔹 Effective hourly rate calculation
+🔹 Client profitability ranking
+🔹 Retainer utilization alerts
+🔹 Revenue projection dashboard
+🔹 Income stability view
+🔹 “Underpriced project” alerts
+🔹 Goals vs realized income view
+
 The MVP is successful if:
 A freelancer logs data for 30 days and says:
 “I didn’t realize Client B was costing me money.”

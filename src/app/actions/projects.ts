@@ -20,6 +20,8 @@ export async function addProject(clientId: string, formData: FormData) {
   const agreedFee = agreedFeeRaw ? parseFloat(agreedFeeRaw) : null;
   const estimatedHoursRaw = (formData.get("estimated_hours") as string)?.trim();
   const estimatedHours = estimatedHoursRaw ? parseFloat(estimatedHoursRaw) : null;
+  const taxRateRaw = (formData.get("tax_rate") as string)?.trim();
+  const taxRate = taxRateRaw ? parseFloat(taxRateRaw) : null;
 
   if (!name?.trim()) return { error: "Name is required" };
 
@@ -34,6 +36,7 @@ export async function addProject(clientId: string, formData: FormData) {
     retainer_hours: retainerHours,
     agreed_fee: agreedFee,
     estimated_hours: estimatedHours,
+    tax_rate: taxRate,
   });
 
   if (error) return { error: error.message };
@@ -63,6 +66,8 @@ export async function updateProject(
   const agreedFee = agreedFeeRaw ? parseFloat(agreedFeeRaw) : null;
   const estimatedHoursRaw = (formData.get("estimated_hours") as string)?.trim();
   const estimatedHours = estimatedHoursRaw ? parseFloat(estimatedHoursRaw) : null;
+  const taxRateRaw = (formData.get("tax_rate") as string)?.trim();
+  const taxRate = taxRateRaw ? parseFloat(taxRateRaw) : null;
 
   if (!name?.trim()) return { error: "Name is required" };
 
@@ -78,6 +83,7 @@ export async function updateProject(
       retainer_hours: retainerHours,
       agreed_fee: agreedFee,
       estimated_hours: estimatedHours,
+      tax_rate: taxRate,
       updated_at: new Date().toISOString(),
     })
     .eq("id", id)

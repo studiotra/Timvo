@@ -4,9 +4,9 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ProjectSlideOver } from "@/components/project-slide-over";
+import { AddTaskSlideOver } from "@/components/add-task-slide-over";
 import { deleteProject } from "@/app/actions/projects";
 import {
-  createTask,
   updateTask,
   deleteTask,
   getTaskTimeLogCount,
@@ -36,9 +36,7 @@ export function ProjectDetailContent({
 }) {
   const router = useRouter();
   const [slideOpen, setSlideOpen] = useState(false);
-  const [addingTask, setAddingTask] = useState(false);
-  const [newTaskName, setNewTaskName] = useState("");
-  const [newTaskServiceId, setNewTaskServiceId] = useState("");
+  const [addTaskOpen, setAddTaskOpen] = useState(false);
   const [services, setServices] = useState<ServiceOpt[]>([]);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editingTaskName, setEditingTaskName] = useState("");
@@ -58,19 +56,6 @@ export function ProjectDetailContent({
   useEffect(() => {
     getServicesForSelect().then(setServices);
   }, []);
-
-  async function handleAddTask() {
-    if (!newTaskName.trim() || !newTaskServiceId) return;
-    const r = await createTask(project.id, newTaskServiceId, newTaskName.trim());
-    if (r?.error) {
-      alert(r.error);
-      return;
-    }
-    setAddingTask(false);
-    setNewTaskName("");
-    setNewTaskServiceId("");
-    router.refresh();
-  }
 
   function startEditTask(task: TaskRow) {
     setEditingTaskId(task.id);
@@ -161,6 +146,14 @@ export function ProjectDetailContent({
         project={project}
       />
 
+      <AddTaskSlideOver
+        open={addTaskOpen}
+        onClose={() => setAddTaskOpen(false)}
+        onSuccess={() => router.refresh()}
+        projectId={project.id}
+        clientId={client.id}
+      />
+
       <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden">
         <div className="border-b border-[var(--border)] px-4 py-3 bg-[var(--bg-sidebar)]/50">
           <h3 className="text-sm font-semibold text-[var(--text-secondary)]">
@@ -168,11 +161,12 @@ export function ProjectDetailContent({
           </h3>
         </div>
         <div className="p-4">
-          {tasks.length === 0 && !addingTask ? (
+          {tasks.length === 0 ? (
             <p className="text-sm text-[var(--text-muted)] mb-3">
               No tasks yet.
             </p>
-          ) : (
+          ) : null}
+          {tasks.length > 0 && (
             <ul className="space-y-2 mb-3">
               {tasks.map((task) => (
                 <li
@@ -253,56 +247,13 @@ export function ProjectDetailContent({
               ))}
             </ul>
           )}
-          {addingTask ? (
-            <div className="flex gap-2 flex-wrap">
-              <select
-                value={newTaskServiceId}
-                onChange={(e) => setNewTaskServiceId(e.target.value)}
-                className="rounded border border-[var(--border)] bg-[var(--bg-app)] px-2 py-1.5 text-sm"
-              >
-                <option value="">Service *</option>
-                {services.map((s) => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
-                ))}
-              </select>
-              <input
-                type="text"
-                value={newTaskName}
-                onChange={(e) => setNewTaskName(e.target.value)}
-                onKeyDown={(e) =>
-                  e.key === "Enter" && handleAddTask()
-                }
-                placeholder="Task name"
-                className="min-w-[120px] flex-1 rounded border border-[var(--border)] bg-[var(--bg-app)] px-2 py-1.5 text-sm"
-                autoFocus
-              />
-              <button
-                type="button"
-                onClick={handleAddTask}
-                className="px-3 py-1.5 rounded bg-accent text-white text-sm font-medium hover:bg-accent-hover"
-              >
-                Add
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setAddingTask(false);
-                  setNewTaskName("");
-                }}
-                className="text-sm text-[var(--text-muted)] hover:underline"
-              >
-                Cancel
-              </button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setAddingTask(true)}
-              className="text-sm text-accent hover:underline"
-            >
-              + Add task
-            </button>
-          )}
+          <button
+            type="button"
+            onClick={() => setAddTaskOpen(true)}
+            className="text-sm text-accent hover:underline"
+          >
+            + Add task
+          </button>
         </div>
       </div>
     </>

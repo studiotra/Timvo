@@ -4,7 +4,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 
 export const metadata: Metadata = {
   title: "Timvo",
-  description: "Track work. Invoice fast. Get paid.",
+  description: "See what your time is really worth — not just how long you worked.",
 };
 
 export const viewport: Viewport = {

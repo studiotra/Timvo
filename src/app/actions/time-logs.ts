@@ -215,6 +215,40 @@ export async function addManualLog(formData: FormData) {
   return { success: true };
 }
 
+/** Create a time log for a specific task (used when adding task with optional time entry). */
+export async function addTimeLogForTask(
+  projectId: string,
+  taskId: string,
+  data: { date: string; durationMinutes: number; description?: string | null; isBillable?: boolean }
+) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Unauthorized" };
+  if (!projectId || !taskId || !data.date || data.durationMinutes <= 0)
+    return { error: "Project, task, date, and duration required" };
+
+  const d = new Date(data.date);
+  const startedAt = new Date(d);
+  const endedAt = new Date(d.getTime() + data.durationMinutes * 60 * 1000);
+
+  const { error } = await supabase.from("time_logs").insert({
+    project_id: projectId,
+    user_id: user.id,
+    task_id: taskId,
+    started_at: startedAt.toISOString(),
+    ended_at: endedAt.toISOString(),
+    duration_minutes: data.durationMinutes,
+    description: data.description?.trim() || null,
+    is_billable: data.isBillable ?? true,
+  });
+
+  if (error) return { error: error.message };
+  revalidatePath("/");
+  revalidatePath("/clients");
+  revalidatePath("/logs");
+  return { success: true };
+}
+
 export async function updateTimeLog(
   id: string,
   data: {

@@ -32,13 +32,14 @@ export type Project = {
   retainer_hours: number | null;
   agreed_fee: number | null;
   estimated_hours: number | null;
+  tax_rate: number | null;
   created_at: string;
   updated_at: string;
 };
 
 export type ProjectListItem = Pick<
   Project,
-  "id" | "name" | "hourly_rate" | "billing_type" | "status" | "description" | "retainer_amount" | "retainer_hours" | "agreed_fee" | "estimated_hours"
+  "id" | "name" | "hourly_rate" | "billing_type" | "status" | "description" | "retainer_amount" | "retainer_hours" | "agreed_fee" | "estimated_hours" | "tax_rate"
 >;
 
 export type Service = {
