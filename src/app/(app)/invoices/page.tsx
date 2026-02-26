@@ -13,7 +13,7 @@ export default async function InvoicesPage() {
   const { data: invoices } = await supabase
     .from("invoices")
     .select(`
-      id, status, total_amount, currency, created_at, issued_at,
+      id, status, total_amount, currency, created_at, issued_at, due_at,
       client_id, project_id,
       clients(id, name),
       projects(id, name)

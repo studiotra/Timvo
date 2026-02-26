@@ -1,5 +1,10 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import {
+  getBusinessEffectiveRate,
+  getClientEffectiveRates,
+} from "@/app/actions/effective-rates";
+import { getIncomeSummary, getProjectedAnnual } from "@/app/actions/income-summary";
 import { DashboardContent } from "./dashboard-content";
 
 const PROJECT_COLORS: Record<string, string> = {
@@ -125,6 +130,17 @@ export default async function DashboardPage() {
         : "—",
     })) ?? [];
 
+  const [businessRate, clientRates, incomeSummary, projected] = await Promise.all([
+    getBusinessEffectiveRate(),
+    getClientEffectiveRates(),
+    getIncomeSummary(),
+    getProjectedAnnual(),
+  ]);
+
+  const mostProfitableClient = [...clientRates]
+    .filter((c) => c.effectiveRate != null && c.totalHours > 0)
+    .sort((a, b) => (b.effectiveRate ?? 0) - (a.effectiveRate ?? 0))[0] ?? null;
+
   return (
     <DashboardContent
       unbilledTotal={unbilledTotal}
@@ -133,6 +149,19 @@ export default async function DashboardPage() {
       heatmapData={heatmapData}
       recentLogs={recentLogs}
       recentInvoices={recentInvoices}
+      effectiveRate={businessRate.effectiveRate}
+      targetRate={businessRate.targetRate}
+      mostProfitableClient={
+        mostProfitableClient
+          ? {
+              name: mostProfitableClient.clientName,
+              effectiveRate: mostProfitableClient.effectiveRate!,
+            }
+          : null
+      }
+      incomeSummary={incomeSummary}
+      projectedAnnual={projected.projected}
+      annualGoal={projected.annualGoal}
     />
   );
 }

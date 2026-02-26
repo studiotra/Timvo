@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Image from "next/image";
 import { updateProfile } from "@/app/actions/settings";
+import { useTranslations } from "@/contexts/locale-context";
 
 type Profile = {
   full_name: string | null;
@@ -20,11 +21,16 @@ type Profile = {
   default_invoice_footer: string | null;
   default_invoice_terms: string | null;
   default_due_days: number | null;
+  locale: string | null;
+  timezone: string | null;
+  target_hourly_rate: number | null;
+  annual_income_goal: number | null;
 };
 
 export function SettingsForm({ profile }: { profile: Profile | null }) {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const t = useTranslations();
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -37,7 +43,7 @@ export function SettingsForm({ profile }: { profile: Profile | null }) {
     if (result?.error) {
       setMessage(result.error);
     } else {
-      setMessage("Saved!");
+      setMessage(t("common.saved"));
     }
   }
 
@@ -45,12 +51,50 @@ export function SettingsForm({ profile }: { profile: Profile | null }) {
     <form onSubmit={handleSubmit} className="space-y-7">
       <section>
         <div className="mb-3.5 text-[11px] font-bold uppercase tracking-widest text-[var(--text-muted)]">
-          Business
+          {t("settings.language")}
+        </div>
+        <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-4">
+          <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+            {t("settings.timezone")}
+          </label>
+          <select
+            name="timezone"
+            defaultValue={profile?.timezone ?? "America/New_York"}
+            className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-[13px] text-[var(--text-primary)]"
+          >
+            <option value="America/New_York">Eastern (New York)</option>
+            <option value="America/Los_Angeles">Pacific (Los Angeles)</option>
+            <option value="America/Chicago">Central (Chicago)</option>
+            <option value="Europe/London">London</option>
+            <option value="Europe/Paris">Paris</option>
+            <option value="Asia/Tokyo">Tokyo</option>
+            <option value="Asia/Seoul">Seoul</option>
+            <option value="UTC">UTC</option>
+          </select>
+        </div>
+        <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-4">
+          <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+            {t("settings.languageLabel")}
+          </label>
+          <select
+            name="locale"
+            defaultValue={profile?.locale ?? "en"}
+            className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-[13px] text-[var(--text-primary)]"
+          >
+            <option value="en">English</option>
+            <option value="ko">한국어 (Korean)</option>
+          </select>
+        </div>
+      </section>
+
+      <section>
+        <div className="mb-3.5 text-[11px] font-bold uppercase tracking-widest text-[var(--text-muted)]">
+          {t("settings.business")}
         </div>
         <div className="space-y-2">
           <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-4">
             <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-              Full Name
+              {t("settings.fullName")}
             </label>
             <input
               name="full_name"
@@ -62,7 +106,7 @@ export function SettingsForm({ profile }: { profile: Profile | null }) {
           </div>
           <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-4">
             <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-              Logo URL
+              {t("settings.logoUrl")}
             </label>
             <input
               name="logo_url"
@@ -84,7 +128,7 @@ export function SettingsForm({ profile }: { profile: Profile | null }) {
           </div>
           <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-4">
             <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-              Business Name
+              {t("settings.businessName")}
             </label>
             <input
               name="business_name"
@@ -96,7 +140,7 @@ export function SettingsForm({ profile }: { profile: Profile | null }) {
           </div>
           <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-4">
             <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-              Phone Number
+              {t("settings.phoneNumber")}
             </label>
             <input
               name="phone_number"
@@ -108,7 +152,7 @@ export function SettingsForm({ profile }: { profile: Profile | null }) {
           </div>
           <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-4">
             <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-              Address
+              {t("settings.address")}
             </label>
             <textarea
               name="address"
@@ -123,12 +167,12 @@ export function SettingsForm({ profile }: { profile: Profile | null }) {
 
       <section>
         <div className="mb-3.5 text-[11px] font-bold uppercase tracking-widest text-[var(--text-muted)]">
-          Bank & Payments
+          {t("settings.bankPayments")}
         </div>
         <div className="space-y-2">
           <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-4">
             <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-              Bank Name
+              {t("settings.bankName")}
             </label>
             <input
               name="bank_name"
@@ -140,7 +184,7 @@ export function SettingsForm({ profile }: { profile: Profile | null }) {
           </div>
           <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-4">
             <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-              Account Number (last 4)
+              {t("settings.accountNumber")}
             </label>
             <input
               name="bank_account"
@@ -153,7 +197,7 @@ export function SettingsForm({ profile }: { profile: Profile | null }) {
           </div>
           <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-4">
             <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-              Routing Number
+              {t("settings.routingNumber")}
             </label>
             <input
               name="bank_routing"
@@ -168,12 +212,12 @@ export function SettingsForm({ profile }: { profile: Profile | null }) {
 
       <section>
         <div className="mb-3.5 text-[11px] font-bold uppercase tracking-widest text-[var(--text-muted)]">
-          Tax
+          {t("settings.tax")}
         </div>
         <div className="space-y-2">
           <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-4">
             <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-              Tax Rate (%)
+              {t("settings.taxRate")}
             </label>
             <input
               name="tax_rate"
@@ -188,7 +232,7 @@ export function SettingsForm({ profile }: { profile: Profile | null }) {
           </div>
           <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-4">
             <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-              Tax ID
+              {t("settings.taxId")}
             </label>
             <input
               name="tax_id"
@@ -203,12 +247,12 @@ export function SettingsForm({ profile }: { profile: Profile | null }) {
 
       <section>
         <div className="mb-3.5 text-[11px] font-bold uppercase tracking-widest text-[var(--text-muted)]">
-          Invoice Settings
+          {t("settings.invoiceSettings")}
         </div>
         <div className="space-y-2">
           <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-4">
             <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-              Default Due Date (days from issue)
+              {t("settings.defaultDueDays")}
             </label>
             <input
               name="default_due_days"
@@ -222,7 +266,7 @@ export function SettingsForm({ profile }: { profile: Profile | null }) {
           </div>
           <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-4">
             <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-              Default Footer
+              {t("settings.defaultFooter")}
             </label>
             <textarea
               name="default_invoice_footer"
@@ -234,7 +278,7 @@ export function SettingsForm({ profile }: { profile: Profile | null }) {
           </div>
           <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-4">
             <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-              Default Terms & Conditions
+              {t("settings.defaultTerms")}
             </label>
             <textarea
               name="default_invoice_terms"
@@ -246,7 +290,7 @@ export function SettingsForm({ profile }: { profile: Profile | null }) {
           </div>
           <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-4">
             <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-              Default Currency
+              {t("settings.defaultCurrency")}
             </label>
             <select
               name="default_currency"
@@ -260,7 +304,7 @@ export function SettingsForm({ profile }: { profile: Profile | null }) {
           </div>
           <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-4">
             <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
-              Invoice Prefix
+              {t("settings.invoicePrefix")}
             </label>
             <input
               name="invoice_prefix"
@@ -270,11 +314,41 @@ export function SettingsForm({ profile }: { profile: Profile | null }) {
               className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 font-mono text-[13px] text-[var(--text-primary)]"
             />
           </div>
+          <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-4">
+            <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+              {t("settings.targetHourlyRate")}
+            </label>
+            <input
+              name="target_hourly_rate"
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="e.g. 150"
+              defaultValue={profile?.target_hourly_rate ?? ""}
+              className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 font-mono text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
+            />
+            <p className="mt-1 text-[11px] text-[var(--text-muted)]">For effective rate comparison</p>
+          </div>
+          <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-4">
+            <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)]">
+              {t("settings.annualIncomeGoal")}
+            </label>
+            <input
+              name="annual_income_goal"
+              type="number"
+              min="0"
+              step="1"
+              placeholder="e.g. 120000"
+              defaultValue={profile?.annual_income_goal ?? ""}
+              className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 font-mono text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
+            />
+            <p className="mt-1 text-[11px] text-[var(--text-muted)]">Used for projection vs target</p>
+          </div>
         </div>
       </section>
 
       {message && (
-        <p className={`text-sm ${message === "Saved!" ? "text-emerald-400" : "text-red-400"}`}>
+        <p className={`text-sm ${message === t("common.saved") ? "text-emerald-400" : "text-red-400"}`}>
           {message}
         </p>
       )}
@@ -283,7 +357,7 @@ export function SettingsForm({ profile }: { profile: Profile | null }) {
         disabled={saving}
         className="rounded-lg bg-accent px-5 py-2.5 text-[13px] font-semibold text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
       >
-        {saving ? "Saving…" : "Save Settings"}
+        {saving ? t("common.saving") : t("common.saveSettings")}
       </button>
     </form>
   );

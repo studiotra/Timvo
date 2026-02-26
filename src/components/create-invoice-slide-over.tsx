@@ -165,9 +165,24 @@ export function CreateInvoiceSlideOver({
     window.location.href = `/invoices/${result.invoiceId}`;
   }
 
-  const logsTotal = logs
-    .filter((l) => selected.has(l.id))
-    .reduce((s, l) => s + l.amount, 0);
+  const logsTotal = (() => {
+    const sel = logs.filter((l) => selected.has(l.id));
+    const byService = new Map<string, UnbilledLog[]>();
+    let total = 0;
+    for (const l of sel) {
+      if (l.service_id && l.service_billing_type === "fixed" && (l.service_default_rate ?? 0) > 0) {
+        const arr = byService.get(l.service_id) ?? [];
+        arr.push(l);
+        byService.set(l.service_id, arr);
+      } else {
+        total += l.amount;
+      }
+    }
+    for (const [, arr] of byService) {
+      if (arr.length > 0) total += arr[0].service_default_rate ?? 0;
+    }
+    return total;
+  })();
   const manualTotal = manualItems.reduce((s, m) => {
     const amt = parseFloat(m.amount);
     return s + (isNaN(amt) ? 0 : amt);
@@ -277,7 +292,7 @@ export function CreateInvoiceSlideOver({
           </div>
           <div>
             <p className="text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)] mb-2">
-              Logs to include (uncheck to exclude)
+              Logs to include (grouped by task in invoice)
             </p>
             {loading ? (
               <p className="text-sm text-[var(--text-muted)]">Loading…</p>
@@ -299,7 +314,14 @@ export function CreateInvoiceSlideOver({
                       className="w-[18px] h-[18px] rounded border-[var(--border)] accent-accent"
                     />
                     <span className="flex-1 text-sm">
-                      {log.description || "Time"}
+                      {log.task_name ? (
+                        <>
+                          <span className="text-[var(--text-muted)]">[{log.task_name}] </span>
+                          {log.description || "Time"}
+                        </>
+                      ) : (
+                        log.description || "Time"
+                      )}
                     </span>
                     <span className="font-mono text-xs text-[var(--text-secondary)]">
                       {(log.duration_minutes / 60).toFixed(1)}h · ${log.amount.toFixed(2)}

@@ -27,7 +27,7 @@ git commit -m "Initial commit"
 Create a new repo on [github.com/new](https://github.com/new), then:
 
 ```bash
-git remote add origin https://github.com/YOUR_USERNAME/YOUR_REPO.git
+git remote add origin https://github.com/studiotra/Timvo.git
 git branch -M main
 git push -u origin main
 ```
@@ -80,9 +80,11 @@ After adding env vars: **Deployments** → **⋯** on latest deploy → **Redepl
 ### Supabase – Auth redirect URLs
 
 1. Supabase Dashboard → **Authentication** → **URL Configuration**
-2. Add to **Redirect URLs:**  
-   `https://your-app.vercel.app/**`  
-   (replace with your real Vercel URL)
+2. Set **Site URL** to your production URL, e.g. `https://timvo.work` or `https://www.timvo.work`
+3. Add to **Redirect URLs** (include both if you use www):
+   - `https://timvo.work/**`
+   - `https://www.timvo.work/**`
+4. Ensure the URL matches how users reach your site (www vs non-www) so auth cookies work
 
 ### Stripe – Webhook for production
 
@@ -118,8 +120,12 @@ For testing, a Resend default domain is fine (e.g. `onboarding@resend.dev`).
 |-------|------------|
 | Build fails | Check build logs; fix TypeScript/lint errors locally first |
 | 500 on auth | Ensure Supabase URL, redirect URLs, and env vars are correct |
+| Accept-invite "Not authenticated" | Add both `https://timvo.work/**` and `https://www.timvo.work/**` to Supabase Redirect URLs; ensure Site URL matches your domain |
+| Invite emails not sending | Verify RESEND_API_KEY and EMAIL_FROM. Resend free tier: send only to your account email until you add a domain at resend.com/domains |
+| Magic link / forgot password emails not sending | Configure custom SMTP in Supabase Auth, or add your domain to Supabase’s allowed redirect URLs |
 | Stripe webhook fails | Confirm `STRIPE_WEBHOOK_SECRET` and endpoint URL are correct |
 | Emails not sending | Verify Resend API key, `EMAIL_FROM`, and domain status |
+| Client invite shows "Check your email" but no confirmation email | Fixed in code: invite flow now creates users server-side with `email_confirm: true`, so no Supabase auth email is needed. Supabase's default email only sends to org team addresses. |
 | Blank page / hydration errors | Clear cache and redeploy; check browser console for errors |
 
 ---

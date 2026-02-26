@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
-import { acceptInvite } from "@/app/actions/client-invites";
+import { acceptInvite, createInvitedUser } from "@/app/actions/client-invites";
 
 type Props = { token: string; email: string; clientName: string };
 
@@ -20,31 +21,50 @@ export function AcceptInviteForm({ token, email, clientName }: Props) {
 
     try {
       const supabase = createClient();
-      const { error: signUpError } = await supabase.auth.signUp({
-        email: email.trim(),
-        password,
-        options: { emailRedirectTo: `/client` },
-      });
 
-      if (signUpError) {
-        if (signUpError.message.includes("already registered")) {
-          const { error: signInError } = await supabase.auth.signInWithPassword({
-            email: email.trim(),
-            password,
-          });
-          if (signInError) {
-            setError(signInError.message);
-            setLoading(false);
-            return;
-          }
-        } else {
-          setError(signUpError.message);
-          setLoading(false);
-          return;
-        }
+      // Create user server-side with email_confirm: true (no confirmation email needed —
+      // the invite link was already sent to this email). If user already exists, we'll sign in.
+      const createResult = await createInvitedUser(token, email, password);
+      if (createResult.error) {
+        setError(createResult.error);
+        setLoading(false);
+        return;
       }
 
-      const result = await acceptInvite(token);
+      // Sign in (works for both newly created and existing users). Retry if auth hasn't propagated yet.
+      let signInResult = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
+      const invalidMsgs = ["Invalid login", "invalid login credentials", "Invalid Login"];
+      const isInvalidLogin = invalidMsgs.some((m) =>
+        signInResult.error?.message?.toLowerCase().includes(m.toLowerCase())
+      );
+      for (let attempt = 0; attempt < 3 && isInvalidLogin && signInResult.error; attempt++) {
+        await new Promise((r) => setTimeout(r, 1200 + attempt * 500));
+        signInResult = await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password,
+        });
+        if (!signInResult.error) break;
+      }
+      if (signInResult.error) {
+        setError(signInResult.error.message);
+        setLoading(false);
+        return;
+      }
+
+      const session = signInResult.data.session;
+      if (!session) {
+        setError("Session could not be established. Please try again.");
+        setLoading(false);
+        return;
+      }
+
+      const result = await acceptInvite(token, {
+        accessToken: session.access_token,
+        refreshToken: session.refresh_token,
+      });
       if (result.error) {
         setError(result.error);
         setLoading(false);
@@ -55,7 +75,6 @@ export function AcceptInviteForm({ token, email, clientName }: Props) {
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
-    } finally {
       setLoading(false);
     }
   }
@@ -106,9 +125,9 @@ export function AcceptInviteForm({ token, email, clientName }: Props) {
       </form>
       <p className="mt-4 text-center text-sm text-[var(--text-secondary)]">
         Already have an account?{" "}
-        <a href="/login" className="text-accent hover:underline font-medium">
-          Sign in
-        </a>
+<Link href="/login" className="text-accent hover:underline font-medium">
+        Sign in
+      </Link>
       </p>
     </div>
   );

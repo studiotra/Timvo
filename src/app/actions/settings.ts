@@ -23,6 +23,13 @@ export async function updateProfile(formData: FormData) {
   const bankAccount = (formData.get("bank_account") as string)?.trim() || null;
   const bankRouting = (formData.get("bank_routing") as string)?.trim() || null;
   const logoUrl = (formData.get("logo_url") as string)?.trim() || null;
+  const locale = ((formData.get("locale") as string)?.trim() || "en") as "en" | "ko";
+  const validLocale = locale === "ko" ? "ko" : "en";
+  const timezone = (formData.get("timezone") as string)?.trim() || "America/New_York";
+  const targetHourlyRateRaw = (formData.get("target_hourly_rate") as string)?.trim();
+  const targetHourlyRate = targetHourlyRateRaw ? parseFloat(targetHourlyRateRaw) : null;
+  const annualIncomeGoalRaw = (formData.get("annual_income_goal") as string)?.trim();
+  const annualIncomeGoal = annualIncomeGoalRaw ? parseFloat(annualIncomeGoalRaw) : null;
 
   const { error } = await supabase
     .from("profiles")
@@ -44,6 +51,10 @@ export async function updateProfile(formData: FormData) {
         default_invoice_footer: defaultInvoiceFooter,
         default_invoice_terms: defaultInvoiceTerms,
         default_due_days: defaultDueDays,
+        locale: validLocale,
+        timezone,
+        target_hourly_rate: targetHourlyRate,
+        annual_income_goal: annualIncomeGoal,
         updated_at: new Date().toISOString(),
       },
       { onConflict: "id" }

@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Timvo — Client Dashboard (Mock)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-app: #111827;
+      --bg-card: rgba(31, 41, 55, 0.6);
+      --bg-sidebar: rgba(17, 24, 39, 0.95);
+      --text-primary: #F9FAFB;
+      --text-secondary: #9CA3AF;
+      --text-muted: #6B7280;
+      --accent: #6366F1;
+      --accent-hover: #818CF8;
+      --success: #10B981;
+      --border: rgba(75, 85, 99, 0.5);
+    }
+    .light {
+      --bg-app: #F3F4F6;
+      --bg-card: rgba(255, 255, 255, 0.8);
+      --bg-sidebar: rgba(255, 255, 255, 0.98);
+      --text-primary: #111827;
+      --text-secondary: #4B5563;
+      --text-muted: #9CA3AF;
+      --border: rgba(209, 213, 219, 0.8);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', sans-serif; background: var(--bg-app); color: var(--text-primary); min-height: 100vh; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+
+    /* Client portal layout */
+    .client-portal { min-height: 100vh; display: flex; flex-direction: column; }
+    .header {
+      height: 3.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 1.5rem;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-sidebar);
+    }
+    .logo { display: flex; align-items: center; gap: 0.5rem; text-decoration: none; color: inherit; }
+    .logo-icon {
+      width: 2rem; height: 2rem;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 8px;
+      background: linear-gradient(135deg, var(--accent), #4F46E5);
+      color: white; font-size: 0.875rem; font-weight: 700;
+    }
+    .logo-text { font-weight: 700; }
+    .logo-sub { font-size: 0.875rem; color: var(--text-muted); margin-left: 0.25rem; }
+    .sign-out { background: none; border: none; color: var(--text-secondary); font-size: 0.875rem; cursor: pointer; font-family: inherit; }
+    .sign-out:hover { color: var(--text-primary); }
+
+    .main { flex: 1; padding: 1.5rem; max-width: 56rem; margin: 0 auto; width: 100%; }
+
+    /* Welcome banner */
+    .welcome-banner {
+      border-radius: 1rem;
+      border: 1px solid var(--border);
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(79, 70, 229, 0.05));
+      padding: 1.5rem 2rem;
+      margin-bottom: 2rem;
+    }
+    .welcome-banner h1 { font-size: 1.5rem; font-weight: 700; }
+    .welcome-banner p { color: var(--text-secondary); margin-top: 0.5rem; }
+
+    /* Stats grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1rem;
+      margin-bottom: 2rem;
+    }
+    @media (min-width: 768px) { .stats-grid { grid-template-columns: repeat(4, 1fr); } }
+    .stat-card {
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      padding: 1rem;
+    }
+    .stat-label { font-size: 0.6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); }
+    .stat-value { font-size: 1.5rem; font-weight: 700; margin-top: 0.25rem; }
+    .stat-hint { font-size: 0.75rem; color: var(--text-muted); margin-top: 0.25rem; }
+    .stat-value.success { color: var(--success); }
+
+    /* Client cards */
+    .section-title { font-size: 1.125rem; font-weight: 600; margin-bottom: 0.75rem; }
+    .section-sub { font-size: 0.875rem; color: var(--text-secondary); margin-bottom: 1rem; }
+    .client-grid { display: grid; gap: 0.75rem; }
+    @media (min-width: 768px) { .client-grid { grid-template-columns: repeat(2, 1fr); } }
+    .client-card {
+      display: block;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      padding: 1.25rem;
+      text-decoration: none;
+      color: inherit;
+      transition: all 0.2s;
+    }
+    .client-card:hover { border-color: rgba(99, 102, 241, 0.5); background: rgba(99, 102, 241, 0.05); }
+    .client-card h3 { font-weight: 600; transition: color 0.2s; }
+    .client-card:hover h3 { color: var(--accent); }
+    .client-card .hint { font-size: 0.875rem; color: var(--text-secondary); margin-top: 0.25rem; }
+
+    /* Getting started */
+    .getting-started {
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      padding: 1.25rem;
+      margin-top: 2rem;
+    }
+    .getting-started h2 { font-size: 0.8125rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); margin-bottom: 0.75rem; }
+    .getting-started ul { list-style: none; }
+    .getting-started li { display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; padding: 0.25rem 0; }
+    .getting-started .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+    .getting-started .dot.active { background: var(--success); }
+    .getting-started .dot.inactive { background: var(--text-muted); }
+
+    .theme-toggle { margin-left: auto; padding: 0.5rem 0.75rem; background: var(--bg-card); border: 1px solid var(--border); border-radius: 6px; color: var(--text-secondary); font-size: 0.75rem; cursor: pointer; font-family: inherit; }
+    .theme-toggle:hover { color: var(--text-primary); }
+  </style>
+</head>
+<body>
+  <div class="client-portal">
+    <header class="header">
+      <a href="#" class="logo">
+        <div class="logo-icon">T</div>
+        <span class="logo-text">Timvo</span>
+        <span class="logo-sub">— Client Portal</span>
+      </a>
+      <div style="display: flex; align-items: center; gap: 0.5rem;">
+        <button class="theme-toggle" onclick="document.documentElement.classList.toggle('light')">Toggle theme</button>
+        <button class="sign-out">Sign out</button>
+      </div>
+    </header>
+
+    <main class="main">
+      <!-- Welcome banner -->
+      <div class="welcome-banner">
+        <h1>Welcome to Timvo Client Portal</h1>
+        <p>Your account is set up. You can view time records and project details for the clients you've been invited to.</p>
+      </div>
+
+      <!-- Stats -->
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-label">Active clients</div>
+          <div class="stat-value">2</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Projects</div>
+          <div class="stat-value">—</div>
+          <div class="stat-hint">View per client</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Time logged</div>
+          <div class="stat-value">—</div>
+          <div class="stat-hint">View per client</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Status</div>
+          <div class="stat-value success" style="font-size: 0.875rem;">Active</div>
+        </div>
+      </div>
+
+      <!-- Your clients -->
+      <div>
+        <h2 class="section-title">Your clients</h2>
+        <p class="section-sub">Select a client to view their time records and project details.</p>
+        <div class="client-grid">
+          <a href="#" class="client-card">
+            <h3>Acme Corp</h3>
+            <p class="hint">View time records →</p>
+          </a>
+          <a href="#" class="client-card">
+            <h3>Studio X</h3>
+            <p class="hint">View time records →</p>
+          </a>
+        </div>
+      </div>
+
+      <!-- Getting started -->
+      <div class="getting-started">
+        <h2>Getting started</h2>
+        <ul>
+          <li>
+            <span class="dot active"></span>
+            Your account is ready
+          </li>
+          <li>
+            <span class="dot inactive"></span>
+            Click a client above to view their time records
+          </li>
+          <li>
+            <span class="dot inactive"></span>
+            Contact your account owner for questions
+          </li>
+        </ul>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

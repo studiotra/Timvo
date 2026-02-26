@@ -53,4 +53,4 @@ export default async function ClientPortalPage() {
       )}
     </div>
   );
-  }
+}

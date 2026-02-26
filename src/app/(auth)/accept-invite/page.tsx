@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { getInviteByToken } from "@/app/actions/client-invites";
+import { getInviteByToken, acceptInvite } from "@/app/actions/client-invites";
 import { AcceptInviteForm } from "./accept-invite-form";
 
 type Props = { searchParams: Promise<{ token?: string }> };
@@ -15,12 +16,9 @@ export default async function AcceptInvitePage({ searchParams }: Props) {
           <p className="mt-2 text-sm text-[var(--text-secondary)]">
             This invite link is missing or invalid. Please request a new one.
           </p>
-          <a
-            href="/login"
-            className="mt-6 inline-block text-accent hover:underline font-medium"
-          >
+          <Link href="/login" className="mt-6 inline-block text-accent hover:underline font-medium">
             Go to sign in
-          </a>
+          </Link>
         </div>
       </div>
     );
@@ -35,12 +33,9 @@ export default async function AcceptInvitePage({ searchParams }: Props) {
           <p className="mt-2 text-sm text-[var(--text-secondary)]">
             This invite has expired or has already been used. Please request a new one.
           </p>
-          <a
-            href="/login"
-            className="mt-6 inline-block text-accent hover:underline font-medium"
-          >
+          <Link href="/login" className="mt-6 inline-block text-accent hover:underline font-medium">
             Go to sign in
-          </a>
+          </Link>
         </div>
       </div>
     );
@@ -49,6 +44,20 @@ export default async function AcceptInvitePage({ searchParams }: Props) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (user) {
+    const result = await acceptInvite(token);
+    if (result.error) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-[var(--bg-app)] px-4">
+          <div className="w-full max-w-md text-center">
+            <h1 className="text-xl font-bold text-[var(--text-primary)]">Setup failed</h1>
+            <p className="mt-2 text-sm text-red-400">{result.error}</p>
+            <Link href={`/accept-invite?token=${token}`} className="mt-6 inline-block text-accent hover:underline font-medium">
+              Try again
+            </Link>
+          </div>
+        </div>
+      );
+    }
     redirect("/client");
   }
 

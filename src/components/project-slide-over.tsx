@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useFormStatus } from "react-dom";
 import { SlideOver } from "./slide-over";
+import { RichTextEditor } from "./rich-text-editor";
 import { addProject, updateProject } from "@/app/actions/projects";
 import type { ProjectListItem } from "@/types/database";
 
@@ -68,6 +69,18 @@ export function ProjectSlideOver({
           </div>
           <div>
             <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
+              Description
+            </label>
+            <RichTextEditor
+              key={project?.id ?? "new"}
+              name="description"
+              value={project?.description ?? ""}
+              placeholder="Scope, deliverables, notes..."
+              minHeight="140px"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
               Billing Type
             </label>
             <select
@@ -81,18 +94,66 @@ export function ProjectSlideOver({
           </div>
           <div>
             <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
-              Hourly Rate
+              Retainer (optional)
             </label>
-            <input
-              name="hourly_rate"
-              type="number"
-              step="0.01"
-              min="0"
-              defaultValue={project?.hourly_rate ?? ""}
-              className="w-full px-3 py-2 bg-[var(--bg-app)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] font-mono focus:ring-2 focus:ring-accent focus:border-transparent"
-              placeholder="150"
-            />
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <input
+                  name="retainer_amount"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="Monthly $"
+                  defaultValue={project?.retainer_amount ?? ""}
+                  className="w-full px-3 py-2 bg-[var(--bg-app)] border border-[var(--border)] rounded-lg text-[var(--text-primary)]"
+                />
+              </div>
+              <div>
+                <input
+                  name="retainer_hours"
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  placeholder="Hours/mo"
+                  defaultValue={project?.retainer_hours ?? ""}
+                  className="w-full px-3 py-2 bg-[var(--bg-app)] border border-[var(--border)] rounded-lg text-[var(--text-primary)]"
+                />
+              </div>
+            </div>
+            <p className="mt-1 text-xs text-[var(--text-muted)]">Monthly agreed amount and hours for utilization tracking</p>
           </div>
+          <div>
+            <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
+              Agreed Fee / Estimated Hours
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <input
+                  name="agreed_fee"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="Fixed $ (if fixed)"
+                  defaultValue={project?.agreed_fee ?? ""}
+                  className="w-full px-3 py-2 bg-[var(--bg-app)] border border-[var(--border)] rounded-lg text-[var(--text-primary)]"
+                />
+              </div>
+              <div>
+                <input
+                  name="estimated_hours"
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  placeholder="Est. hours"
+                  defaultValue={project?.estimated_hours ?? ""}
+                  className="w-full px-3 py-2 bg-[var(--bg-app)] border border-[var(--border)] rounded-lg text-[var(--text-primary)]"
+                />
+              </div>
+            </div>
+          </div>
+          <p className="text-xs text-[var(--text-muted)]">
+            Rates come from Service settings
+          </p>
           <div>
             <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
               Status

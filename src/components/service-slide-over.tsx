@@ -66,7 +66,20 @@ export function ServiceSlideOver({
           </div>
           <div>
             <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
-              Default Rate ($/hr)
+              Billing
+            </label>
+            <select
+              name="billing_type"
+              defaultValue={(service as { billing_type?: string })?.billing_type ?? "hourly"}
+              className="w-full px-3 py-2 bg-[var(--bg-app)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] focus:ring-2 focus:ring-accent"
+            >
+              <option value="hourly">Hourly rate</option>
+              <option value="fixed">Fixed rate</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
+              Rate
             </label>
             <input
               name="default_rate"
@@ -76,7 +89,11 @@ export function ServiceSlideOver({
               defaultValue={service?.default_rate ?? ""}
               className="w-full px-3 py-2 bg-[var(--bg-app)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] font-mono focus:ring-2 focus:ring-accent focus:border-transparent"
               placeholder="150"
+              title="Hourly: $/hr. Fixed: flat amount per service."
             />
+            <p className="mt-1 text-xs text-[var(--text-muted)]">
+              Hourly: $/hr. Fixed: flat amount for the service.
+            </p>
           </div>
           {error && <p className="text-sm text-red-400">{error}</p>}
         </div>

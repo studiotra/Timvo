@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { ClientSlideOver } from "@/components/client-slide-over";
 import { deleteClient } from "@/app/actions/clients";
+import { useTranslations } from "@/contexts/locale-context";
 import type { ClientListItem } from "@/types/database";
 
 const AVATAR_COLORS = [
@@ -38,6 +39,20 @@ export function ClientsContent({
 }) {
   const [slideOpen, setSlideOpen] = useState(false);
   const [editing, setEditing] = useState<ClientListItem | null>(null);
+  const [clientSearch, setClientSearch] = useState("");
+  const [projectSearch, setProjectSearch] = useState("");
+  const t = useTranslations();
+
+  const filteredClients = clientSearch.trim()
+    ? clients.filter((c) =>
+        c.name.toLowerCase().includes(clientSearch.trim().toLowerCase())
+      )
+    : clients;
+  const filteredProjects = projectSearch.trim()
+    ? projects.filter((p) =>
+        p.name.toLowerCase().includes(projectSearch.trim().toLowerCase())
+      )
+    : projects;
 
   async function handleDelete(id: string) {
     if (!confirm("Delete this client and all their projects?")) return;
@@ -56,15 +71,24 @@ export function ClientsContent({
 
   return (
     <>
-      <div className="mb-5 flex items-center justify-between">
-        <div className="text-[13px] text-[var(--text-secondary)]">
-          {clients.length} active client{clients.length !== 1 ? "s" : ""}
+      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-4">
+          <div className="text-[13px] text-[var(--text-secondary)]">
+            {filteredClients.length} {filteredClients.length === 1 ? t("clients.activeClient") : t("clients.activeClients")}
+          </div>
+          <input
+            type="search"
+            value={clientSearch}
+            onChange={(e) => setClientSearch(e.target.value)}
+            placeholder="Search clients…"
+            className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-3 py-1.5 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
+          />
         </div>
         <button
           onClick={openAdd}
           className="rounded-lg bg-gradient-to-r from-accent to-indigo-600 px-4 py-2.5 text-[12px] font-bold text-white shadow-lg shadow-indigo-500/35 transition-all hover:-translate-y-px hover:shadow-indigo-500/50"
         >
-          + Add Client
+          + {t("clients.addClient")}
         </button>
       </div>
 
@@ -78,8 +102,8 @@ export function ClientsContent({
         client={editing}
       />
 
-      <div className="mb-5 grid grid-cols-3 gap-4">
-        {clients.map((client, i) => (
+      <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 sm:gap-4">
+        {filteredClients.map((client, i) => (
           <Link
             key={client.id}
             href={`/clients/${client.id}`}
@@ -112,7 +136,7 @@ export function ClientsContent({
                 ACTIVE
               </span>
             </div>
-            <div className="mt-3 flex gap-2 opacity-0 transition-opacity group-hover:opacity-100">
+            <div className="mt-3 flex gap-2 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
               <button
                 onClick={(e) => {
                   e.preventDefault();
@@ -120,7 +144,7 @@ export function ClientsContent({
                 }}
                 className="text-[11px] font-semibold text-accent hover:underline"
               >
-                Edit
+                {t("common.edit")}
               </button>
               <button
                 onClick={(e) => {
@@ -129,7 +153,7 @@ export function ClientsContent({
                 }}
                 className="text-[11px] font-semibold text-red-400 hover:underline"
               >
-                Delete
+                {t("common.delete")}
               </button>
             </div>
           </Link>
@@ -139,25 +163,34 @@ export function ClientsContent({
           className="flex min-h-[140px] cursor-pointer flex-col items-center justify-center gap-2 rounded-[14px] border border-dashed border-white/10 transition-all hover:border-indigo-500/40 hover:bg-indigo-500/5 hover:text-indigo-300"
         >
           <span className="text-2xl">+</span>
-          <span className="text-[12px] font-semibold">New Client</span>
+          <span className="text-[12px] font-semibold">{t("clients.newClient")}</span>
         </button>
       </div>
 
-      <div className="mb-3 text-[11px] font-bold uppercase tracking-widest text-[var(--text-muted)]">
-        Projects
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <span className="text-[11px] font-bold uppercase tracking-widest text-[var(--text-muted)]">
+          Projects
+        </span>
+        <input
+          type="search"
+          value={projectSearch}
+          onChange={(e) => setProjectSearch(e.target.value)}
+          placeholder="Search projects…"
+          className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-3 py-1.5 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
+        />
       </div>
       <div className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg-card)]">
-        {projects.length === 0 ? (
+        {filteredProjects.length === 0 ? (
           <div className="px-5 py-8 text-center text-[12px] text-[var(--text-muted)]">
             No projects. Add a client first, then add projects.
           </div>
         ) : (
-          projects.map((p, i) => (
+          filteredProjects.map((p, i) => (
             <Link
               key={p.id}
-              href={`/clients/${p.clientId}`}
+              href={`/clients/${p.clientId}/projects/${p.id}`}
               className={`flex items-center gap-3 px-5 py-3 transition-colors hover:bg-white/5 ${
-                i < projects.length - 1 ? "border-b border-white/5" : ""
+                i < filteredProjects.length - 1 ? "border-b border-white/5" : ""
               }`}
             >
               <div

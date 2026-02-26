@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { getRevenueByPeriod, getRevenueByClient } from "@/app/actions/reports";
+import { getClientEffectiveRates } from "@/app/actions/effective-rates";
 
 export default async function ReportsPage() {
   const supabase = await createClient();
@@ -11,12 +12,17 @@ export default async function ReportsPage() {
     redirect("/login");
   }
 
-  const [byPeriod, byClient] = await Promise.all([
+  const [byPeriod, byClient, clientRates] = await Promise.all([
     getRevenueByPeriod(),
     getRevenueByClient(),
+    getClientEffectiveRates(),
   ]);
 
   const totalYTD = byPeriod.find((p) => p.period.endsWith(" YTD"))?.amount ?? 0;
+  const totalRevenue = clientRates.reduce((s, c) => s + c.revenue, 0);
+  const sortedByProfitability = [...clientRates]
+    .filter((c) => c.effectiveRate != null && c.totalHours > 0)
+    .sort((a, b) => (b.effectiveRate ?? 0) - (a.effectiveRate ?? 0));
 
   return (
     <>
@@ -83,6 +89,51 @@ export default async function ReportsPage() {
                   </span>
                 </div>
               ))
+            )}
+          </div>
+        </div>
+
+        <div className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg-card)]">
+          <div className="p-4 border-b border-[var(--border)]">
+            <h2 className="font-semibold">Client profitability</h2>
+            <p className="text-xs text-[var(--text-muted)] mt-0.5">
+              Sorted by effective hourly rate (revenue ÷ hours)
+            </p>
+          </div>
+          <div className="divide-y divide-[var(--border)] max-h-80 overflow-y-auto">
+            {sortedByProfitability.length === 0 ? (
+              <p className="p-6 text-sm text-[var(--text-muted)] text-center">
+                No clients with logged hours and paid invoices yet
+              </p>
+            ) : (
+              sortedByProfitability.map(({ clientId, clientName, revenue, totalHours, effectiveRate }) => {
+                const pct = totalRevenue > 0 ? (revenue / totalRevenue) * 100 : 0;
+                const rateColor =
+                  effectiveRate != null && effectiveRate >= 100
+                    ? "text-emerald-400"
+                    : effectiveRate != null && effectiveRate >= 50
+                      ? "text-amber-400"
+                      : "text-red-400";
+                return (
+                  <Link
+                    key={clientId}
+                    href={`/clients/${clientId}`}
+                    className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-[var(--bg-app)] transition-colors"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <span className="text-sm font-medium text-[var(--text-primary)] truncate block">
+                        {clientName}
+                      </span>
+                      <span className="text-[11px] text-[var(--text-muted)]">
+                        {totalHours.toFixed(1)}h · ${revenue.toLocaleString()} · {pct.toFixed(0)}% of total
+                      </span>
+                    </div>
+                    <span className={`font-mono text-sm font-bold flex-shrink-0 ${rateColor}`}>
+                      ${effectiveRate!.toFixed(0)}/hr
+                    </span>
+                  </Link>
+                );
+              })
             )}
           </div>
         </div>

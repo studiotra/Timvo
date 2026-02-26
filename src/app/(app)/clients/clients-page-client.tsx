@@ -26,7 +26,7 @@ export function ClientsPageClient() {
     if (!user) return;
     const { data: clientsData } = await supabase
       .from("clients")
-      .select("id, name, email, tax_id, currency, created_at")
+      .select("id, name, email, tax_id, currency, status, address, phone_number, business_phone, extension, note, created_at")
       .eq("user_id", user.id)
       .order("name");
     const clientsList = clientsData ?? [];
@@ -79,7 +79,7 @@ export function ClientsPageClient() {
 
       const { data: clientsData } = await supabase
         .from("clients")
-        .select("id, name, email, tax_id, currency, created_at")
+        .select("id, name, email, tax_id, currency, status, address, phone_number, business_phone, extension, note, created_at")
         .eq("user_id", user.id)
         .order("name");
 

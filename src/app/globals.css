@@ -70,6 +70,37 @@
   }
 }
 
+/* TipTap table styles */
+.ProseMirror table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+  margin: 1rem 0;
+}
+.ProseMirror td,
+.ProseMirror th {
+  border: 1px solid var(--border);
+  padding: 0.5rem 0.75rem;
+  min-width: 1em;
+  vertical-align: top;
+  box-sizing: border-box;
+  position: relative;
+}
+.ProseMirror th {
+  font-weight: 600;
+  text-align: left;
+  background: var(--bg-card);
+}
+.ProseMirror [style*="text-align: center"] {
+  text-align: center;
+}
+.ProseMirror [style*="text-align: right"] {
+  text-align: right;
+}
+.ProseMirror [style*="text-align: justify"] {
+  text-align: justify;
+}
+
 @media print {
   aside,
   header,

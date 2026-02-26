@@ -11,6 +11,7 @@ type InvoiceRow = {
   currency: string | null;
   created_at: string;
   issued_at: string | null;
+  due_at: string | null;
   client_id: string;
   project_id: string | null;
   clients: unknown;
@@ -20,7 +21,18 @@ type InvoiceRow = {
 type ClientOpt = { id: string; name: string };
 type ProjectOpt = { id: string; name: string; client_id: string };
 
-const TABS = ["All", "Draft", "Sent", "Paid", "Overdue"] as const;
+const TABS = ["All statuses", "Draft", "Sent", "Paid", "Overdue"] as const;
+
+function getDisplayStatus(inv: InvoiceRow): string {
+  if (inv.status === "sent" && inv.due_at) {
+    const due = new Date(inv.due_at);
+    due.setHours(0, 0, 0, 0);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (due < today) return "overdue";
+  }
+  return inv.status;
+}
 
 export function InvoicesContent({
   invoices,
@@ -32,7 +44,7 @@ export function InvoicesContent({
   projects: ProjectOpt[];
 }) {
   const [invoiceOpen, setInvoiceOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<typeof TABS[number]>("All");
+  const [activeTab, setActiveTab] = useState<typeof TABS[number]>("All statuses");
   const [clientFilter, setClientFilter] = useState("");
   const [projectFilter, setProjectFilter] = useState("");
 
@@ -43,8 +55,12 @@ export function InvoicesContent({
 
   const filtered = useMemo(() => {
     let list = invoices;
-    if (activeTab !== "All") {
-      list = list.filter((i) => i.status.toLowerCase() === activeTab.toLowerCase());
+    if (activeTab !== "All statuses") {
+      if (activeTab === "Overdue") {
+        list = list.filter((i) => getDisplayStatus(i) === "overdue");
+      } else {
+        list = list.filter((i) => i.status.toLowerCase() === activeTab.toLowerCase());
+      }
     }
     if (clientFilter) {
       list = list.filter((i) => i.client_id === clientFilter);
@@ -57,13 +73,13 @@ export function InvoicesContent({
 
   return (
     <>
-      <div className="mb-5 flex flex-wrap items-center gap-4">
-        <div className="flex gap-1 rounded-[10px] border border-[var(--border)] bg-white/[0.03] p-1">
+      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
+        <div className="flex gap-1 overflow-x-auto rounded-[10px] border border-[var(--border)] bg-white/[0.03] p-1 sm:overflow-visible">
           {TABS.map((t) => (
             <button
               key={t}
               onClick={() => setActiveTab(t)}
-              className={`rounded-lg px-4 py-1.5 text-[12px] font-semibold transition-all ${
+              className={`shrink-0 rounded-lg px-3 py-1.5 text-[11px] font-semibold transition-all sm:px-4 sm:text-[12px] ${
                 activeTab === t
                   ? "bg-indigo-500/15 text-indigo-200"
                   : "text-[var(--text-muted)] hover:text-gray-200"
@@ -113,11 +129,11 @@ export function InvoicesContent({
         {filtered.length === 0 ? (
           <div className="px-5 py-12 text-center">
             <p className="mb-4 text-[var(--text-muted)]">
-              {activeTab === "All"
+              {activeTab === "All statuses"
                 ? "No invoices yet. Create one from unbilled time logs."
                 : `No ${activeTab.toLowerCase()} invoices.`}
             </p>
-            {activeTab === "All" && (
+            {activeTab === "All statuses" && (
               <button
                 onClick={() => setInvoiceOpen(true)}
                 className="rounded-lg bg-accent px-5 py-2.5 font-semibold text-white transition-colors hover:bg-accent-hover"
@@ -128,20 +144,20 @@ export function InvoicesContent({
           </div>
         ) : (
           <>
-            <div className="flex gap-3 border-b border-white/5 px-5 py-3">
-              <span className="w-[70px] shrink-0 text-[10px] font-bold uppercase tracking-wider text-gray-500">
+            <div className="flex gap-2 border-b border-white/5 px-3 py-2 sm:gap-3 sm:px-5 sm:py-3">
+              <span className="w-[55px] shrink-0 text-[9px] font-bold uppercase tracking-wider text-gray-500 sm:w-[70px] sm:text-[10px]">
                 ID
               </span>
-              <span className="flex-1 text-[10px] font-bold uppercase tracking-wider text-gray-500">
+              <span className="min-w-0 flex-1 text-[9px] font-bold uppercase tracking-wider text-gray-500 sm:text-[10px]">
                 Client
               </span>
-              <span className="min-w-[60px] text-[10px] font-bold uppercase tracking-wider text-gray-500">
+              <span className="hidden min-w-[60px] text-[10px] font-bold uppercase tracking-wider text-gray-500 sm:inline">
                 Date
               </span>
-              <span className="min-w-[80px] text-right text-[10px] font-bold uppercase tracking-wider text-gray-500">
+              <span className="min-w-[70px] text-right text-[9px] font-bold uppercase tracking-wider text-gray-500 sm:min-w-[80px] sm:text-[10px]">
                 Amount
               </span>
-              <span className="min-w-[70px] text-center text-[10px] font-bold uppercase tracking-wider text-gray-500">
+              <span className="min-w-[60px] text-center text-[9px] font-bold uppercase tracking-wider text-gray-500 sm:min-w-[70px] sm:text-[10px]">
                 Status
               </span>
             </div>
@@ -149,15 +165,15 @@ export function InvoicesContent({
               <Link
                 key={inv.id}
                 href={`/invoices/${inv.id}`}
-                className="flex items-center gap-3 border-b border-white/5 px-5 py-3 transition-colors last:border-0 hover:bg-white/5"
+                className="flex items-center gap-2 border-b border-white/5 px-3 py-2 transition-colors last:border-0 hover:bg-white/5 sm:gap-3 sm:px-5 sm:py-3"
               >
-                <span className="min-w-[70px] font-mono text-[11px] font-semibold text-accent">
+                <span className="min-w-[55px] font-mono text-[10px] font-semibold text-accent sm:min-w-[70px] sm:text-[11px]">
                   #{inv.id.slice(0, 8)}
                 </span>
-                <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-gray-200">
+                <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-gray-200 sm:text-[12px]">
                   {(inv.clients as { name?: string } | null)?.name ?? "—"}
                 </span>
-                <span className="min-w-[60px] text-[11px] text-[var(--text-muted)]">
+                <span className="hidden min-w-[60px] text-[11px] text-[var(--text-muted)] sm:inline">
                   {inv.issued_at
                     ? new Date(inv.issued_at).toLocaleDateString("en-US", {
                         month: "short",
@@ -168,23 +184,22 @@ export function InvoicesContent({
                         day: "numeric",
                       })}
                 </span>
-                <span className="min-w-[80px] text-right font-mono text-[13px] font-semibold text-[var(--text-primary)]">
+                <span className="min-w-[70px] text-right font-mono text-[12px] font-semibold text-[var(--text-primary)] sm:min-w-[80px] sm:text-[13px]">
                   ${Number(inv.total_amount ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
                 </span>
                 <span
                   className={`min-w-[70px] text-center rounded px-2 py-0.5 text-[9px] font-bold uppercase ${
-                    inv.status === "paid"
-                      ? "bg-emerald-500/10 text-emerald-300"
-                      : inv.status === "sent"
-                        ? "bg-indigo-500/10 text-indigo-300"
-                        : inv.status === "overdue"
-                          ? "bg-amber-500/10 text-amber-300"
-                          : inv.status === "draft"
-                            ? "bg-gray-500/10 text-gray-400"
-                            : "bg-red-500/10 text-red-400"
+                    (() => {
+                      const s = getDisplayStatus(inv);
+                      if (s === "paid") return "bg-emerald-500/10 text-emerald-300";
+                      if (s === "overdue") return "bg-amber-500/10 text-amber-300";
+                      if (s === "sent") return "bg-indigo-500/10 text-indigo-300";
+                      if (s === "draft") return "bg-gray-500/10 text-gray-400";
+                      return "bg-red-500/10 text-red-400";
+                    })()
                   }`}
                 >
-                  {inv.status}
+                  {getDisplayStatus(inv)}
                 </span>
               </Link>
             ))}

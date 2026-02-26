@@ -12,6 +12,11 @@ export async function addClient(formData: FormData) {
   const email = (formData.get("email") as string) || null;
   const tax_id = (formData.get("tax_id") as string) || null;
   const currency = (formData.get("currency") as string) || "USD";
+  const address = (formData.get("address") as string) || null;
+  const phone_number = (formData.get("phone_number") as string) || null;
+  const business_phone = (formData.get("business_phone") as string) || null;
+  const extension = (formData.get("extension") as string) || null;
+  const note = (formData.get("note") as string) || null;
 
   if (!name?.trim()) return { error: "Name is required" };
 
@@ -21,6 +26,12 @@ export async function addClient(formData: FormData) {
     email: email?.trim() || null,
     tax_id: tax_id?.trim() || null,
     currency: currency?.trim() || "USD",
+    status: "active",
+    address: address?.trim() || null,
+    phone_number: phone_number?.trim() || null,
+    business_phone: business_phone?.trim() || null,
+    extension: extension?.trim() || null,
+    note: note?.trim() || null,
   });
 
   if (error) return { error: error.message };
@@ -37,6 +48,12 @@ export async function updateClient(id: string, formData: FormData) {
   const email = (formData.get("email") as string) || null;
   const tax_id = (formData.get("tax_id") as string) || null;
   const currency = (formData.get("currency") as string) || "USD";
+  const status = (formData.get("status") as "active" | "archived") || "active";
+  const address = (formData.get("address") as string) || null;
+  const phone_number = (formData.get("phone_number") as string) || null;
+  const business_phone = (formData.get("business_phone") as string) || null;
+  const extension = (formData.get("extension") as string) || null;
+  const note = (formData.get("note") as string) || null;
 
   if (!name?.trim()) return { error: "Name is required" };
 
@@ -47,6 +64,12 @@ export async function updateClient(id: string, formData: FormData) {
       email: email?.trim() || null,
       tax_id: tax_id?.trim() || null,
       currency: currency?.trim() || "USD",
+      status,
+      address: address?.trim() || null,
+      phone_number: phone_number?.trim() || null,
+      business_phone: business_phone?.trim() || null,
+      extension: extension?.trim() || null,
+      note: note?.trim() || null,
       updated_at: new Date().toISOString(),
     })
     .eq("id", id)

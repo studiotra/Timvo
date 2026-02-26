@@ -60,12 +60,12 @@ export async function createInvoice(formData: FormData) {
     .single();
   if (!client) return { error: "Client not found" };
 
-  const items: { time_log_id: string | null; description: string; quantity: number; unit_rate: number; amount: number }[] = [];
+  const items: { time_log_ids: string[]; description: string; quantity: number; unit_rate: number; amount: number }[] = [];
 
   if (logIds.length > 0) {
     const { data: logs } = await supabase
       .from("time_logs")
-      .select("id, duration_minutes, description, projects(hourly_rate)")
+      .select("id, duration_minutes, description, task_id, task:task_id(name), projects(hourly_rate)")
       .eq("user_id", user.id)
       .eq("is_billable", true)
       .eq("is_billed", false)
@@ -74,19 +74,116 @@ export async function createInvoice(formData: FormData) {
 
     if (!logs || logs.length === 0) return { error: "No valid unbilled logs" };
 
+    const taskIds = [...new Set(logs.map((l) => l.task_id).filter(Boolean))] as string[];
+    const tasksWithService: Record<string, string | null> = {};
+    if (taskIds.length > 0) {
+      const { data: taskRows } = await supabase
+        .from("tasks")
+        .select("id, service_id")
+        .in("id", taskIds);
+      for (const t of taskRows ?? []) tasksWithService[t.id] = t.service_id ?? null;
+    }
+    const serviceIds = [...new Set(Object.values(tasksWithService).filter(Boolean))] as string[];
+    const servicesMap: Record<string, { name: string; default_rate: number; billing_type: string }> = {};
+    if (serviceIds.length > 0) {
+      const { data: svcData } = await supabase
+        .from("services")
+        .select("id, name, default_rate, billing_type")
+        .in("id", serviceIds);
+      for (const s of svcData ?? []) {
+        servicesMap[s.id] = {
+          name: s.name,
+          default_rate: Number(s.default_rate) || 0,
+          billing_type: s.billing_type ?? "hourly",
+        };
+      }
+    }
+
+    type LogEntry = { id: string; mins: number; taskName: string; serviceId: string | null };
+    const byService = new Map<string, LogEntry[]>();
+    const noServiceLogs: LogEntry[] = [];
+
     for (const log of logs) {
-    const rate = Number((log.projects as { hourly_rate?: number })?.hourly_rate) || 0;
-    const mins = log.duration_minutes ?? 0;
-    const hours = mins / 60;
-    const amount = Math.round(hours * rate * 100) / 100;
-    const description = polishedDescriptions[log.id] ?? log.description ?? "Time";
-      items.push({
-        time_log_id: log.id,
-        description,
-        quantity: hours,
-        unit_rate: rate,
-        amount,
-      });
+      const task = log.task as { name?: string } | null;
+      const mins = log.duration_minutes ?? 0;
+      const taskName = polishedDescriptions[log.id] ?? task?.name ?? log.description ?? "Time";
+      const serviceId = log.task_id ? (tasksWithService[log.task_id] ?? null) : null;
+
+      const entry: LogEntry = { id: log.id, mins, taskName, serviceId };
+      if (serviceId) {
+        const arr = byService.get(serviceId) ?? [];
+        arr.push(entry);
+        byService.set(serviceId, arr);
+      } else {
+        const projRate = Number((log.projects as { hourly_rate?: number })?.hourly_rate) || 0;
+        const hours = mins / 60;
+        const amount = Math.round(hours * projRate * 100) / 100;
+        items.push({
+          time_log_ids: [log.id],
+          description: taskName,
+          quantity: Math.round(hours * 100) / 100,
+          unit_rate: projRate,
+          amount,
+        });
+      }
+    }
+
+    const projRateFallback = Number((logs[0]?.projects as { hourly_rate?: number })?.hourly_rate) || 0;
+
+    for (const [svcId, entries] of byService) {
+      const svc = servicesMap[svcId];
+      const rate = (svc?.default_rate ?? 0) > 0 ? svc!.default_rate : projRateFallback;
+      const isFixed = svc?.billing_type === "fixed";
+      const totalMins = entries.reduce((s, e) => s + e.mins, 0);
+      const allIds = entries.map((e) => e.id);
+
+      if (isFixed && rate > 0) {
+        items.push({
+          time_log_ids: allIds,
+          description: svc?.name ?? "Service",
+          quantity: 1,
+          unit_rate: rate,
+          amount: Math.round(rate * 100) / 100,
+        });
+        const byTask = new Map<string, { ids: string[]; mins: number }>();
+        for (const e of entries) {
+          const k = e.taskName;
+          const x = byTask.get(k) ?? { ids: [], mins: 0 };
+          x.ids.push(e.id);
+          x.mins += e.mins;
+          byTask.set(k, x);
+        }
+        for (const [taskName, g] of byTask) {
+          const hours = Math.round((g.mins / 60) * 100) / 100;
+          items.push({
+            time_log_ids: g.ids,
+            description: `  ${taskName}`,
+            quantity: hours,
+            unit_rate: 0,
+            amount: 0,
+          });
+        }
+      } else {
+        const byTask = new Map<string, { ids: string[]; mins: number }>();
+        for (const e of entries) {
+          const k = e.taskName;
+          const x = byTask.get(k) ?? { ids: [], mins: 0 };
+          x.ids.push(e.id);
+          x.mins += e.mins;
+          byTask.set(k, x);
+        }
+        for (const [taskName, g] of byTask) {
+          const hours = Math.round((g.mins / 60) * 100) / 100;
+          const amount = Math.round(hours * rate * 100) / 100;
+          items.push({
+            time_log_ids: g.ids,
+            description: taskName,
+            quantity: hours,
+            unit_rate: rate,
+            amount,
+          });
+        }
+      }
     }
   }
 
@@ -94,7 +191,7 @@ export async function createInvoice(formData: FormData) {
     if (!m.description?.trim() || isNaN(m.quantity) || isNaN(m.unit_rate) || isNaN(m.amount)) continue;
     const amount = Math.round(m.amount * 100) / 100;
     items.push({
-      time_log_id: null,
+      time_log_ids: [],
       description: m.description.trim(),
       quantity: m.quantity,
       unit_rate: m.unit_rate,
@@ -140,13 +237,14 @@ export async function createInvoice(formData: FormData) {
   if (!inv) return { error: "Failed to create invoice" };
 
   for (let i = 0; i < items.length; i++) {
+    const it = items[i];
     await supabase.from("invoice_items").insert({
       invoice_id: inv.id,
-      time_log_id: items[i].time_log_id ?? null,
-      description: items[i].description,
-      quantity: items[i].quantity,
-      unit_rate: items[i].unit_rate,
-      amount: items[i].amount,
+      time_log_id: it.time_log_ids?.length ? it.time_log_ids[0] : null,
+      description: it.description,
+      quantity: it.quantity,
+      unit_rate: it.unit_rate,
+      amount: it.amount,
       sort_order: i,
     });
   }
@@ -170,10 +268,11 @@ export async function updateInvoiceStatus(invoiceId: string, status: string) {
   if (!user) return { error: "Unauthorized" };
   const valid = ["draft", "sent", "paid", "overdue"].includes(status);
   if (!valid) return { error: "Invalid status" };
+  const dbStatus = status === "overdue" ? "sent" : status;
 
   const { error } = await supabase
     .from("invoices")
-    .update({ status, updated_at: new Date().toISOString() })
+    .update({ status: dbStatus, updated_at: new Date().toISOString() })
     .eq("id", invoiceId)
     .eq("user_id", user.id);
 

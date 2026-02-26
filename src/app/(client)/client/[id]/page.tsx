@@ -41,7 +41,7 @@ export default async function ClientPortalDetailPage({
         .from("time_logs")
         .select(`
           id, project_id, started_at, duration_minutes, description,
-          is_billable, is_billed, projects(id, name)
+          is_billable, is_billed, tasks(name), projects(id, name)
         `)
         .in("project_id", projectIds)
         .order("started_at", { ascending: false })
@@ -51,10 +51,12 @@ export default async function ClientPortalDetailPage({
   const logs = logsResponse.data ?? [];
   const logsList = logs.map((l) => {
     const p = l.projects as unknown as { id: string; name: string } | null;
+    const t = l.tasks as unknown as { name?: string } | null;
     return {
       id: l.id,
       project_id: l.project_id,
       project_name: p?.name ?? "—",
+      task_name: t?.name ?? null,
       started_at: l.started_at,
       duration_minutes: l.duration_minutes ?? 0,
       description: l.description,
@@ -151,6 +153,9 @@ export default async function ClientPortalDetailPage({
                     Project
                   </th>
                   <th className="px-4 py-3 text-left font-medium text-[var(--text-secondary)]">
+                    Task
+                  </th>
+                  <th className="px-4 py-3 text-left font-medium text-[var(--text-secondary)]">
                     Description
                   </th>
                   <th className="px-4 py-3 text-right font-medium text-[var(--text-secondary)]">
@@ -168,7 +173,7 @@ export default async function ClientPortalDetailPage({
                 {logsList.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={6}
+                      colSpan={7}
                       className="px-4 py-8 text-center text-[var(--text-muted)]"
                     >
                       No time logs yet.
@@ -187,6 +192,9 @@ export default async function ClientPortalDetailPage({
                       </td>
                       <td className="px-4 py-3 text-[var(--text-primary)]">
                         {log.project_name}
+                      </td>
+                      <td className="px-4 py-3 text-[var(--text-muted)]">
+                        {log.task_name || "—"}
                       </td>
                       <td className="px-4 py-3 text-[var(--text-secondary)] max-w-[200px] truncate">
                         {log.description || "—"}

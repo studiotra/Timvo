@@ -13,7 +13,7 @@ export default async function ClientPortalLayout({
 
   const { data: portalAccess } = await supabase
     .from("client_portal_access")
-    .select("id")
+    .select("id, invited_by")
     .eq("user_id", user.id)
     .limit(1);
 
@@ -21,9 +21,33 @@ export default async function ClientPortalLayout({
     redirect("/");
   }
 
+  const invitorId = portalAccess[0]?.invited_by;
+  let invitorBusinessName = "Client Portal";
+  if (invitorId) {
+    const { data: invitorProfile } = await supabase
+      .from("profiles")
+      .select("business_name, full_name")
+      .eq("id", invitorId)
+      .single();
+    invitorBusinessName =
+      (invitorProfile?.business_name?.trim()) ||
+      invitorProfile?.full_name?.trim() ||
+      "Client Portal";
+  }
+
+  const { data: ownedClient } = await supabase
+    .from("clients")
+    .select("id")
+    .eq("user_id", user.id)
+    .limit(1)
+    .maybeSingle();
+
   return (
     <div className="min-h-screen bg-[var(--bg-app)]">
-      <ClientPortalShell />
+      <ClientPortalShell
+        invitorBusinessName={invitorBusinessName}
+        hasBusinessDashboard={!!ownedClient}
+      />
       <main className="p-6 max-w-4xl mx-auto">{children}</main>
     </div>
   );

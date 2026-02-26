@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { CreateInvoiceSlideOver } from "@/components/create-invoice-slide-over";
 import { ManualLogSlideOver } from "@/components/manual-log-slide-over";
+import { useTranslations } from "@/contexts/locale-context";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -16,6 +17,12 @@ type DashboardContentProps = {
   weekMinutes: number;
   receivedTotal: number;
   heatmapData?: number[];
+  effectiveRate?: number | null;
+  targetRate?: number | null;
+  mostProfitableClient?: { name: string; effectiveRate: number } | null;
+  incomeSummary?: { currentMonth: number; lastMonth: number; ytd: number };
+  projectedAnnual?: number;
+  annualGoal?: number | null;
   recentLogs?: Array<{
     id: string;
     description: string | null;
@@ -85,44 +92,128 @@ export function DashboardContent({
   weekMinutes,
   receivedTotal,
   heatmapData = [0.45, 0.7, 0.85, 0.6, 0.9, 0.3, 0.1],
+  effectiveRate = null,
+  targetRate = null,
+  mostProfitableClient = null,
+  incomeSummary,
+  projectedAnnual = 0,
+  annualGoal = null,
   recentLogs = [],
   recentInvoices = [],
 }: DashboardContentProps) {
   const [invoiceOpen, setInvoiceOpen] = useState(false);
   const [manualLogOpen, setManualLogOpen] = useState(false);
+  const t = useTranslations();
 
   const weekHours = (weekMinutes / 60).toFixed(1);
   const maxHeat = Math.max(...heatmapData, 0.01);
+  const gapToGoal =
+    annualGoal != null && projectedAnnual > 0 ? annualGoal - projectedAnnual : null;
 
   return (
     <>
-      <div className="mb-7 grid grid-cols-4 gap-4">
+      {/* MVP Hero: Effective rate, most profitable client, projection */}
+      <div className="mb-7 grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div className="rounded-2xl border border-indigo-500/30 bg-gradient-to-br from-indigo-500/15 to-indigo-500/5 p-5">
+          <div className="text-[11px] font-bold uppercase tracking-wide text-indigo-300/80">
+            {t("dashboard.effectiveRate")}
+          </div>
+          <div className="mt-2 font-mono text-2xl font-bold text-indigo-200">
+            {effectiveRate != null ? (
+              <>${effectiveRate.toFixed(0)}/hr</>
+            ) : (
+              <span className="text-[var(--text-muted)]">—</span>
+            )}
+          </div>
+          {targetRate != null && (
+            <div className="mt-1 text-[11px] text-[var(--text-muted)]">
+              Target: ${targetRate.toFixed(0)}/hr
+              {effectiveRate != null && effectiveRate >= targetRate ? (
+                <span className="ml-1.5 text-emerald-400">✓</span>
+              ) : null}
+            </div>
+          )}
+        </div>
+        <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] p-5">
+          <div className="text-[11px] font-bold uppercase tracking-wide text-[var(--text-muted)]">
+            {t("dashboard.mostProfitableClient")}
+          </div>
+          <div className="mt-2 font-semibold text-[var(--text-primary)]">
+            {mostProfitableClient ? (
+              <>
+                {mostProfitableClient.name}
+                <span className="ml-2 font-mono text-[13px] font-bold text-emerald-400">
+                  ${mostProfitableClient.effectiveRate.toFixed(0)}/hr
+                </span>
+              </>
+            ) : (
+              <span className="text-[var(--text-muted)]">—</span>
+            )}
+          </div>
+        </div>
+        <div className="rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] p-5">
+          <div className="text-[11px] font-bold uppercase tracking-wide text-[var(--text-muted)]">
+            {t("dashboard.projectedAnnual")}
+          </div>
+          <div className="mt-2 font-mono text-2xl font-bold text-[var(--text-primary)]">
+            ${projectedAnnual.toLocaleString("en-US", { minimumFractionDigits: 0 })}
+          </div>
+          {annualGoal != null && (
+            <div className="mt-1 text-[11px] text-[var(--text-muted)]">
+              Goal: ${annualGoal.toLocaleString()}
+              {gapToGoal != null && (
+                <span className={gapToGoal >= 0 ? "text-amber-400" : "text-emerald-400"}>
+                  {" "}
+                  ({gapToGoal >= 0 ? "—" : "+"}${Math.abs(gapToGoal).toLocaleString()})
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Income: Current month, last month, YTD */}
+      {incomeSummary && (
+        <div className="mb-7 flex flex-wrap gap-3 text-sm">
+          <span className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-4 py-2 font-mono">
+            {t("dashboard.thisMonthRevenue")}: ${incomeSummary.currentMonth.toLocaleString("en-US", { minimumFractionDigits: 0 })}
+          </span>
+          <span className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-4 py-2 font-mono">
+            {t("dashboard.lastMonthRevenue")}: ${incomeSummary.lastMonth.toLocaleString("en-US", { minimumFractionDigits: 0 })}
+          </span>
+          <span className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-4 py-2 font-mono">
+            {t("dashboard.ytd")}: ${incomeSummary.ytd.toLocaleString("en-US", { minimumFractionDigits: 0 })}
+          </span>
+        </div>
+      )}
+
+      <div className="mb-7 grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
         <MetricCard
-          label="This Month"
+          label={t("dashboard.thisMonth")}
           value={`$${receivedTotal.toLocaleString("en-US", { minimumFractionDigits: 0 })}`}
-          sub="Paid invoices"
+          sub={t("dashboard.paidInvoices")}
           icon="💰"
           iconBg="rgba(16,185,129,0.1)"
         />
         <MetricCard
-          label="Unbilled"
+          label={t("dashboard.unbilled")}
           value={`$${unbilledTotal.toLocaleString("en-US", { minimumFractionDigits: 0 })}`}
-          sub={`${recentLogs.filter((l) => !l.isBilled).length} logs ready`}
+          sub={`${recentLogs.filter((l) => !l.isBilled).length} ${t("dashboard.logsReady")}`}
           icon="⏳"
           iconBg="rgba(245,158,11,0.1)"
           highlight
         />
         <MetricCard
-          label="Hours This Week"
+          label={`${t("dashboard.weekTotal")} (h)`}
           value={`${weekHours}h`}
-          sub="Total tracked"
+          sub={t("dashboard.totalTracked")}
           icon="⏱"
           iconBg="rgba(99,102,241,0.1)"
         />
         <MetricCard
-          label="Recent Invoices"
+          label={t("dashboard.recentInvoices")}
           value={String(recentInvoices.length)}
-          sub="Last 7 days"
+          sub={t("dashboard.last7Days")}
           icon="📄"
           iconBg="rgba(99,102,241,0.1)"
         />
@@ -135,17 +226,17 @@ export function DashboardContent({
             <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-4">
               <div>
                 <div className="text-[13px] font-bold text-gray-200">
-                  Weekly Activity
+                  {t("dashboard.weeklyActivity")}
                 </div>
                 <div className="mt-0.5 text-[11px] text-[var(--text-muted)]">
-                  This week
+                  {t("dashboard.weekTotal")}
                 </div>
               </div>
               <button
                 onClick={() => setManualLogOpen(true)}
                 className="rounded-md border border-indigo-500/30 bg-indigo-500/10 px-3 py-1.5 text-[11px] font-semibold text-accent transition-colors hover:bg-indigo-500/15"
               >
-                + Manual Log
+                + {t("dashboard.manualLog")}
               </button>
             </div>
             <div className="p-5">
@@ -188,7 +279,7 @@ export function DashboardContent({
                     ${unbilledTotal.toLocaleString("en-US", { minimumFractionDigits: 2 })}
                   </div>
                   <div className="mt-0.5 text-[11px] font-medium text-[var(--text-muted)]">
-                    Unbilled
+                    {t("dashboard.unbilled")}
                   </div>
                 </div>
                 <div className="h-10 w-px bg-white/10" />
@@ -197,7 +288,7 @@ export function DashboardContent({
                     ${receivedTotal.toLocaleString("en-US", { minimumFractionDigits: 2 })}
                   </div>
                   <div className="mt-0.5 text-[11px] font-medium text-[var(--text-muted)]">
-                    Received this month
+                    {t("dashboard.received")}
                   </div>
                 </div>
               </div>
@@ -205,7 +296,7 @@ export function DashboardContent({
                 onClick={() => setInvoiceOpen(true)}
                 className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-accent to-indigo-600 px-4 py-2.5 text-[12px] font-bold text-white shadow-lg shadow-indigo-500/35 transition-all hover:-translate-y-px hover:shadow-indigo-500/50"
               >
-                ⚡ Generate Invoice
+                ⚡ {t("dashboard.generateInvoice")}
               </button>
             </div>
           </div>
@@ -214,19 +305,19 @@ export function DashboardContent({
           <div className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg-card)]">
             <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-4">
               <div className="text-[13px] font-bold text-gray-200">
-                Recent Logs
+                {t("dashboard.recentLogs")}
               </div>
               <Link
                 href="/clients"
                 className="text-[11px] font-semibold text-accent"
               >
-                View All
+                {t("dashboard.viewAll")}
               </Link>
             </div>
             <div className="divide-y divide-white/5 px-5">
               {recentLogs.length === 0 ? (
                 <div className="py-8 text-center text-[12px] text-[var(--text-muted)]">
-                  No recent logs
+                  {t("dashboard.noLogs")}
                 </div>
               ) : (
                 recentLogs.slice(0, 6).map((log) => (
@@ -278,19 +369,19 @@ export function DashboardContent({
           <div className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg-card)]">
             <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-4">
               <div className="text-[13px] font-bold text-gray-200">
-                Recent Invoices
+                {t("dashboard.recentInvoices")}
               </div>
               <Link
                 href="/invoices"
                 className="text-[11px] font-semibold text-accent"
               >
-                + New
+                + {t("common.add")}
               </Link>
             </div>
             <div className="divide-y divide-white/5">
               {recentInvoices.length === 0 ? (
                 <div className="px-5 py-8 text-center text-[12px] text-[var(--text-muted)]">
-                  No invoices yet
+                  {t("dashboard.noInvoices")}
                 </div>
               ) : (
                 recentInvoices.map((inv) => (

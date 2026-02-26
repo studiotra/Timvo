@@ -6,9 +6,14 @@ import { startTimer, stopTimer } from "@/app/actions/time-logs";
 import {
   getClientsForTimer,
   getProjectsForTimer,
+  getServicesForTimer,
+  getTasksForTimer,
+  createTask,
   getActiveTimer,
   type ClientOption,
   type ProjectOption,
+  type ServiceOption,
+  type TaskOpt,
   type ActiveTimer,
 } from "@/app/actions/timer";
 
@@ -23,18 +28,26 @@ export function SidebarTimerWidget() {
   const router = useRouter();
   const [clients, setClients] = useState<ClientOption[]>([]);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
+  const [services, setServices] = useState<ServiceOption[]>([]);
+  const [tasks, setTasks] = useState<TaskOpt[]>([]);
   const [clientId, setClientId] = useState("");
-  const [activeTimer, setActiveTimer] = useState<ActiveTimer>(null);
   const [selectedProjectId, setSelectedProjectId] = useState("");
+  const [serviceId, setServiceId] = useState("");
+  const [taskId, setTaskId] = useState("");
+  const [addingTask, setAddingTask] = useState(false);
+  const [newTaskName, setNewTaskName] = useState("");
+  const [activeTimer, setActiveTimer] = useState<ActiveTimer>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
 
   const load = useCallback(async () => {
-    const [clientsList, active] = await Promise.all([
+    const [clientsList, servicesList, active] = await Promise.all([
       getClientsForTimer(),
+      getServicesForTimer(),
       getActiveTimer(),
     ]);
     setClients(clientsList);
+    setServices(servicesList);
     setActiveTimer(active);
     setLoading(false);
   }, []);
@@ -47,6 +60,10 @@ export function SidebarTimerWidget() {
     if (!clientId) {
       setProjects([]);
       setSelectedProjectId("");
+      setServices([]);
+      setServiceId("");
+      setTasks([]);
+      setTaskId("");
       return;
     }
     getProjectsForTimer(clientId).then((projs) => {
@@ -55,8 +72,48 @@ export function SidebarTimerWidget() {
         const exists = projs.some((p) => p.id === prev);
         return exists ? prev : projs[0]?.id ?? "";
       });
+      setServiceId("");
+      setTasks([]);
+      setTaskId("");
     });
   }, [clientId]);
+
+  useEffect(() => {
+    if (!selectedProjectId) {
+      setServiceId("");
+      setTasks([]);
+      setTaskId("");
+      return;
+    }
+    setServiceId("");
+    setTasks([]);
+    setTaskId("");
+  }, [selectedProjectId]);
+
+  useEffect(() => {
+    if (!selectedProjectId || !serviceId) {
+      setTasks([]);
+      setTaskId("");
+      return;
+    }
+    getTasksForTimer(selectedProjectId, serviceId).then(setTasks);
+    setTaskId("");
+  }, [selectedProjectId, serviceId]);
+
+  async function handleAddTask() {
+    if (!newTaskName.trim() || !selectedProjectId || !serviceId) return;
+    const r = await createTask(selectedProjectId, serviceId, newTaskName.trim());
+    if (r?.error) {
+      alert(r.error);
+      return;
+    }
+    if (r?.task) {
+      setTasks((prev) => [...prev, r.task].sort((a, b) => a.name.localeCompare(b.name)));
+      setTaskId(r.task.id);
+      setNewTaskName("");
+      setAddingTask(false);
+    }
+  }
 
   const [elapsed, setElapsed] = useState(0);
 
@@ -90,20 +147,26 @@ export function SidebarTimerWidget() {
     if (actionLoading) return;
     const pid = selectedProjectId || projects[0]?.id;
     if (!pid) {
-      alert("Add a project first (Clients → select client → Add Project)");
+      alert("Add a project first (Clients & Projects → select client → Add Project)");
+      return;
+    }
+    if (!serviceId && services.length > 0) {
+      alert("Select a service type (e.g. Design, Development) to record time at the correct rate.");
       return;
     }
     setActionLoading(true);
-    const r = await startTimer(pid);
+    const r = await startTimer(pid, { taskId: taskId || undefined });
     if (r?.error) alert(r.error);
     else if (r?.startedAt) {
       const proj = projects.find((p) => p.id === pid);
       const client = clients.find((c) => c.id === clientId);
+      const task = tasks.find((t) => t.id === taskId);
       setActiveTimer({
         id: r.logId!,
         projectId: pid,
         projectName: proj?.name ?? "",
         clientName: client?.name ?? "",
+        taskName: task?.name,
         startedAt: r.startedAt,
       });
       router.refresh();
@@ -128,6 +191,7 @@ export function SidebarTimerWidget() {
           Active Session
         </div>
         <div className="mb-2 truncate text-[11px] text-[var(--text-secondary)]">
+          {activeTimer.taskName ? `${activeTimer.taskName} · ` : ""}
           {activeTimer.projectName}
           {activeTimer.clientName ? ` · ${activeTimer.clientName}` : ""}
         </div>
@@ -167,7 +231,7 @@ export function SidebarTimerWidget() {
         value={selectedProjectId}
         onChange={(e) => setSelectedProjectId(e.target.value)}
         disabled={!clientId}
-        className="mb-2 w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-2 py-1.5 text-[11px] text-[var(--text-primary)] disabled:opacity-50"
+        className="mb-1.5 w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-2 py-1.5 text-[11px] text-[var(--text-primary)] disabled:opacity-50"
       >
         <option value="">{projects.length === 0 ? "No projects" : "Select project"}</option>
         {projects.map((p) => (
@@ -176,10 +240,79 @@ export function SidebarTimerWidget() {
           </option>
         ))}
       </select>
+      <select
+        value={serviceId}
+        onChange={(e) => setServiceId(e.target.value)}
+        disabled={!selectedProjectId}
+        className="mb-1.5 w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-2 py-1.5 text-[11px] text-[var(--text-primary)] disabled:opacity-50"
+      >
+        <option value="">
+          {services.length === 0 ? "Add services first (Settings)" : "Service type *"}
+        </option>
+        {services.map((s) => (
+          <option key={s.id} value={s.id}>
+            {s.name}
+            {s.default_rate != null
+              ? s.billing_type === "fixed"
+                ? ` · $${s.default_rate} flat`
+                : ` · $${s.default_rate}/hr`
+              : ""}
+          </option>
+        ))}
+      </select>
+      <div className="mb-2 space-y-1">
+        <select
+          value={taskId}
+          onChange={(e) => setTaskId(e.target.value)}
+          disabled={!selectedProjectId || !serviceId}
+          className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-2 py-1.5 text-[11px] text-[var(--text-primary)] disabled:opacity-50"
+        >
+          <option value="">Task (optional)</option>
+          {tasks.map((t) => (
+            <option key={t.id} value={t.id}>{t.name}</option>
+          ))}
+        </select>
+        {selectedProjectId && serviceId && (
+          addingTask ? (
+            <div className="flex gap-1">
+              <input
+                type="text"
+                value={newTaskName}
+                onChange={(e) => setNewTaskName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleAddTask())}
+                placeholder="Task name"
+                className="flex-1 rounded border border-[var(--border)] bg-[var(--bg-app)] px-1.5 py-1 text-[11px] text-[var(--text-primary)]"
+              />
+              <button
+                type="button"
+                onClick={handleAddTask}
+                className="rounded bg-accent px-2 py-1 text-[10px] text-white"
+              >
+                Add
+              </button>
+              <button
+                type="button"
+                onClick={() => { setAddingTask(false); setNewTaskName(""); }}
+                className="text-[10px] text-[var(--text-muted)]"
+              >
+                ✕
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setAddingTask(true)}
+              className="text-[10px] text-accent hover:underline"
+            >
+              + New task
+            </button>
+          )
+        )}
+      </div>
       <button
         type="button"
         onClick={handleStart}
-        disabled={actionLoading || !clientId || projects.length === 0}
+        disabled={actionLoading || !clientId || projects.length === 0 || !serviceId}
         className="w-full rounded-lg bg-accent px-2 py-1.5 text-[11px] font-semibold text-white transition-colors hover:bg-accent-hover disabled:opacity-50"
       >
         ▶ Start Timer

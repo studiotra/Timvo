@@ -81,6 +81,68 @@ export function ClientSlideOver({ open, onClose, onSuccess, client }: ClientSlid
           </div>
           <div>
             <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
+              Address
+            </label>
+            <textarea
+              name="address"
+              rows={2}
+              defaultValue={client?.address ?? ""}
+              placeholder="Street, City, State, ZIP"
+              className="w-full px-3 py-2 bg-[var(--bg-app)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] focus:ring-2 focus:ring-accent focus:border-transparent"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
+                Phone
+              </label>
+              <input
+                name="phone_number"
+                type="tel"
+                defaultValue={client?.phone_number ?? ""}
+                placeholder="(555) 123-4567"
+                className="w-full px-3 py-2 bg-[var(--bg-app)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] focus:ring-2 focus:ring-accent"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
+                Business Phone
+              </label>
+              <input
+                name="business_phone"
+                type="tel"
+                defaultValue={client?.business_phone ?? ""}
+                placeholder="(555) 987-6543"
+                className="w-full px-3 py-2 bg-[var(--bg-app)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] focus:ring-2 focus:ring-accent"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
+              Extension
+            </label>
+            <input
+              name="extension"
+              type="text"
+              defaultValue={client?.extension ?? ""}
+              placeholder="e.g. 101"
+              className="w-full max-w-[120px] px-3 py-2 bg-[var(--bg-app)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] focus:ring-2 focus:ring-accent"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
+              Note
+            </label>
+            <textarea
+              name="note"
+              rows={3}
+              defaultValue={client?.note ?? ""}
+              placeholder="Internal notes about this client..."
+              className="w-full px-3 py-2 bg-[var(--bg-app)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] focus:ring-2 focus:ring-accent focus:border-transparent"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
               Tax ID
             </label>
             <input
@@ -106,6 +168,21 @@ export function ClientSlideOver({ open, onClose, onSuccess, client }: ClientSlid
               ))}
             </select>
           </div>
+          {client && (
+            <div>
+              <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
+                Status
+              </label>
+              <select
+                name="status"
+                defaultValue={client?.status ?? "active"}
+                className="w-full px-3 py-2 bg-[var(--bg-app)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] focus:ring-2 focus:ring-accent"
+              >
+                <option value="active">Active</option>
+                <option value="archived">Archived</option>
+              </select>
+            </div>
+          )}
           {error && (
             <p className="text-sm text-red-400">{error}</p>
           )}

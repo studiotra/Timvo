@@ -63,7 +63,7 @@ export function ServicesSection({ services }: { services: ServiceListItem[] }) {
                 {s.name}
                 {s.default_rate != null && (
                   <span className="text-[var(--text-muted)] text-sm ml-2 font-mono">
-                    ${s.default_rate}/hr
+                    {s.billing_type === "fixed" ? `$${s.default_rate} flat` : `$${s.default_rate}/hr`}
                   </span>
                 )}
               </span>

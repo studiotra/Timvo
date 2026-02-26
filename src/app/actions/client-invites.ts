@@ -12,8 +12,8 @@ const INVITE_EXPIRY_DAYS = 7;
 export async function getInviteByToken(
   token: string
 ): Promise<{ email: string; clientName: string } | null> {
-  const supabase = createAdminClient();
-  const { data } = await supabase
+  const admin = createAdminClient();
+  const { data } = await admin
     .from("client_invites")
     .select("email, client_id")
     .eq("token", token)
@@ -24,7 +24,7 @@ export async function getInviteByToken(
 
   if (!data) return null;
 
-  const { data: client } = await supabase
+  const { data: client } = await admin
     .from("clients")
     .select("name")
     .eq("id", data.client_id)
@@ -33,8 +33,93 @@ export async function getInviteByToken(
   return { email: data.email, clientName: (client as { name?: string } | null)?.name ?? "Client" };
 }
 
-/** Call after signup to link user to client. Requires auth. */
-export async function acceptInvite(token: string) {
+/**
+ * Create a pre-confirmed user for an invited client. Skips Supabase's confirmation email
+ * (which by default only sends to Supabase org members). The invite token proves the
+ * client has access to this email.
+ */
+export async function createInvitedUser(
+  token: string,
+  email: string,
+  password: string
+): Promise<{ error?: string }> {
+  const admin = createAdminClient();
+
+  // Verify token and email match
+  const { data } = await admin
+    .from("client_invites")
+    .select("email")
+    .eq("token", token)
+    .eq("status", "pending")
+    .gt("expires_at", new Date().toISOString())
+    .limit(1)
+    .single();
+
+  if (!data) return { error: "Invalid or expired invite" };
+  if (data.email.toLowerCase() !== email.trim().toLowerCase()) {
+    return { error: "Email does not match invite" };
+  }
+
+  const trimmedEmail = email.trim().toLowerCase();
+  const { data: createdUser, error } = await admin.auth.admin.createUser({
+    email: trimmedEmail,
+    password,
+    email_confirm: true, // Skip confirmation email — invite proves email access
+  });
+
+  if (error) {
+    const msg = error.message?.toLowerCase() ?? "";
+    if (msg.includes("already been registered") || msg.includes("already exists") || msg.includes("duplicate")) {
+      // User exists (e.g. from old signUp flow or retry). Update their password so they can sign in.
+      const { data: listData } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+      const existing = listData?.users?.find((u) => u.email?.toLowerCase() === trimmedEmail);
+      if (existing) {
+        const { error: updateErr } = await admin.auth.admin.updateUserById(existing.id, { password });
+        if (updateErr) return { error: updateErr.message };
+        return {};
+      }
+      return { error: "An account with this email exists. Please sign in or use 'Forgot password' on the login page." };
+    }
+    return { error: error.message };
+  }
+
+  // New user created — delay so Auth can propagate before client signIn
+  if (createdUser?.user) {
+    await new Promise((r) => setTimeout(r, 1800));
+  }
+  return {};
+}
+
+/** Call after signup to link user to client. Requires auth (cookies or accessToken). */
+export async function acceptInvite(
+  token: string,
+  options?: { accessToken?: string; refreshToken?: string }
+) {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) return { error: "Server misconfigured" };
+
+  // When tokens are passed, call RPC via fetch with explicit Authorization header.
+  // This avoids cookie/session timing issues in server actions.
+  if (options?.accessToken) {
+    const res = await fetch(`${url}/rest/v1/rpc/accept_client_invite`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "apikey": anonKey,
+        "Authorization": `Bearer ${options.accessToken}`,
+        "Prefer": "return=representation",
+      },
+      body: JSON.stringify({ invite_token: token }),
+    });
+    const raw = await res.json();
+    if (!res.ok) return { error: raw.message ?? raw.error_description ?? "RPC failed" };
+    const result = Array.isArray(raw) ? raw[0] : raw;
+    const err = result?.error;
+    if (err) return { error: err };
+    return { success: true, clientId: result?.client_id };
+  }
+
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Not authenticated" };
@@ -87,7 +172,6 @@ export async function inviteClientToPortal(clientId: string, email: string) {
   const emailTrimmed = email.trim().toLowerCase();
   if (!emailTrimmed) return { error: "Email is required" };
 
-  // Validate user owns the client
   const { data: client } = await supabase
     .from("clients")
     .select("id, name, user_id")
@@ -97,7 +181,6 @@ export async function inviteClientToPortal(clientId: string, email: string) {
 
   if (!client) return { error: "Client not found" };
 
-  // Check for existing pending invite to same email
   const { data: existing } = await supabase
     .from("client_invites")
     .select("id")
@@ -124,7 +207,6 @@ export async function inviteClientToPortal(clientId: string, email: string) {
 
   if (insertErr) return { error: insertErr.message };
 
-  // Send email
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
   const inviteUrl = `${baseUrl}/accept-invite?token=${token}`;
 
@@ -144,7 +226,7 @@ export async function inviteClientToPortal(clientId: string, email: string) {
     html: `
       <p>Hi there,</p>
       <p>You've been invited to view time records for <strong>${client.name}</strong>.</p>
-      <p>Click below to set up your account and access the client portal:</p>
+      <p>Click below to create your password and access the client portal:</p>
       <p>
         <a href="${inviteUrl}" style="display:inline-block;padding:12px 24px;background:#6366f1;color:white;text-decoration:none;border-radius:8px;font-weight:600;">Set up account</a>
       </p>
@@ -155,9 +237,9 @@ export async function inviteClientToPortal(clientId: string, email: string) {
 
   if (sendError) {
     console.error("Resend error:", sendError);
-    const msg = sendError.message ?? "Failed to send email";
+    const msg = sendError.message ?? String(sendError);
     if (msg.includes("domain") || msg.includes("from") || msg.includes("validation")) {
-      return { error: `Email failed: ${msg}. Resend allows sending only to your account email or delivered@resend.dev until you verify a domain. See resend.com/domains` };
+      return { error: `Email failed: ${msg}. Verify RESEND_API_KEY and EMAIL_FROM. Resend free tier: send only to your account or add domain at resend.com/domains` };
     }
     return { error: `Failed to send email: ${msg}` };
   }

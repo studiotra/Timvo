@@ -4,8 +4,8 @@ import { useState, useEffect } from "react";
 import { useFormStatus } from "react-dom";
 import { SlideOver } from "./slide-over";
 import { addManualLog } from "@/app/actions/time-logs";
-import { createClient } from "@/lib/supabase/client";
-import { getClientsForSelect, getProjectsByClient } from "@/app/actions/clients-projects";
+import { getClientsForSelect, getProjectsByClient, getTasksByProjectAndService, createTask, type TaskOpt } from "@/app/actions/clients-projects";
+import { getServicesForSelect } from "@/app/actions/services";
 
 type ClientOpt = { id: string; name: string };
 type ProjectOpt = { id: string; name: string; client_id: string };
@@ -34,7 +34,13 @@ export function ManualLogSlideOver({
   const [error, setError] = useState<string | null>(null);
   const [clients, setClients] = useState<ClientOpt[]>([]);
   const [projects, setProjects] = useState<ProjectOpt[]>([]);
+  const [tasks, setTasks] = useState<TaskOpt[]>([]);
   const [clientId, setClientId] = useState("");
+  const [projectId, setProjectId] = useState("");
+  const [serviceId, setServiceId] = useState("");
+  const [taskId, setTaskId] = useState("");
+  const [addingTask, setAddingTask] = useState(false);
+  const [newTaskName, setNewTaskName] = useState("");
   const [services, setServices] = useState<ServiceOpt[]>([]);
 
   useEffect(() => {
@@ -45,31 +51,71 @@ export function ManualLogSlideOver({
   useEffect(() => {
     if (!clientId) {
       setProjects([]);
+      setProjectId("");
+      setServiceId("");
+      setTasks([]);
+      setTaskId("");
       return;
     }
     getProjectsByClient(clientId).then(setProjects);
+    setProjectId("");
+    setServiceId("");
+    setTasks([]);
+    setTaskId("");
   }, [clientId]);
 
   useEffect(() => {
-    if (!open) return;
-    async function loadServices() {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      const { data } = await supabase
-        .from("services")
-        .select("id, name")
-        .eq("user_id", user.id);
-      setServices((data ?? []).map((s) => ({ id: s.id, name: s.name })));
+    if (!projectId) {
+      setServiceId("");
+      setTasks([]);
+      setTaskId("");
+      return;
     }
-    loadServices();
+    setServiceId("");
+    setTasks([]);
+    setTaskId("");
+  }, [projectId]);
+
+  useEffect(() => {
+    if (!projectId || !serviceId) {
+      setTasks([]);
+      setTaskId("");
+      return;
+    }
+    getTasksByProjectAndService(projectId, serviceId).then(setTasks);
+    setTaskId("");
+  }, [projectId, serviceId]);
+
+  useEffect(() => {
+    if (!open) return;
+    getServicesForSelect().then((s) => setServices(s.map((x) => ({ id: x.id, name: x.name }))));
   }, [open]);
 
   useEffect(() => {
     if (open) {
       setClientId("");
+      setProjectId("");
+      setServiceId("");
+      setTaskId("");
     }
   }, [open]);
+
+  async function handleAddTask() {
+    if (!newTaskName.trim() || !projectId || !serviceId) return;
+    const r = await createTask(projectId, serviceId, newTaskName.trim());
+    if (r?.error) {
+      setError(r.error);
+      return;
+    }
+    if (r?.task) {
+      setTasks((prev) => [...prev, r.task].sort((a, b) => a.name.localeCompare(b.name)));
+      setTaskId(r.task.id);
+      setNewTaskName("");
+      setAddingTask(false);
+    }
+  }
+
+  const servicesForDatalist = services;
 
   async function handleSubmit(formData: FormData) {
     const projectId = formData.get("project_id") as string;
@@ -118,6 +164,8 @@ export function ManualLogSlideOver({
               name="project_id"
               required
               disabled={!clientId}
+              value={projectId}
+              onChange={(e) => setProjectId(e.target.value)}
               className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-[var(--text-primary)] focus:ring-2 focus:ring-accent disabled:opacity-50"
             >
               <option value="">Select project</option>
@@ -127,6 +175,80 @@ export function ManualLogSlideOver({
                 </option>
               ))}
             </select>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-[var(--text-secondary)]">
+              Service type (for tasks)
+            </label>
+            <select
+              value={serviceId}
+              onChange={(e) => setServiceId(e.target.value)}
+              disabled={!projectId}
+              className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-[var(--text-primary)] focus:ring-2 focus:ring-accent disabled:opacity-50"
+            >
+              <option value="">Select service</option>
+              {services.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-[var(--text-secondary)]">
+              Task (optional)
+            </label>
+            <div className="flex gap-2">
+              <select
+                name="task_id"
+                disabled={!projectId || !serviceId}
+                value={taskId}
+                onChange={(e) => setTaskId(e.target.value)}
+                className="flex-1 rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-[var(--text-primary)] focus:ring-2 focus:ring-accent disabled:opacity-50"
+              >
+                <option value="">No task</option>
+                {tasks.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+              {projectId && serviceId && (
+                addingTask ? (
+                  <span className="flex gap-1 flex-1">
+                    <input
+                      type="text"
+                      value={newTaskName}
+                      onChange={(e) => setNewTaskName(e.target.value)}
+                      placeholder="Task name"
+                      className="flex-1 rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-2 py-1.5 text-sm text-[var(--text-primary)]"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddTask}
+                      className="rounded bg-accent px-2 py-1 text-white text-sm"
+                    >
+                      Add
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setAddingTask(false); setNewTaskName(""); }}
+                      className="text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                    >
+                      ✕
+                    </button>
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setAddingTask(true)}
+                    className="text-sm text-accent hover:underline whitespace-nowrap"
+                  >
+                    + New task
+                  </button>
+                )
+              )}
+            </div>
           </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium text-[var(--text-secondary)]">
@@ -163,9 +285,9 @@ export function ManualLogSlideOver({
               placeholder="e.g. Logo concepts"
               className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-[var(--text-primary)] focus:ring-2 focus:ring-accent"
             />
-            {services.length > 0 && (
+            {servicesForDatalist.length > 0 && (
               <datalist id="services-list">
-                {services.map((s) => (
+                {servicesForDatalist.map((s) => (
                   <option key={s.id} value={s.name} />
                 ))}
               </datalist>

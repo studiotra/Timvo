@@ -17,9 +17,16 @@ export type TimeLogRow = {
   is_billed: boolean;
 };
 
+export type GetTimeLogsFilters = {
+  clientId?: string;
+  fromDate?: string; // YYYY-MM-DD
+  toDate?: string;   // YYYY-MM-DD
+};
+
 export async function getTimeLogs(
   view: "week" | "month",
-  offsetWeeks = 0
+  offsetWeeks = 0,
+  filters?: GetTimeLogsFilters
 ): Promise<TimeLogRow[]> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -29,7 +36,10 @@ export async function getTimeLogs(
   let from: Date;
   let to: Date;
 
-  if (view === "week") {
+  if (filters?.fromDate && filters?.toDate) {
+    from = new Date(filters.fromDate + "T00:00:00");
+    to = new Date(filters.toDate + "T23:59:59");
+  } else if (view === "week") {
     const dayOfWeek = now.getDay();
     const monday = new Date(now);
     monday.setDate(now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1));
@@ -47,7 +57,7 @@ export async function getTimeLogs(
   const fromStr = from.toISOString();
   const toStr = to.toISOString();
 
-  const { data } = await supabase
+  let query = supabase
     .from("time_logs")
     .select(`
       id, project_id, started_at, ended_at, duration_minutes,
@@ -58,6 +68,21 @@ export async function getTimeLogs(
     .gte("started_at", fromStr)
     .lte("started_at", toStr)
     .order("started_at", { ascending: false });
+
+  if (filters?.clientId) {
+    const { data: projIds } = await supabase
+      .from("projects")
+      .select("id")
+      .eq("client_id", filters.clientId);
+    const ids = (projIds ?? []).map((p) => p.id);
+    if (ids.length > 0) {
+      query = query.in("project_id", ids);
+    } else {
+      return []; // no projects for this client
+    }
+  }
+
+  const { data } = await query;
 
   if (!data) return [];
   return data
@@ -80,7 +105,7 @@ export async function getTimeLogs(
     });
 }
 
-export async function startTimer(projectId: string, description?: string) {
+export async function startTimer(projectId: string, options?: { taskId?: string; description?: string }) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Unauthorized" };
@@ -108,8 +133,9 @@ export async function startTimer(projectId: string, description?: string) {
     .insert({
       project_id: projectId,
       user_id: user.id,
+      task_id: options?.taskId || null,
       started_at: new Date().toISOString(),
-      description: description?.trim() || null,
+      description: options?.description?.trim() || null,
       is_billable: true,
     })
     .select("id, started_at")
@@ -159,6 +185,7 @@ export async function addManualLog(formData: FormData) {
   if (!user) return { error: "Unauthorized" };
 
   const projectId = formData.get("project_id") as string;
+  const taskId = (formData.get("task_id") as string) || null;
   const date = formData.get("date") as string;
   const duration = parseInt(formData.get("duration") as string, 10);
   const description = (formData.get("description") as string)?.trim() || null;
@@ -174,6 +201,7 @@ export async function addManualLog(formData: FormData) {
   const { error } = await supabase.from("time_logs").insert({
     project_id: projectId,
     user_id: user.id,
+    task_id: taskId || null,
     started_at: startedAt.toISOString(),
     ended_at: endedAt.toISOString(),
     duration_minutes: duration,

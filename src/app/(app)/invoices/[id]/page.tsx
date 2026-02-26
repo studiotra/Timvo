@@ -82,6 +82,18 @@ export default async function InvoiceDetailPage({
     address: profile?.address ?? null,
   };
 
+  const baseStatus = inv.status ?? "draft";
+  const displayStatus =
+    baseStatus === "sent" && inv.due_at
+      ? (() => {
+          const due = new Date(inv.due_at);
+          due.setHours(0, 0, 0, 0);
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          return due < today ? "overdue" : "sent";
+        })()
+      : baseStatus;
+
   return (
     <div className="max-w-3xl">
       <Link
@@ -95,7 +107,7 @@ export default async function InvoiceDetailPage({
         businessInfo={businessInfo}
         invoice={{
           id: inv.id,
-          status: inv.status ?? "draft",
+          status: displayStatus,
           total_amount: Number(inv.total_amount) ?? 0,
           currency: inv.currency ?? "USD",
           issued_at: inv.issued_at ?? "",
