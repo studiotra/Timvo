@@ -127,6 +127,7 @@ For testing, a Resend default domain is fine (e.g. `onboarding@resend.dev`).
 | Emails not sending | Verify Resend API key, `EMAIL_FROM`, and domain status |
 | Client invite shows "Check your email" but no confirmation email | Fixed in code: invite flow now creates users server-side with `email_confirm: true`, so no Supabase auth email is needed. Supabase's default email only sends to org team addresses. |
 | Blank page / hydration errors | Clear cache and redeploy; check browser console for errors |
+| Invoice "View Invoice" link shows 404 | 1) Run migration: `alter table public.invoices add column if not exists view_token text unique;` 2) Ensure `SUPABASE_SERVICE_ROLE_KEY` is set in Vercel 3) Invoices sent before this feature have no token — re-send the invoice to get a new link |
 
 ---
 

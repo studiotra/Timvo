@@ -155,36 +155,6 @@ export default async function ReportsPage() {
       <div className="grid gap-6 md:grid-cols-2">
         <div className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg-card)]">
           <div className="p-4 border-b border-[var(--border)]">
-            <h2 className="font-semibold">Revenue by period</h2>
-            <p className="text-xs text-[var(--text-muted)] mt-0.5">
-              Paid invoices only
-            </p>
-          </div>
-          <div className="divide-y divide-[var(--border)]">
-            {byPeriod.length === 0 ? (
-              <p className="p-6 text-sm text-[var(--text-muted)] text-center">
-                No paid invoices yet
-              </p>
-            ) : (
-              byPeriod.map(({ period, amount }) => (
-                <div
-                  key={period}
-                  className="flex items-center justify-between px-4 py-3"
-                >
-                  <span className="text-sm text-[var(--text-primary)]">
-                    {period}
-                  </span>
-                  <span className="font-mono font-semibold">
-                    ${amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}
-                  </span>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-
-        <div className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg-card)]">
-          <div className="p-4 border-b border-[var(--border)]">
             <h2 className="font-semibold">Client profitability</h2>
             <p className="text-xs text-[var(--text-muted)] mt-0.5">
               Total time spent (incl. non-billable) · Revenue · Effective rate (revenue ÷ total hours)

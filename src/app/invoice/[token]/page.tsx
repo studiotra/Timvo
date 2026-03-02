@@ -14,14 +14,34 @@ export default async function PublicInvoicePage({
   const { token } = await params;
   const { paid } = await searchParams;
 
-  const supabase = createAdminClient();
+  if (!token?.trim()) notFound();
+
+  let supabase;
+  try {
+    supabase = createAdminClient();
+  } catch (e) {
+    console.error("Admin client init failed (missing SUPABASE_SERVICE_ROLE_KEY?):", e);
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[var(--bg-app)] p-4">
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-8 max-w-md text-center">
+          <p className="font-semibold text-amber-400">Invoice service temporarily unavailable</p>
+          <p className="text-sm text-[var(--text-muted)] mt-2">Please contact the sender for a PDF copy of the invoice.</p>
+        </div>
+      </div>
+    );
+  }
+
   const { data: inv, error } = await supabase
     .from("invoices")
     .select("id, user_id, status, total_amount, currency, issued_at, due_at, stripe_payment_url, footer, terms_and_conditions, client_id, project_id")
     .eq("view_token", token)
     .single();
 
-  if (error || !inv) notFound();
+  if (error) {
+    console.error("Invoice fetch error:", error.message, error.code);
+    notFound();
+  }
+  if (!inv) notFound();
 
   const { data: client } = await supabase
     .from("clients")
@@ -30,7 +50,7 @@ export default async function PublicInvoicePage({
     .single();
 
   const { data: project } = inv.project_id
-    ? await supabase.from("projects").select("name").eq("id", inv.project_id).single()
+    ? await supabase.from("projects").select("name, tax_rate").eq("id", inv.project_id).single()
     : { data: null };
 
   const { data: items } = await supabase
@@ -60,6 +80,26 @@ export default async function PublicInvoicePage({
     };
   }
 
+  let profileTaxRate: number | null = null;
+  if (userId) {
+    const { data: taxProf } = await supabase
+      .from("profiles")
+      .select("tax_rate")
+      .eq("id", userId)
+      .single();
+    profileTaxRate = taxProf?.tax_rate != null ? Number(taxProf.tax_rate) : null;
+  }
+  const projectTaxRate = (project as { tax_rate?: number | null } | null)?.tax_rate;
+  const taxRate = projectTaxRate != null && projectTaxRate > 0
+    ? Number(projectTaxRate)
+    : profileTaxRate != null && profileTaxRate > 0
+      ? profileTaxRate
+      : null;
+
+  const subtotal = (items ?? []).reduce((s, i) => s + Number(i.amount || 0), 0);
+  const taxAmount = taxRate != null ? Math.round(subtotal * (taxRate / 100) * 100) / 100 : 0;
+  const totalAmount = subtotal + taxAmount;
+
   return (
     <div className="min-h-screen bg-[var(--bg-app)] text-[var(--text-primary)]">
       <PublicInvoiceView
@@ -67,7 +107,10 @@ export default async function PublicInvoicePage({
         invoice={{
           id: inv.id,
           status: inv.status ?? "sent",
-          total_amount: Number(inv.total_amount) ?? 0,
+          total_amount: totalAmount,
+          subtotal,
+          tax_rate: taxRate,
+          tax_amount: taxAmount,
           currency: inv.currency ?? "USD",
           issued_at: inv.issued_at ?? "",
           due_at: inv.due_at ?? "",

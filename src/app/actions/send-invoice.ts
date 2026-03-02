@@ -14,7 +14,7 @@ export async function sendInvoice(invoiceId: string) {
 
   const { data: inv } = await supabase
     .from("invoices")
-    .select("id, status, total_amount, currency, issued_at, due_at, footer, terms_and_conditions, clients(name, email), projects(name)")
+    .select("id, status, total_amount, currency, issued_at, due_at, footer, terms_and_conditions, client_id, project_id, clients(name, email), projects(name, tax_rate)")
     .eq("id", invoiceId)
     .eq("user_id", user.id)
     .single();
@@ -29,14 +29,21 @@ export async function sendInvoice(invoiceId: string) {
     .order("sort_order");
 
   const client = inv.clients as unknown as { name?: string; email?: string } | null;
-  const project = inv.projects as unknown as { name?: string } | null;
   const clientEmail = client?.email;
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("business_name, full_name, phone_number, address")
+    .select("business_name, full_name, phone_number, address, tax_rate")
     .eq("id", user.id)
     .single();
+
+  const project = inv?.projects as unknown as { name?: string; tax_rate?: number | null } | null;
+  const projectTaxRate = project?.tax_rate != null && project.tax_rate > 0 ? Number(project.tax_rate) : null;
+  const profileTaxRate = profile?.tax_rate != null && profile.tax_rate > 0 ? Number(profile.tax_rate) : null;
+  const taxRate = projectTaxRate ?? profileTaxRate;
+  const subtotal = (items ?? []).reduce((s, i) => s + Number(i.amount || 0), 0);
+  const taxAmount = taxRate != null ? Math.round(subtotal * (taxRate / 100) * 100) / 100 : 0;
+  const totalWithTax = subtotal + taxAmount;
   const businessName = profile?.business_name?.trim() || profile?.full_name?.trim() || "Your Business";
   const business = {
     name: businessName,
@@ -61,21 +68,37 @@ export async function sendInvoice(invoiceId: string) {
 
       const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] =
         (items ?? []).length > 0
-          ? (items ?? []).map((i) => ({
-              price_data: {
-                currency,
-                unit_amount: toCents(Number(i.amount) || 0),
-                product_data: {
-                  name: i.description ?? "Line item",
+          ? [
+              ...(items ?? []).map((i) => ({
+                price_data: {
+                  currency,
+                  unit_amount: toCents(Number(i.amount) || 0),
+                  product_data: {
+                    name: i.description ?? "Line item",
+                  },
                 },
-              },
-              quantity: 1,
-            }))
+                quantity: 1,
+              })),
+              ...(taxAmount > 0
+                ? [
+                    {
+                      price_data: {
+                        currency,
+                        unit_amount: toCents(taxAmount),
+                        product_data: {
+                          name: `Tax (${taxRate}%)`,
+                        },
+                      },
+                      quantity: 1,
+                    },
+                  ]
+                : []),
+            ]
           : [
               {
                 price_data: {
                   currency,
-                  unit_amount: toCents(Number(inv.total_amount) || 0),
+                  unit_amount: toCents(totalWithTax),
                   product_data: {
                     name: `Invoice #${invoiceId.slice(0, 8)} — ${client?.name ?? "Invoice"}`,
                   },
@@ -103,7 +126,10 @@ export async function sendInvoice(invoiceId: string) {
   try {
     pdfBuffer = await generateInvoicePdf({
       id: inv.id,
-      total_amount: Number(inv.total_amount) ?? 0,
+      total_amount: totalWithTax,
+      subtotal,
+      tax_rate: taxRate ?? undefined,
+      tax_amount: taxAmount,
       currency: inv.currency ?? "USD",
       issued_at: inv.issued_at,
       due_at: inv.due_at,
@@ -149,7 +175,7 @@ export async function sendInvoice(invoiceId: string) {
       html: `
         <p>Hi ${client?.name ?? "there"},</p>
         <p>Please find your invoice attached below.</p>
-        <p><strong>Amount:</strong> ${inv.currency ?? "USD"} $${Number(inv.total_amount).toFixed(2)}</strong></p>
+        <p><strong>Amount:</strong> ${inv.currency ?? "USD"} $${totalWithTax.toFixed(2)}</strong></p>
         <p>
           <a href="${publicInvoiceUrl}" style="display:inline-block;padding:12px 24px;background:#6366f1;color:white;text-decoration:none;border-radius:8px;font-weight:600;">View Invoice</a>
         </p>
@@ -164,7 +190,7 @@ export async function sendInvoice(invoiceId: string) {
 
   await supabase
     .from("invoices")
-    .update({ status: "sent", stripe_payment_url: paymentUrl, view_token: viewToken })
+    .update({ status: "sent", stripe_payment_url: paymentUrl, view_token: viewToken, total_amount: totalWithTax })
     .eq("id", invoiceId)
     .eq("user_id", user.id);
 

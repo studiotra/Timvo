@@ -10,6 +10,9 @@ type BusinessInfo = {
 type InvoiceData = {
   id: string;
   total_amount: number;
+  subtotal?: number;
+  tax_rate?: number;
+  tax_amount?: number;
   currency: string;
   issued_at: string | null;
   due_at: string | null;
@@ -165,6 +168,25 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
     color: rgb(0.8, 0.8, 0.8),
   });
   y -= 24;
+
+  if (data.tax_rate != null && data.tax_rate > 0 && data.subtotal != null && data.tax_amount != null) {
+    page.drawText("Subtotal", { x: colDesc, y, size: 10, font });
+    page.drawText(`${data.currency} $${Number(data.subtotal).toFixed(2)}`, {
+      x: colAmount - 40,
+      y,
+      size: 10,
+      font,
+    });
+    y -= 16;
+    page.drawText(`Tax (${data.tax_rate}%)`, { x: colDesc, y, size: 10, font });
+    page.drawText(`${data.currency} $${Number(data.tax_amount).toFixed(2)}`, {
+      x: colAmount - 40,
+      y,
+      size: 10,
+      font,
+    });
+    y -= 20;
+  }
 
   page.drawText("Total", { x: colDesc, y, size: 12, font: fontBold });
   page.drawText(`${data.currency} $${Number(data.total_amount).toFixed(2)}`, {

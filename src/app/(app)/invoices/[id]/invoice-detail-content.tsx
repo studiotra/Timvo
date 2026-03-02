@@ -14,6 +14,9 @@ type InvoiceData = {
   id: string;
   status: string;
   total_amount: number;
+  subtotal?: number;
+  tax_rate?: number | null;
+  tax_amount?: number;
   currency: string;
   issued_at: string;
   due_at: string;
@@ -192,7 +195,17 @@ export function InvoiceDetailContent({
           </tbody>
         </table>
 
-        <div className="mt-6 flex justify-end">
+        <div className="mt-6 flex justify-end flex-col items-end gap-1">
+          {invoice.tax_rate != null && invoice.tax_rate > 0 && invoice.subtotal != null && invoice.tax_amount != null && (
+            <>
+              <p className="text-sm text-[var(--text-secondary)]">
+                Subtotal: {invoice.currency} ${invoice.subtotal.toFixed(2)}
+              </p>
+              <p className="text-sm text-[var(--text-secondary)]">
+                Tax ({invoice.tax_rate}%): {invoice.currency} ${invoice.tax_amount.toFixed(2)}
+              </p>
+            </>
+          )}
           <p className="text-xl font-bold font-serif text-[var(--text-primary)]">
             Total: {invoice.currency} ${invoice.total_amount.toFixed(2)}
           </p>

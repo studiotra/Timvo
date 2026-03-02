@@ -56,7 +56,7 @@ export default async function InvoiceDetailPage({
   if (inv.project_id) {
     const { data: p } = await supabase
       .from("projects")
-      .select("name")
+      .select("name, tax_rate")
       .eq("id", inv.project_id)
       .single();
     project = p;
@@ -70,9 +70,20 @@ export default async function InvoiceDetailPage({
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("business_name, logo_url, full_name, phone_number, address")
+    .select("business_name, logo_url, full_name, phone_number, address, tax_rate")
     .eq("id", user.id)
     .single();
+
+  const projectTaxRate = (project as { tax_rate?: number | null })?.tax_rate;
+  const profileTaxRate = profile?.tax_rate;
+  const taxRate = projectTaxRate != null && projectTaxRate > 0
+    ? Number(projectTaxRate)
+    : profileTaxRate != null && profileTaxRate > 0
+      ? Number(profileTaxRate)
+      : null;
+  const subtotal = (items ?? []).reduce((s, i) => s + Number(i.amount || 0), 0);
+  const taxAmount = taxRate != null ? Math.round(subtotal * (taxRate / 100) * 100) / 100 : 0;
+  const totalWithTax = inv.status === "draft" ? subtotal + taxAmount : Number(inv.total_amount) ?? subtotal;
 
   const businessName = profile?.business_name?.trim() || profile?.full_name?.trim() || "Your Business";
   const businessInfo = {
@@ -108,7 +119,10 @@ export default async function InvoiceDetailPage({
         invoice={{
           id: inv.id,
           status: displayStatus,
-          total_amount: Number(inv.total_amount) ?? 0,
+          total_amount: totalWithTax,
+          subtotal: taxRate != null ? subtotal : undefined,
+          tax_rate: taxRate ?? undefined,
+          tax_amount: taxRate != null ? taxAmount : undefined,
           currency: inv.currency ?? "USD",
           issued_at: inv.issued_at ?? "",
           due_at: inv.due_at ?? "",
