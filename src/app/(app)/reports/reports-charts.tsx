@@ -104,6 +104,26 @@ export function ClientRevenuePieChart({ data }: { data: ClientRevenue[] }) {
   );
 }
 
+export function IncomeStabilityChart({ data }: { data: { month: string; amount: number }[] }) {
+  if (data.length === 0) return <p className="py-8 text-center text-sm text-[var(--text-muted)]">No paid invoices yet</p>;
+
+  return (
+    <div className="h-[200px] w-full">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={data} margin={{ top: 10, right: 10, left: 10, bottom: 10 }}>
+          <XAxis dataKey="month" stroke="#6b7280" tick={{ fill: "#9ca3af", fontSize: 10 }} />
+          <YAxis stroke="#6b7280" tick={{ fill: "#9ca3af", fontSize: 11 }} tickFormatter={(v) => `$${v >= 1000 ? `${(v/1000).toFixed(0)}k` : v}`} />
+          <Tooltip
+            contentStyle={{ backgroundColor: "#1f2937", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "8px" }}
+            formatter={(value: number | undefined) => [`$${(value ?? 0).toLocaleString()}`, "Revenue"]}
+          />
+          <Bar dataKey="amount" fill="#8b5cf6" radius={[4, 4, 0, 0]} />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
 export function GoalsVsRealizedChart({ projected, goal }: { projected: number; goal: number }) {
   const max = Math.max(projected, goal, 1);
   const projectedPct = (projected / max) * 100;

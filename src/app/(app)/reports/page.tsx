@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
-import { getRevenueByPeriod, getRevenueByClient } from "@/app/actions/reports";
+import { getRevenueByPeriod, getRevenueByClient, getIncomeStability, getUnderpricedProjects } from "@/app/actions/reports";
 import { getClientEffectiveRates } from "@/app/actions/effective-rates";
 import { getProjectedAnnual } from "@/app/actions/income-summary";
 import {
@@ -9,6 +9,7 @@ import {
   RevenueByPeriodChart,
   ClientRevenuePieChart,
   GoalsVsRealizedChart,
+  IncomeStabilityChart,
 } from "./reports-charts";
 
 export default async function ReportsPage() {
@@ -19,11 +20,13 @@ export default async function ReportsPage() {
     redirect("/login");
   }
 
-  const [byPeriod, byClient, clientRates, projectedData] = await Promise.all([
+  const [byPeriod, byClient, clientRates, projectedData, incomeStability, underpricedProjects] = await Promise.all([
     getRevenueByPeriod(),
     getRevenueByClient(),
     getClientEffectiveRates(),
     getProjectedAnnual(),
+    getIncomeStability(),
+    getUnderpricedProjects(),
   ]);
 
   const totalYTD = byPeriod.find((p) => p.period.endsWith(" YTD"))?.amount ?? 0;
@@ -108,6 +111,42 @@ export default async function ReportsPage() {
             <h2 className="mb-1 font-semibold text-[var(--text-primary)]">Goals vs realized</h2>
             <p className="mb-4 text-xs text-[var(--text-muted)]">Projected annual vs your goal</p>
             <GoalsVsRealizedChart projected={projectedData.projected} goal={projectedData.annualGoal} />
+          </div>
+        )}
+      </div>
+
+      <div className="mb-7 grid gap-6 lg:grid-cols-2">
+        <div className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] p-4">
+          <h2 className="mb-1 font-semibold text-[var(--text-primary)]">Income stability</h2>
+          <p className="mb-4 text-xs text-[var(--text-muted)]">Monthly revenue over the last 12 months</p>
+          <IncomeStabilityChart data={incomeStability} />
+        </div>
+        {underpricedProjects.length > 0 && (
+          <div className="overflow-hidden rounded-2xl border border-amber-500/30 bg-amber-500/5 p-4">
+            <h2 className="mb-1 font-semibold text-amber-400">Underpriced project alerts</h2>
+            <p className="mb-4 text-xs text-[var(--text-muted)]">Projects earning below 70% of target rate</p>
+            <div className="space-y-3 max-h-[200px] overflow-y-auto">
+              {underpricedProjects.map((p) => (
+                <Link
+                  key={p.projectId}
+                  href={`/clients/${p.clientId}`}
+                  className="block rounded-lg border border-amber-500/20 bg-[var(--bg-app)]/50 px-4 py-3 hover:bg-amber-500/10 transition-colors"
+                >
+                  <div className="flex justify-between items-start gap-2">
+                    <div>
+                      <span className="font-medium text-[var(--text-primary)]">{p.projectName}</span>
+                      <span className="text-xs text-[var(--text-muted)] ml-2">· {p.clientName}</span>
+                    </div>
+                    <span className="font-mono text-sm text-amber-400 flex-shrink-0">
+                      ${p.effectiveRate.toFixed(0)}/hr vs ${p.targetRate.toFixed(0)} target
+                    </span>
+                  </div>
+                  <p className="text-xs text-[var(--text-muted)] mt-1">
+                    {p.totalHours.toFixed(1)}h · ${p.revenue.toLocaleString()} revenue
+                  </p>
+                </Link>
+              ))}
+            </div>
           </div>
         )}
       </div>

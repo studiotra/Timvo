@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { Resend } from "resend";
 import Stripe from "stripe";
+import { randomBytes } from "crypto";
 import { generateInvoicePdf } from "@/lib/generate-invoice-pdf";
 
 export async function sendInvoice(invoiceId: string) {
@@ -45,7 +46,9 @@ export async function sendInvoice(invoiceId: string) {
   if (!clientEmail?.trim()) return { error: "Client has no email" };
 
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-  const invoiceUrl = `${baseUrl}/invoices/${invoiceId}`;
+
+  const viewToken = randomBytes(24).toString("hex");
+  const publicInvoiceUrl = `${baseUrl}/invoice/${viewToken}`;
 
   let paymentUrl: string | null = null;
   const stripeKey = process.env.STRIPE_SECRET_KEY;
@@ -85,8 +88,8 @@ export async function sendInvoice(invoiceId: string) {
         mode: "payment",
         line_items: lineItems,
         metadata: { invoice_id: invoiceId },
-        success_url: `${invoiceUrl}?paid=1`,
-        cancel_url: invoiceUrl,
+        success_url: `${publicInvoiceUrl}?paid=1`,
+        cancel_url: publicInvoiceUrl,
         customer_email: clientEmail,
       });
       paymentUrl = session.url;
@@ -148,10 +151,10 @@ export async function sendInvoice(invoiceId: string) {
         <p>Please find your invoice attached below.</p>
         <p><strong>Amount:</strong> ${inv.currency ?? "USD"} $${Number(inv.total_amount).toFixed(2)}</strong></p>
         <p>
-          <a href="${invoiceUrl}" style="display:inline-block;padding:12px 24px;background:#6366f1;color:white;text-decoration:none;border-radius:8px;font-weight:600;">View Invoice</a>
+          <a href="${publicInvoiceUrl}" style="display:inline-block;padding:12px 24px;background:#6366f1;color:white;text-decoration:none;border-radius:8px;font-weight:600;">View Invoice</a>
         </p>
-        ${paymentUrl ? `<p><a href="${paymentUrl}" style="color:#10b981;font-weight:600;">Pay online with card</a></p>` : ""}
-        <p>— {businessName}</p>
+        ${paymentUrl ? `<p><a href="${paymentUrl}" style="display:inline-block;padding:12px 24px;background:#10b981;color:white;text-decoration:none;border-radius:8px;font-weight:600;">Pay Online</a></p>` : ""}
+        <p>— ${businessName}</p>
       `,
     });
   } catch (e) {
@@ -161,7 +164,7 @@ export async function sendInvoice(invoiceId: string) {
 
   await supabase
     .from("invoices")
-    .update({ status: "sent", stripe_payment_url: paymentUrl })
+    .update({ status: "sent", stripe_payment_url: paymentUrl, view_token: viewToken })
     .eq("id", invoiceId)
     .eq("user_id", user.id);
 
