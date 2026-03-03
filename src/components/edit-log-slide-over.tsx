@@ -66,14 +66,23 @@ export function EditLogSlideOver({
     }
     setError(null);
     const date = formData.get("date") as string;
-    const duration = parseInt(formData.get("duration") as string, 10);
+    const startTime = formData.get("start_time") as string;
+    const endTime = formData.get("end_time") as string;
     const description = (formData.get("description") as string)?.trim() || null;
     const isBillable = formData.get("is_billable") === "true";
+
+    const startedAt = new Date(`${date}T${startTime}`);
+    const endedAt = new Date(`${date}T${endTime}`);
+    const durationMinutes = Math.round((endedAt.getTime() - startedAt.getTime()) / 60000);
+    if (durationMinutes <= 0) {
+      setError("End time must be after start time.");
+      return;
+    }
 
     const result = await updateTimeLog(log.id, {
       project_id: projectId,
       date,
-      duration_minutes: duration,
+      duration_minutes: durationMinutes,
       description: description ?? undefined,
       is_billable: isBillable,
     });
@@ -87,6 +96,10 @@ export function EditLogSlideOver({
   if (!log) return null;
 
   const dateStr = log.started_at ? new Date(log.started_at).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
+  const startDate = log.started_at ? new Date(log.started_at) : new Date();
+  const endDate = log.ended_at ? new Date(log.ended_at) : new Date(startDate.getTime() + (log.duration_minutes ?? 0) * 60000);
+  const startTimeStr = startDate.toTimeString().slice(0, 5);
+  const endTimeStr = endDate.toTimeString().slice(0, 5);
 
   return (
     <SlideOver open={open} onClose={onClose} title="Edit Log">
@@ -143,16 +156,25 @@ export function EditLogSlideOver({
           </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium text-[var(--text-secondary)]">
-              Duration (minutes) *
+              Time *
             </label>
-            <input
-              name="duration"
-              type="number"
-              required
-              min="1"
-              defaultValue={log.duration_minutes}
-              className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 font-mono text-[var(--text-primary)] focus:ring-2 focus:ring-accent"
-            />
+            <div className="flex items-center gap-2">
+              <input
+                name="start_time"
+                type="time"
+                required
+                defaultValue={startTimeStr}
+                className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 font-mono text-[var(--text-primary)] focus:ring-2 focus:ring-accent"
+              />
+              <span className="text-[var(--text-muted)]">–</span>
+              <input
+                name="end_time"
+                type="time"
+                required
+                defaultValue={endTimeStr}
+                className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 font-mono text-[var(--text-primary)] focus:ring-2 focus:ring-accent"
+              />
+            </div>
           </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium text-[var(--text-secondary)]">

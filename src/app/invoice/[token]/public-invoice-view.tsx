@@ -40,6 +40,7 @@ export function PublicInvoiceView({
   project,
   items,
   paidSuccess,
+  isFixedProject = false,
 }: {
   businessInfo: BusinessInfo;
   invoice: InvoiceData;
@@ -47,6 +48,7 @@ export function PublicInvoiceView({
   project: { name?: string } | null;
   items: ItemData[];
   paidSuccess?: boolean;
+  isFixedProject?: boolean;
 }) {
   return (
     <div className="min-h-screen py-12 px-4">
@@ -130,30 +132,38 @@ export function PublicInvoiceView({
                 <th className="text-left py-3 font-semibold text-[var(--text-secondary)]">
                   Description
                 </th>
-                <th className="text-right py-3 font-semibold text-[var(--text-secondary)]">
-                  Qty
-                </th>
-                <th className="text-right py-3 font-semibold text-[var(--text-secondary)]">
-                  Rate
-                </th>
-                <th className="text-right py-3 font-semibold text-[var(--text-secondary)]">
-                  Amount
-                </th>
+                {!isFixedProject && (
+                  <>
+                    <th className="text-right py-3 font-semibold text-[var(--text-secondary)]">Qty</th>
+                    <th className="text-right py-3 font-semibold text-[var(--text-secondary)]">Rate</th>
+                    <th className="text-right py-3 font-semibold text-[var(--text-secondary)]">Amount</th>
+                  </>
+                )}
+                {isFixedProject && (
+                  <th className="text-right py-3 font-semibold text-[var(--text-secondary)]">Amount</th>
+                )}
               </tr>
             </thead>
             <tbody>
               {items.map((row) => (
                 <tr key={row.id} className="border-b border-[var(--border)]">
                   <td className="py-3 text-[var(--text-primary)]">{row.description}</td>
-                  <td className="py-3 text-right font-mono text-[var(--text-primary)]">
-                    {row.quantity}
-                  </td>
-                  <td className="py-3 text-right font-mono text-[var(--text-primary)]">
-                    {row.unit_rate != null ? `$${row.unit_rate.toFixed(2)}` : "—"}
-                  </td>
-                  <td className="py-3 text-right font-mono text-[var(--text-primary)]">
-                    ${row.amount.toFixed(2)}
-                  </td>
+                  {!isFixedProject && (
+                    <>
+                      <td className="py-3 text-right font-mono text-[var(--text-primary)]">{row.quantity}</td>
+                      <td className="py-3 text-right font-mono text-[var(--text-primary)]">
+                        {row.unit_rate != null ? `$${row.unit_rate.toFixed(2)}` : "—"}
+                      </td>
+                      <td className="py-3 text-right font-mono text-[var(--text-primary)]">
+                        ${row.amount.toFixed(2)}
+                      </td>
+                    </>
+                  )}
+                  {isFixedProject && (
+                    <td className="py-3 text-right font-mono text-[var(--text-primary)]">
+                      {row.amount > 0 ? `$${row.amount.toFixed(2)}` : "—"}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

@@ -187,16 +187,35 @@ export async function addManualLog(formData: FormData) {
   const projectId = formData.get("project_id") as string;
   const taskId = (formData.get("task_id") as string) || null;
   const date = formData.get("date") as string;
-  const duration = parseInt(formData.get("duration") as string, 10);
+  const startTime = formData.get("start_time") as string;
+  const endTime = formData.get("end_time") as string;
+  const durationParam = formData.get("duration") as string | null;
   const description = (formData.get("description") as string)?.trim() || null;
   const isBillable = formData.get("is_billable") === "true";
 
-  if (!projectId || !date || isNaN(duration) || duration <= 0)
-    return { error: "Project, date, and duration are required" };
+  let startedAt: Date;
+  let endedAt: Date;
+  let durationMinutes: number;
 
-  const d = new Date(date);
-  const startedAt = new Date(d);
-  const endedAt = new Date(d.getTime() + duration * 60 * 1000);
+  if (startTime && endTime) {
+    startedAt = new Date(`${date}T${startTime}`);
+    endedAt = new Date(`${date}T${endTime}`);
+    durationMinutes = Math.round((endedAt.getTime() - startedAt.getTime()) / 60000);
+    if (durationMinutes <= 0) return { error: "End time must be after start time" };
+  } else if (durationParam) {
+    const duration = parseInt(durationParam, 10);
+    if (!date || isNaN(duration) || duration <= 0)
+      return { error: "Project, date, and duration are required" };
+    const d = new Date(date);
+    startedAt = new Date(d);
+    endedAt = new Date(d.getTime() + duration * 60 * 1000);
+    durationMinutes = duration;
+  } else {
+    return { error: "Project, date, and time range are required" };
+  }
+
+  if (!projectId || !date)
+    return { error: "Project and date are required" };
 
   const { error } = await supabase.from("time_logs").insert({
     project_id: projectId,
@@ -204,7 +223,7 @@ export async function addManualLog(formData: FormData) {
     task_id: taskId || null,
     started_at: startedAt.toISOString(),
     ended_at: endedAt.toISOString(),
-    duration_minutes: duration,
+    duration_minutes: durationMinutes,
     description,
     is_billable: isBillable,
   });

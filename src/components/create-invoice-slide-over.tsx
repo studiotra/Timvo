@@ -16,9 +16,13 @@ import { polishDescription } from "@/app/actions/ai-polish";
 export function CreateInvoiceSlideOver({
   open,
   onClose,
+  initialClientId,
+  initialProjectId,
 }: {
   open: boolean;
   onClose: () => void;
+  initialClientId?: string;
+  initialProjectId?: string;
 }) {
   const [clients, setClients] = useState<ClientOption[]>([]);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
@@ -30,7 +34,7 @@ export function CreateInvoiceSlideOver({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [aiPolish, setAiPolish] = useState(false);
-  type ManualItem = { id: string; description: string; quantity: string; unit_rate: string; amount: string };
+  type ManualItem = { id: string; description: string; quantity: string; amount: string };
   const [manualItems, setManualItems] = useState<ManualItem[]>([]);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -46,10 +50,16 @@ export function CreateInvoiceSlideOver({
   useEffect(() => {
     if (open) {
       loadClients();
-      setClientId("");
-      setProjectId("");
+      if (initialClientId && initialProjectId) {
+        setClientId(initialClientId);
+        setProjectId(initialProjectId);
+        getProjectsForInvoice(initialClientId).then(setProjects);
+      } else {
+        setClientId("");
+        setProjectId("");
+        setProjects([]);
+      }
       setLogs([]);
-      setProjects([]);
       setSelected(new Set());
       setManualItems([]);
       setError(null);
@@ -61,19 +71,20 @@ export function CreateInvoiceSlideOver({
         setDueAt(d.toISOString().slice(0, 10));
       });
     }
-  }, [open, loadClients]);
+  }, [open, loadClients, initialClientId, initialProjectId]);
 
   useEffect(() => {
     if (!clientId) {
       setProjects([]);
-      setProjectId("");
+      if (!initialClientId) setProjectId("");
       setLogs([]);
       return;
     }
+    if (initialClientId && initialProjectId && clientId === initialClientId) return;
     getProjectsForInvoice(clientId).then(setProjects);
-    setProjectId("");
+    if (!initialClientId || clientId !== initialClientId) setProjectId("");
     setLogs([]);
-  }, [clientId]);
+  }, [clientId, initialClientId, initialProjectId]);
 
   useEffect(() => {
     if (!projectId) {
@@ -92,7 +103,7 @@ export function CreateInvoiceSlideOver({
   function addManualItem() {
     setManualItems((prev) => [
       ...prev,
-      { id: crypto.randomUUID(), description: "", quantity: "1", unit_rate: "", amount: "" },
+      { id: crypto.randomUUID(), description: "", quantity: "1", amount: "" },
     ]);
   }
   function removeManualItem(id: string) {
@@ -112,11 +123,70 @@ export function CreateInvoiceSlideOver({
     });
   }
 
+  function toggleGroup(ids: string[]) {
+    setSelected((s) => {
+      const next = new Set(s);
+      const allSelected = ids.every((id) => next.has(id));
+      if (allSelected) {
+        ids.forEach((id) => next.delete(id));
+      } else {
+        ids.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+  }
+
+  const groupedLogs = (() => {
+    const byKey = new Map<string, { logs: UnbilledLog[]; totalMins: number; totalAmount: number }>();
+    for (const log of logs) {
+      const taskName = log.task_name ?? (log.description?.trim() || "Uncategorized");
+      const key = `${taskName}::${log.service_id ?? ""}`;
+      const existing = byKey.get(key);
+      const mins = log.duration_minutes ?? 0;
+      const amt = log.amount ?? 0;
+      if (existing) {
+        existing.logs.push(log);
+        existing.totalMins += mins;
+        existing.totalAmount += amt;
+      } else {
+        byKey.set(key, { logs: [log], totalMins: mins, totalAmount: amt });
+      }
+    }
+    return Array.from(byKey.entries()).map(([key, v]) => {
+      const first = v.logs[0];
+      return {
+        key,
+        taskName: first.task_name ?? (first.description?.trim() || "Uncategorized"),
+        serviceName: first.service_name ?? null,
+        logIds: v.logs.map((l) => l.id),
+        totalMins: v.totalMins,
+        totalAmount: v.totalAmount,
+      };
+    });
+  })();
+
+  const selectedProject = projects.find((p) => p.id === projectId);
+  const isFixedProject = selectedProject?.billing_type === "fixed" && (selectedProject?.agreed_fee ?? 0) > 0;
+  const fixedPrice = selectedProject?.agreed_fee ?? 0;
+
   async function handleSubmit() {
     const validManual = manualItems.filter(
-      (m) => m.description.trim() && !isNaN(parseFloat(m.quantity)) && !isNaN(parseFloat(m.unit_rate)) && !isNaN(parseFloat(m.amount))
+      (m) => m.description.trim() && !isNaN(parseFloat(m.quantity)) && !isNaN(parseFloat(m.amount))
     );
-    if (!clientId || !projectId || (selected.size === 0 && validManual.length === 0)) {
+    if (!clientId || !projectId) {
+      setError("Select client and project.");
+      return;
+    }
+    if (isFixedProject) {
+      if (selected.size === 0) {
+        setError("Select at least one task to include in the invoice.");
+        return;
+      }
+      if (fixedPrice <= 0) {
+        setError("Fixed project must have an agreed fee. Edit the project to set it.");
+        return;
+      }
+    } else if (selected.size === 0 && validManual.length === 0) {
       setError("Select at least one log or add a manual line item.");
       return;
     }
@@ -143,12 +213,16 @@ export function CreateInvoiceSlideOver({
     formData.set(
       "manual_items",
       JSON.stringify(
-        validManual.map((m) => ({
-          description: m.description.trim(),
-          quantity: parseFloat(m.quantity) || 1,
-          unit_rate: parseFloat(m.unit_rate) || 0,
-          amount: parseFloat(m.amount) || 0,
-        }))
+        validManual.map((m) => {
+          const qty = parseFloat(m.quantity) || 1;
+          const amt = parseFloat(m.amount) || 0;
+          return {
+            description: m.description.trim(),
+            quantity: qty,
+            unit_rate: qty > 0 ? amt / qty : 0,
+            amount: amt,
+          };
+        })
       )
     );
     const result = await createInvoice(formData);
@@ -166,6 +240,7 @@ export function CreateInvoiceSlideOver({
   }
 
   const logsTotal = (() => {
+    if (isFixedProject) return fixedPrice;
     const sel = logs.filter((l) => selected.has(l.id));
     const byService = new Map<string, UnbilledLog[]>();
     let total = 0;
@@ -183,7 +258,7 @@ export function CreateInvoiceSlideOver({
     }
     return total;
   })();
-  const manualTotal = manualItems.reduce((s, m) => {
+  const manualTotal = isFixedProject ? 0 : manualItems.reduce((s, m) => {
     const amt = parseFloat(m.amount);
     return s + (isNaN(amt) ? 0 : amt);
   }, 0);
@@ -290,9 +365,20 @@ export function CreateInvoiceSlideOver({
               className="w-full px-3 py-2 bg-[var(--bg-app)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] text-sm"
             />
           </div>
+          {isFixedProject && (
+            <div className="rounded-lg border border-indigo-500/30 bg-indigo-500/5 px-4 py-3">
+              <p className="text-sm font-medium text-indigo-300">Fixed price project</p>
+              <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                Invoice will show tasks (no time) and total: ${fixedPrice.toLocaleString()}
+              </p>
+              <p className="text-[11px] text-[var(--text-muted)] mt-1">
+                Your reports will calculate effective rate: ${fixedPrice.toLocaleString()} ÷ total hours logged
+              </p>
+            </div>
+          )}
           <div>
             <p className="text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)] mb-2">
-              Logs to include (grouped by task in invoice)
+              {isFixedProject ? "Tasks completed (select to include — no time/price shown to client)" : "Logs to include (grouped by task in invoice)"}
             </p>
             {loading ? (
               <p className="text-sm text-[var(--text-muted)]">Loading…</p>
@@ -302,35 +388,41 @@ export function CreateInvoiceSlideOver({
               </p>
             ) : (
               <div className="space-y-0 divide-y divide-[var(--border)]">
-                {logs.map((log) => (
-                  <label
-                    key={log.id}
-                    className="flex items-center gap-3 py-3 cursor-pointer hover:bg-[var(--bg-card)]/50 px-1 -mx-1 rounded"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selected.has(log.id)}
-                      onChange={() => toggle(log.id)}
-                      className="w-[18px] h-[18px] rounded border-[var(--border)] accent-accent"
-                    />
-                    <span className="flex-1 text-sm">
-                      {log.task_name ? (
-                        <>
-                          <span className="text-[var(--text-muted)]">[{log.task_name}] </span>
-                          {log.description || "Time"}
-                        </>
-                      ) : (
-                        log.description || "Time"
+                {groupedLogs.map((group) => {
+                  const allSelected = group.logIds.every((id) => selected.has(id));
+                  return (
+                    <label
+                      key={group.key}
+                      className="flex items-center gap-3 py-3 cursor-pointer hover:bg-[var(--bg-card)]/50 px-1 -mx-1 rounded"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={allSelected}
+                        onChange={() => toggleGroup(group.logIds)}
+                        className="w-[18px] h-[18px] rounded border-[var(--border)] accent-accent"
+                      />
+                      <span className="flex-1 text-sm flex items-center gap-2">
+                        <span className="text-[var(--text-primary)] font-medium">
+                          {group.taskName}
+                        </span>
+                        {group.serviceName && (
+                          <span className="inline-flex rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-medium text-emerald-400">
+                            {group.serviceName}
+                          </span>
+                        )}
+                      </span>
+                      {!isFixedProject && (
+                        <span className="font-mono text-xs text-[var(--text-secondary)]">
+                          {(group.totalMins / 60).toFixed(1)}h · ${group.totalAmount.toFixed(2)}
+                        </span>
                       )}
-                    </span>
-                    <span className="font-mono text-xs text-[var(--text-secondary)]">
-                      {(log.duration_minutes / 60).toFixed(1)}h · ${log.amount.toFixed(2)}
-                    </span>
-                  </label>
-                ))}
+                    </label>
+                  );
+                })}
               </div>
             )}
           </div>
+          {!isFixedProject && (
           <div>
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)]">
@@ -349,7 +441,7 @@ export function CreateInvoiceSlideOver({
                 {manualItems.map((m) => (
                   <div
                     key={m.id}
-                    className="grid grid-cols-[1fr_60px_80px_90px_auto] gap-2 items-center"
+                    className="grid grid-cols-[1fr_60px_90px_auto] gap-2 items-center"
                   >
                     <input
                       type="text"
@@ -364,26 +456,7 @@ export function CreateInvoiceSlideOver({
                       min="0"
                       step="0.01"
                       value={m.quantity}
-                      onChange={(e) => {
-                        updateManualItem(m.id, "quantity", e.target.value);
-                        const qty = parseFloat(e.target.value) || 0;
-                        const rate = parseFloat(m.unit_rate) || 0;
-                        updateManualItem(m.id, "amount", (qty * rate).toFixed(2));
-                      }}
-                      className="px-2 py-1.5 text-sm font-mono bg-[var(--bg-app)] border border-[var(--border)] rounded"
-                    />
-                    <input
-                      type="number"
-                      placeholder="Rate"
-                      min="0"
-                      step="0.01"
-                      value={m.unit_rate}
-                      onChange={(e) => {
-                        updateManualItem(m.id, "unit_rate", e.target.value);
-                        const qty = parseFloat(m.quantity) || 0;
-                        const rate = parseFloat(e.target.value) || 0;
-                        updateManualItem(m.id, "amount", (qty * rate).toFixed(2));
-                      }}
+                      onChange={(e) => updateManualItem(m.id, "quantity", e.target.value)}
                       className="px-2 py-1.5 text-sm font-mono bg-[var(--bg-app)] border border-[var(--border)] rounded"
                     />
                     <input
@@ -408,6 +481,7 @@ export function CreateInvoiceSlideOver({
               </div>
             )}
           </div>
+          )}
           {(selected.size > 0 || manualItems.length > 0) && (
             <p className="font-mono text-sm font-semibold">
               Total: ${totalAmount.toFixed(2)}

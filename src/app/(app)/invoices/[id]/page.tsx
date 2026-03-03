@@ -56,11 +56,12 @@ export default async function InvoiceDetailPage({
   if (inv.project_id) {
     const { data: p } = await supabase
       .from("projects")
-      .select("name, tax_rate")
+      .select("name, tax_rate, billing_type")
       .eq("id", inv.project_id)
       .single();
     project = p;
   }
+  const isFixedProject = (project as { billing_type?: string })?.billing_type === "fixed";
 
   const { data: items } = await supabase
     .from("invoice_items")
@@ -140,6 +141,7 @@ export default async function InvoiceDetailPage({
           amount: Number(i.amount) ?? 0,
           sort_order: i.sort_order ?? 0,
         }))}
+        isFixedProject={isFixedProject}
       />
     </div>
   );

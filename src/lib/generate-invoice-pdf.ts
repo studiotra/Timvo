@@ -13,6 +13,7 @@ type InvoiceData = {
   subtotal?: number;
   tax_rate?: number;
   tax_amount?: number;
+  is_fixed_price?: boolean;
   currency: string;
   issued_at: string | null;
   due_at: string | null;
@@ -144,9 +145,12 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
   });
   y -= 16;
 
+  const isFixed = data.is_fixed_price === true;
   page.drawText("Description", { x: colDesc, y, size: 9, font: fontBold });
-  page.drawText("Qty", { x: colQty, y, size: 9, font: fontBold });
-  page.drawText("Rate", { x: colRate, y, size: 9, font: fontBold });
+  if (!isFixed) {
+    page.drawText("Qty", { x: colQty, y, size: 9, font: fontBold });
+    page.drawText("Rate", { x: colRate, y, size: 9, font: fontBold });
+  }
   page.drawText("Amount", { x: colAmount, y, size: 9, font: fontBold });
   y -= 16;
 
@@ -154,9 +158,11 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
     const descLines = wrapText(row.description, 52);
     const desc = descLines[0].length > 52 ? descLines[0].slice(0, 49) + "..." : descLines[0];
     page.drawText(desc, { x: colDesc, y, size: 9, font });
-    page.drawText(String(row.quantity), { x: colQty, y, size: 9, font });
-    page.drawText(`$${Number(row.unit_rate).toFixed(2)}`, { x: colRate, y, size: 9, font });
-    page.drawText(`$${Number(row.amount).toFixed(2)}`, { x: colAmount, y, size: 9, font });
+    if (!isFixed) {
+      page.drawText(String(row.quantity), { x: colQty, y, size: 9, font });
+      page.drawText(`$${Number(row.unit_rate).toFixed(2)}`, { x: colRate, y, size: 9, font });
+    }
+    page.drawText(row.amount > 0 ? `$${Number(row.amount).toFixed(2)}` : "—", { x: colAmount, y, size: 9, font });
     y -= 18;
   }
 

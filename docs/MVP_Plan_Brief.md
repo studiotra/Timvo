@@ -153,3 +153,4 @@ The MVP is successful if:
 A freelancer logs data for 30 days and says:
 “I didn’t realize Client B was costing me money.”
 If that reaction happens, differentiation is working.
+

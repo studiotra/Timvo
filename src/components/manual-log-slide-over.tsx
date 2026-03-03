@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useFormStatus } from "react-dom";
 import { SlideOver } from "./slide-over";
 import { addManualLog } from "@/app/actions/time-logs";
@@ -27,9 +27,13 @@ function SubmitButton() {
 export function ManualLogSlideOver({
   open,
   onClose,
+  initialClientId,
+  initialProjectId,
 }: {
   open: boolean;
   onClose: () => void;
+  initialClientId?: string;
+  initialProjectId?: string;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [clients, setClients] = useState<ClientOpt[]>([]);
@@ -42,11 +46,25 @@ export function ManualLogSlideOver({
   const [addingTask, setAddingTask] = useState(false);
   const [newTaskName, setNewTaskName] = useState("");
   const [services, setServices] = useState<ServiceOpt[]>([]);
+  const initializingRef = useRef(false);
 
   useEffect(() => {
     if (!open) return;
     getClientsForSelect().then(setClients);
   }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (initialClientId && initialProjectId) {
+      initializingRef.current = true;
+      setClientId(initialClientId);
+      setProjectId(initialProjectId);
+      getProjectsByClient(initialClientId).then((projs) => {
+        setProjects(projs);
+        initializingRef.current = false;
+      });
+    }
+  }, [open, initialClientId, initialProjectId]);
 
   useEffect(() => {
     if (!clientId) {
@@ -57,6 +75,7 @@ export function ManualLogSlideOver({
       setTaskId("");
       return;
     }
+    if (initializingRef.current) return;
     getProjectsByClient(clientId).then(setProjects);
     setProjectId("");
     setServiceId("");
@@ -92,13 +111,13 @@ export function ManualLogSlideOver({
   }, [open]);
 
   useEffect(() => {
-    if (open) {
+    if (open && !initialClientId && !initialProjectId) {
       setClientId("");
       setProjectId("");
       setServiceId("");
       setTaskId("");
     }
-  }, [open]);
+  }, [open, initialClientId, initialProjectId]);
 
   async function handleAddTask() {
     if (!newTaskName.trim() || !projectId || !serviceId) return;
@@ -264,16 +283,25 @@ export function ManualLogSlideOver({
           </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium text-[var(--text-secondary)]">
-              Duration (minutes) *
+              Time *
             </label>
-            <input
-              name="duration"
-              type="number"
-              required
-              min="1"
-              placeholder="60"
-              className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 font-mono text-[var(--text-primary)] focus:ring-2 focus:ring-accent"
-            />
+            <div className="flex items-center gap-2">
+              <input
+                name="start_time"
+                type="time"
+                required
+                defaultValue="09:00"
+                className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 font-mono text-[var(--text-primary)] focus:ring-2 focus:ring-accent"
+              />
+              <span className="text-[var(--text-muted)]">–</span>
+              <input
+                name="end_time"
+                type="time"
+                required
+                defaultValue="17:00"
+                className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 font-mono text-[var(--text-primary)] focus:ring-2 focus:ring-accent"
+              />
+            </div>
           </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium text-[var(--text-secondary)]">

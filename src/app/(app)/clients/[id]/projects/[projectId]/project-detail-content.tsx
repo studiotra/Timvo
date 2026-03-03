@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ProjectSlideOver } from "@/components/project-slide-over";
 import { AddTaskSlideOver } from "@/components/add-task-slide-over";
+import { ManualLogSlideOver } from "@/components/manual-log-slide-over";
+import { CreateInvoiceSlideOver } from "@/components/create-invoice-slide-over";
 import { deleteProject } from "@/app/actions/projects";
 import {
   updateTask,
@@ -14,7 +16,7 @@ import {
 import type { ProjectListItem } from "@/types/database";
 import { getServicesForSelect } from "@/app/actions/services";
 
-type TaskRow = { id: string; name: string; serviceId?: string | null; serviceName?: string | null };
+type TaskRow = { id: string | null; name: string; serviceId?: string | null; serviceName?: string | null; totalMinutes: number };
 type ServiceOpt = { id: string; name: string };
 
 type Client = {
@@ -29,14 +31,18 @@ export function ProjectDetailContent({
   client,
   project,
   tasks,
+  totalMinutes = 0,
 }: {
   client: Client;
   project: ProjectListItem;
   tasks: TaskRow[];
+  totalMinutes?: number;
 }) {
   const router = useRouter();
   const [slideOpen, setSlideOpen] = useState(false);
   const [addTaskOpen, setAddTaskOpen] = useState(false);
+  const [manualLogOpen, setManualLogOpen] = useState(false);
+  const [createInvoiceOpen, setCreateInvoiceOpen] = useState(false);
   const [services, setServices] = useState<ServiceOpt[]>([]);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editingTaskName, setEditingTaskName] = useState("");
@@ -58,6 +64,7 @@ export function ProjectDetailContent({
   }, []);
 
   function startEditTask(task: TaskRow) {
+    if (!task.id) return;
     setEditingTaskId(task.id);
     setEditingTaskName(task.name);
     setEditingTaskServiceId(task.serviceId ?? "");
@@ -79,7 +86,8 @@ export function ProjectDetailContent({
     router.refresh();
   }
 
-  async function handleDeleteTask(taskId: string, taskName: string) {
+  async function handleDeleteTask(taskId: string | null, taskName: string) {
+    if (!taskId) return;
     const { count, totalMinutes } = await getTaskTimeLogCount(taskId);
     const warning =
       count > 0
@@ -112,6 +120,18 @@ export function ProjectDetailContent({
         </div>
         <div className="flex gap-2">
           <button
+            onClick={() => setManualLogOpen(true)}
+            className="px-4 py-2 bg-accent hover:bg-accent-hover text-white rounded-lg text-sm font-semibold"
+          >
+            Manual Log
+          </button>
+          <button
+            onClick={() => setCreateInvoiceOpen(true)}
+            className="px-4 py-2 border border-[var(--border)] rounded-lg text-sm font-semibold text-[var(--text-primary)] hover:bg-[var(--bg-card)]"
+          >
+            Generate Invoice
+          </button>
+          <button
             onClick={openEdit}
             className="px-4 py-2 border border-[var(--border)] rounded-lg text-sm font-semibold text-[var(--text-primary)] hover:bg-[var(--bg-card)]"
           >
@@ -125,6 +145,25 @@ export function ProjectDetailContent({
           </button>
         </div>
       </header>
+
+      <div className="mb-6 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-4">
+        <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-[var(--text-muted)]">Hours spent</h3>
+        <p className="text-sm text-[var(--text-primary)]">
+          {project.estimated_hours != null && project.estimated_hours > 0
+            ? `${((totalMinutes ?? 0) / 60).toFixed(1)} out of ${Number(project.estimated_hours).toFixed(1)} hours spent`
+            : `${((totalMinutes ?? 0) / 60).toFixed(1)} hours spent`}
+        </p>
+        {project.estimated_hours != null && project.estimated_hours > 0 && (
+          <div className="mt-2 h-2 w-full rounded-full bg-[var(--bg-app)] overflow-hidden">
+            <div
+              className="h-full rounded-full bg-accent transition-all"
+              style={{
+                width: `${Math.min(100, (((totalMinutes ?? 0) / 60) / Number(project.estimated_hours)) * 100)}%`,
+              }}
+            />
+          </div>
+        )}
+      </div>
 
       {project.description && (
         <div className="mb-6 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-4">
@@ -154,6 +193,26 @@ export function ProjectDetailContent({
         clientId={client.id}
       />
 
+      <ManualLogSlideOver
+        open={manualLogOpen}
+        onClose={() => {
+          setManualLogOpen(false);
+          router.refresh();
+        }}
+        initialClientId={client.id}
+        initialProjectId={project.id}
+      />
+
+      <CreateInvoiceSlideOver
+        open={createInvoiceOpen}
+        onClose={() => {
+          setCreateInvoiceOpen(false);
+          router.refresh();
+        }}
+        initialClientId={client.id}
+        initialProjectId={project.id}
+      />
+
       <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden">
         <div className="border-b border-[var(--border)] px-4 py-3 bg-[var(--bg-sidebar)]/50">
           <h3 className="text-sm font-semibold text-[var(--text-secondary)]">
@@ -168,12 +227,12 @@ export function ProjectDetailContent({
           ) : null}
           {tasks.length > 0 && (
             <ul className="space-y-2 mb-3">
-              {tasks.map((task) => (
+              {tasks.map((task, i) => (
                 <li
-                  key={task.id}
+                  key={task.id ?? `derived-${task.name}-${i}`}
                   className="flex items-center justify-between gap-2 group/task py-2"
                 >
-                  {editingTaskId === task.id ? (
+                  {editingTaskId != null && editingTaskId === task.id ? (
                     <div className="flex gap-2 flex-1 flex-wrap">
                       <input
                         type="text"
@@ -222,25 +281,30 @@ export function ProjectDetailContent({
                             {task.serviceName}
                           </span>
                         )}
+                        <span className="ml-2 font-mono text-xs text-[var(--text-secondary)]">
+                          Total: {(task.totalMinutes / 60).toFixed(1)}h
+                        </span>
                       </span>
-                      <div className="flex gap-2 opacity-0 group-hover/task:opacity-100 transition-opacity">
-                        <button
-                          type="button"
-                          onClick={() => startEditTask(task)}
-                          className="text-xs text-accent hover:underline"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleDeleteTask(task.id, task.name)
-                          }
-                          className="text-xs text-red-400 hover:underline"
-                        >
-                          Delete
-                        </button>
-                      </div>
+                      {task.id ? (
+                        <div className="flex gap-2 opacity-0 group-hover/task:opacity-100 transition-opacity">
+                          <button
+                            type="button"
+                            onClick={() => startEditTask(task)}
+                            className="text-xs text-accent hover:underline"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleDeleteTask(task.id, task.name)
+                            }
+                            className="text-xs text-red-400 hover:underline"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      ) : null}
                     </>
                   )}
                 </li>

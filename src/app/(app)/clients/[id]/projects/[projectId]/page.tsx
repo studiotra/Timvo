@@ -52,17 +52,68 @@ export default async function ProjectDetailPage({
     for (const s of svc ?? []) servicesMap[s.id] = s.name;
   }
 
+  const { data: timeLogs } = await supabase
+    .from("time_logs")
+    .select("duration_minutes, task_id, description, task:task_id(id, name, service_id)")
+    .eq("project_id", projectId)
+    .eq("user_id", user.id);
+
+  const totalMinutes = (timeLogs ?? []).reduce((s, l) => s + (l.duration_minutes ?? 0), 0);
+
+  const byTaskId = new Map<string, { name: string; serviceId: string | null; minutes: number }>();
+  const byDescription = new Map<string, number>();
+  for (const log of timeLogs ?? []) {
+    const task = log.task as { id?: string; name?: string; service_id?: string } | null;
+    const mins = log.duration_minutes ?? 0;
+    if (task?.id) {
+      const existing = byTaskId.get(task.id);
+      if (existing) {
+        existing.minutes += mins;
+      } else {
+        byTaskId.set(task.id, {
+          name: task.name ?? "Task",
+          serviceId: task.service_id ?? null,
+          minutes: mins,
+        });
+      }
+    } else {
+      const desc = log.description?.trim() || "Uncategorized";
+      byDescription.set(desc, (byDescription.get(desc) ?? 0) + mins);
+    }
+  }
+
+  const mergedTasks: { id: string | null; name: string; serviceId: string | null; serviceName: string | null; totalMinutes: number }[] = [];
+
+  for (const t of tasks ?? []) {
+    const agg = byTaskId.get(t.id);
+    mergedTasks.push({
+      id: t.id,
+      name: t.name,
+      serviceId: t.service_id ?? null,
+      serviceName: t.service_id ? servicesMap[t.service_id] ?? null : null,
+      totalMinutes: agg?.minutes ?? 0,
+    });
+  }
+
+  for (const [desc, mins] of byDescription) {
+    mergedTasks.push({
+      id: null,
+      name: desc,
+      serviceId: null,
+      serviceName: null,
+      totalMinutes: mins,
+    });
+  }
+
+  mergedTasks.sort((a, b) => a.name.localeCompare(b.name));
+
   return (
     <div className="p-6">
       <ProjectDetailContent
         client={client}
         project={project}
-        tasks={(tasks ?? []).map((t) => ({
-          id: t.id,
-          name: t.name,
-          serviceId: t.service_id ?? null,
-          serviceName: t.service_id ? servicesMap[t.service_id] ?? null : null,
-        }))}
+        tasks={mergedTasks}
+        totalMinutes={totalMinutes}
       />
     </div>
   );

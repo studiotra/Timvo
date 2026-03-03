@@ -14,7 +14,7 @@ export async function sendInvoice(invoiceId: string) {
 
   const { data: inv } = await supabase
     .from("invoices")
-    .select("id, status, total_amount, currency, issued_at, due_at, footer, terms_and_conditions, client_id, project_id, clients(name, email), projects(name, tax_rate)")
+    .select("id, status, total_amount, currency, issued_at, due_at, footer, terms_and_conditions, client_id, project_id, clients(name, email), projects(name, tax_rate, billing_type)")
     .eq("id", invoiceId)
     .eq("user_id", user.id)
     .single();
@@ -44,6 +44,7 @@ export async function sendInvoice(invoiceId: string) {
   const subtotal = (items ?? []).reduce((s, i) => s + Number(i.amount || 0), 0);
   const taxAmount = taxRate != null ? Math.round(subtotal * (taxRate / 100) * 100) / 100 : 0;
   const totalWithTax = subtotal + taxAmount;
+  const isFixedProject = (project as { billing_type?: string })?.billing_type === "fixed";
   const businessName = profile?.business_name?.trim() || profile?.full_name?.trim() || "Your Business";
   const business = {
     name: businessName,
@@ -130,6 +131,7 @@ export async function sendInvoice(invoiceId: string) {
       subtotal,
       tax_rate: taxRate ?? undefined,
       tax_amount: taxAmount,
+      is_fixed_price: isFixedProject,
       currency: inv.currency ?? "USD",
       issued_at: inv.issued_at,
       due_at: inv.due_at,

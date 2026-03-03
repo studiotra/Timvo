@@ -50,7 +50,7 @@ export default async function PublicInvoicePage({
     .single();
 
   const { data: project } = inv.project_id
-    ? await supabase.from("projects").select("name, tax_rate").eq("id", inv.project_id).single()
+    ? await supabase.from("projects").select("name, tax_rate, billing_type").eq("id", inv.project_id).single()
     : { data: null };
 
   const { data: items } = await supabase
@@ -120,6 +120,7 @@ export default async function PublicInvoicePage({
         }}
         client={client}
         project={project}
+        isFixedProject={(project as { billing_type?: string })?.billing_type === "fixed"}
         items={(items ?? []).map((i) => ({
           id: i.id,
           description: i.description ?? "",

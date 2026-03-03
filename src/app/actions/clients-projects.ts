@@ -89,12 +89,17 @@ export async function createTask(projectId: string, serviceId: string, name: str
 
   const { data: proj } = await supabase
     .from("projects")
-    .select("id, clients(user_id)")
+    .select("id, client_id")
     .eq("id", projectId)
     .single();
   if (!proj) return { error: "Project not found" };
-  const c = proj.clients as unknown as { user_id?: string };
-  if (c?.user_id !== user.id) return { error: "Unauthorized" };
+
+  const { data: client } = await supabase
+    .from("clients")
+    .select("user_id")
+    .eq("id", proj.client_id)
+    .single();
+  if (!client || client.user_id !== user.id) return { error: "Unauthorized" };
 
   const { data: svc } = await supabase
     .from("services")
@@ -112,14 +117,9 @@ export async function createTask(projectId: string, serviceId: string, name: str
   if (error) return { error: error.message };
   const taskData = data as { id: string; name: string; service_id?: string };
   const { data: svcData } = await supabase.from("services").select("name").eq("id", serviceId).single();
-  const { data: projWithClient } = await supabase
-    .from("projects")
-    .select("client_id")
-    .eq("id", projectId)
-    .single();
-  if (projWithClient?.client_id) {
-    revalidatePath(`/clients/${projWithClient.client_id}`);
-    revalidatePath(`/clients/${projWithClient.client_id}/projects/${projectId}`);
+  if (proj.client_id) {
+    revalidatePath(`/clients/${proj.client_id}`);
+    revalidatePath(`/clients/${proj.client_id}/projects/${projectId}`);
   }
   return {
     task: {

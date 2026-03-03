@@ -52,6 +52,16 @@ export async function createInvoice(formData: FormData) {
   );
   if (!hasLogs && !hasManual) return { error: "Add at least one log or manual line item." };
 
+  const { data: project } = await supabase
+    .from("projects")
+    .select("id, name, billing_type, agreed_fee")
+    .eq("id", projectId)
+    .eq("client_id", clientId)
+    .single();
+  if (!project) return { error: "Project not found" };
+  const isFixedProject = project.billing_type === "fixed" && project.agreed_fee != null && Number(project.agreed_fee) > 0;
+  const fixedPrice = isFixedProject ? Number(project.agreed_fee) : 0;
+
   const { data: client } = await supabase
     .from("clients")
     .select("currency")
@@ -63,17 +73,46 @@ export async function createInvoice(formData: FormData) {
   const items: { time_log_ids: string[]; description: string; quantity: number; unit_rate: number; amount: number }[] = [];
 
   if (logIds.length > 0) {
-    const { data: logs } = await supabase
+    let logQuery = supabase
       .from("time_logs")
       .select("id, duration_minutes, description, task_id, task:task_id(name), projects(hourly_rate)")
       .eq("user_id", user.id)
-      .eq("is_billable", true)
       .eq("is_billed", false)
       .in("id", logIds)
       .eq("project_id", projectId);
+    if (!isFixedProject) {
+      logQuery = logQuery.eq("is_billable", true);
+    }
+    const { data: logs } = await logQuery;
 
     if (!logs || logs.length === 0) return { error: "No valid unbilled logs" };
 
+    if (isFixedProject) {
+      const taskNames = new Map<string, string[]>();
+      for (const log of logs) {
+        const task = log.task as { name?: string } | null;
+        const name = polishedDescriptions[log.id] ?? task?.name ?? log.description ?? "Work completed";
+        const arr = taskNames.get(name) ?? [];
+        arr.push(log.id);
+        taskNames.set(name, arr);
+      }
+      for (const [taskName, ids] of taskNames) {
+        items.push({
+          time_log_ids: ids,
+          description: taskName,
+          quantity: 1,
+          unit_rate: 0,
+          amount: 0,
+        });
+      }
+      items.push({
+        time_log_ids: [],
+        description: `${project.name} — Fixed price`,
+        quantity: 1,
+        unit_rate: fixedPrice,
+        amount: fixedPrice,
+      });
+    } else {
     const taskIds = [...new Set(logs.map((l) => l.task_id).filter(Boolean))] as string[];
     const tasksWithService: Record<string, string | null> = {};
     if (taskIds.length > 0) {
@@ -184,6 +223,7 @@ export async function createInvoice(formData: FormData) {
           });
         }
       }
+    }
     }
   }
 

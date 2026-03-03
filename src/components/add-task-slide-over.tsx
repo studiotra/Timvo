@@ -28,7 +28,8 @@ export function AddTaskSlideOver({
   const [serviceId, setServiceId] = useState("");
   const [services, setServices] = useState<ServiceOpt[]>([]);
   const [date, setDate] = useState("");
-  const [duration, setDuration] = useState("");
+  const [startTime, setStartTime] = useState("09:00");
+  const [endTime, setEndTime] = useState("17:00");
   const [description, setDescription] = useState("");
   const [isBillable, setIsBillable] = useState(true);
 
@@ -40,7 +41,8 @@ export function AddTaskSlideOver({
     if (open) {
       const today = new Date().toISOString().slice(0, 10);
       setDate(today);
-      setDuration("");
+      setStartTime("09:00");
+      setEndTime("17:00");
       setDescription("");
       setIsBillable(true);
     }
@@ -62,11 +64,20 @@ export function AddTaskSlideOver({
       return;
     }
 
-    const addTimeEntry = duration.trim() && parseInt(duration, 10) > 0;
+    const addTimeEntry = startTime && endTime;
     if (addTimeEntry && taskResult?.task?.id) {
+      const d = date || new Date().toISOString().slice(0, 10);
+      const start = new Date(`${d}T${startTime}`);
+      const end = new Date(`${d}T${endTime}`);
+      const durationMinutes = Math.round((end.getTime() - start.getTime()) / 60000);
+      if (durationMinutes <= 0) {
+        setError("End time must be after start time.");
+        setSaving(false);
+        return;
+      }
       const logResult = await addTimeLogForTask(projectId, taskResult.task.id, {
-        date: date || new Date().toISOString().slice(0, 10),
-        durationMinutes: parseInt(duration, 10) || 0,
+        date: d,
+        durationMinutes,
         description: description.trim() || null,
         isBillable: isBillable,
       });
@@ -138,16 +149,23 @@ export function AddTaskSlideOver({
               </div>
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-[var(--text-secondary)]">
-                  Duration (minutes)
+                  Time
                 </label>
-                <input
-                  type="number"
-                  min="1"
-                  placeholder="e.g. 60"
-                  value={duration}
-                  onChange={(e) => setDuration(e.target.value)}
-                  className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 font-mono text-[var(--text-primary)] focus:ring-2 focus:ring-accent"
-                />
+                <div className="flex items-center gap-2">
+                  <input
+                    type="time"
+                    value={startTime}
+                    onChange={(e) => setStartTime(e.target.value)}
+                    className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 font-mono text-[var(--text-primary)] focus:ring-2 focus:ring-accent"
+                  />
+                  <span className="text-[var(--text-muted)]">–</span>
+                  <input
+                    type="time"
+                    value={endTime}
+                    onChange={(e) => setEndTime(e.target.value)}
+                    className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 font-mono text-[var(--text-primary)] focus:ring-2 focus:ring-accent"
+                  />
+                </div>
               </div>
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-[var(--text-secondary)]">
