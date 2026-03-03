@@ -31,7 +31,7 @@ export default async function ClientDetailPage({
   const [projectsRes, invites, projectRates] = await Promise.all([
     supabase
       .from("projects")
-      .select("id, name, hourly_rate, billing_type, status, description, retainer_amount, retainer_hours, agreed_fee, estimated_hours, tax_rate")
+      .select("id, name, hourly_rate, billing_type, status, description, retainer_amount, retainer_hours, agreed_fee, estimated_hours, tax_rate, created_at")
       .eq("client_id", id)
       .order("name"),
     getClientInvites(id),
@@ -42,40 +42,11 @@ export default async function ClientDetailPage({
     (projectRates ?? []).map((r) => [r.projectId, r])
   );
 
-  const projectIds = projects.map((p) => p.id);
-  const tasksByProject: Record<string, { id: string; name: string; serviceId?: string | null; serviceName?: string | null }[]> = {};
-  for (const p of projects) {
-    tasksByProject[p.id] = [];
-  }
-  if (projectIds.length > 0) {
-    const { data: tasks } = await supabase
-      .from("tasks")
-      .select("id, name, project_id, service_id")
-      .in("project_id", projectIds)
-      .order("name");
-    const serviceIds = [...new Set((tasks ?? []).map((t) => t.service_id).filter(Boolean))] as string[];
-    const servicesMap: Record<string, string> = {};
-    if (serviceIds.length > 0) {
-      const { data: svc } = await supabase.from("services").select("id, name").in("id", serviceIds);
-      for (const s of svc ?? []) servicesMap[s.id] = s.name;
-    }
-    for (const t of tasks ?? []) {
-      const arr = tasksByProject[t.project_id];
-      if (arr) arr.push({
-        id: t.id,
-        name: t.name,
-        serviceId: t.service_id ?? null,
-        serviceName: t.service_id ? servicesMap[t.service_id] ?? null : null,
-      });
-    }
-  }
-
   return (
     <div className="p-6">
       <ProjectContent
         client={client}
         projects={projects}
-        tasksByProject={tasksByProject}
         invites={invites}
         effectiveRatesByProject={effectiveRatesByProject}
       />

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { ProjectSlideOver } from "@/components/project-slide-over";
 import { AddTaskSlideOver } from "@/components/add-task-slide-over";
@@ -77,7 +78,7 @@ export function ProjectDetailContent({
     if (editingTaskServiceId) updates.serviceId = editingTaskServiceId;
     const r = await updateTask(project.id, editingTaskId, updates);
     if (r?.error) {
-      alert(r.error);
+      toast.error(r.error);
       return;
     }
     setEditingTaskId(null);
@@ -96,7 +97,7 @@ export function ProjectDetailContent({
     if (!confirm(warning)) return;
     const r = await deleteTask(taskId);
     if (r?.error) {
-      alert(r.error);
+      toast.error(r.error);
       return;
     }
     router.refresh();
@@ -104,12 +105,13 @@ export function ProjectDetailContent({
 
   return (
     <>
-      <Link
-        href={`/clients/${client.id}`}
-        className="text-sm text-[var(--text-secondary)] hover:text-accent mb-4 inline-block"
-      >
-        ← Back to {client.name}
-      </Link>
+      <nav className="text-sm text-[var(--text-secondary)] mb-4 flex items-center gap-1.5">
+        <Link href="/clients" className="hover:text-accent transition-colors">Clients</Link>
+        <span>/</span>
+        <Link href={`/clients/${client.id}`} className="hover:text-accent transition-colors">{client.name}</Link>
+        <span>/</span>
+        <span className="text-[var(--text-primary)] font-medium">{project.name}</span>
+      </nav>
       <header className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-[var(--text-primary)]">{project.name}</h1>
@@ -156,7 +158,13 @@ export function ProjectDetailContent({
         {project.estimated_hours != null && project.estimated_hours > 0 && (
           <div className="mt-2 h-2 w-full rounded-full bg-[var(--bg-app)] overflow-hidden">
             <div
-              className="h-full rounded-full bg-accent transition-all"
+              className={`h-full rounded-full transition-all ${
+                ((totalMinutes ?? 0) / 60) / Number(project.estimated_hours) >= 1
+                  ? "bg-red-500"
+                  : ((totalMinutes ?? 0) / 60) / Number(project.estimated_hours) >= 0.8
+                    ? "bg-amber-500"
+                    : "bg-accent"
+              }`}
               style={{
                 width: `${Math.min(100, (((totalMinutes ?? 0) / 60) / Number(project.estimated_hours)) * 100)}%`,
               }}
@@ -222,7 +230,7 @@ export function ProjectDetailContent({
         <div className="p-4">
           {tasks.length === 0 ? (
             <p className="text-sm text-[var(--text-muted)] mb-3">
-              No tasks yet.
+              No tasks yet. Add a task manually or log time — tasks will appear as you track.
             </p>
           ) : null}
           {tasks.length > 0 && (

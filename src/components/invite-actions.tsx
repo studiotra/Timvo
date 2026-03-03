@@ -1,5 +1,7 @@
 "use client";
 
+import { toast } from "sonner";
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { resendClientInvite, revokeClientInvite } from "@/app/actions/client-invites";
@@ -11,8 +13,11 @@ export function InviteActions({ inviteId }: { inviteId: string }) {
   async function handleResend() {
     setLoading(true);
     const r = await resendClientInvite(inviteId);
-    if (r.error) alert(r.error);
-    else router.refresh();
+    if (r.error) toast.error(r.error);
+    else {
+      toast.success("Invite resent");
+      router.refresh();
+    }
     setLoading(false);
   }
 
@@ -20,8 +25,11 @@ export function InviteActions({ inviteId }: { inviteId: string }) {
     if (!confirm("Revoke this invite? They won't be able to use the link.")) return;
     setLoading(true);
     const r = await revokeClientInvite(inviteId);
-    if (r.error) alert(r.error);
-    else router.refresh();
+    if (r.error) toast.error(r.error);
+    else {
+      toast.success("Invite revoked");
+      router.refresh();
+    }
     setLoading(false);
   }
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { toast } from "sonner";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, ChevronRight, Pencil, Plus, Trash2, List, Calendar } from "lucide-react";
 import { type TimeLogRow } from "@/app/actions/time-logs";
@@ -109,7 +110,7 @@ export function LogsContent({
     const result = await deleteTimeLog(id);
     setDeletingId(null);
     if (result.error) {
-      alert(result.error);
+      toast.error(result.error);
     }
   }
 

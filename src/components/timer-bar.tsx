@@ -1,5 +1,7 @@
 "use client";
 
+import { toast } from "sonner";
+
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { startTimer, stopTimer } from "@/app/actions/time-logs";
@@ -93,7 +95,7 @@ export function TimerBar() {
     if (!newTaskName.trim() || !projectId || !serviceId) return;
     const r = await createTask(projectId, serviceId, newTaskName.trim());
     if (r?.error) {
-      alert(r.error);
+      toast.error(r.error);
       return;
     }
     if (r?.task) {
@@ -109,7 +111,7 @@ export function TimerBar() {
     setActionLoading(true);
     if (activeTimer) {
       const r = await stopTimer();
-      if (r?.error) alert(r.error);
+      if (r?.error) toast.error(r.error);
       else {
         setActiveTimer(null);
         router.refresh();
@@ -117,12 +119,12 @@ export function TimerBar() {
     } else {
       const pid = projectId || projects[0]?.id;
       if (!pid) {
-        alert("Select client and project first (Clients → Add Project)");
+        toast.error("Select client and project first (Clients → Add Project)");
         setActionLoading(false);
         return;
       }
       const r = await startTimer(pid, { taskId: taskId || undefined });
-      if (r?.error) alert(r.error);
+      if (r?.error) toast.error(r.error);
       else if (r?.startedAt) {
         const proj = projects.find((p) => p.id === pid);
         const task = tasks.find((t) => t.id === taskId);

@@ -181,8 +181,27 @@ export function ClientsContent({
       </div>
       <div className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg-card)]">
         {filteredProjects.length === 0 ? (
-          <div className="px-5 py-8 text-center text-[12px] text-[var(--text-muted)]">
-            No projects. Add a client first, then add projects.
+          <div className="px-5 py-12 text-center">
+            <p className="text-[var(--text-secondary)] mb-1 font-medium">
+              {filteredClients.length === 0 ? "No clients yet" : "No projects yet"}
+            </p>
+            <p className="text-sm text-[var(--text-muted)] mb-4 max-w-sm mx-auto">
+              {filteredClients.length === 0
+                ? "Add your first client to start tracking projects and time."
+                : "Add a project to this client to track time and create invoices."}
+            </p>
+            {filteredClients.length === 0 ? (
+              <button
+                onClick={openAdd}
+                className="inline-flex items-center gap-2 rounded-lg bg-accent px-5 py-2.5 font-semibold text-white hover:bg-accent-hover transition-colors"
+              >
+                + Add Client
+              </button>
+            ) : (
+              <p className="text-sm text-[var(--text-muted)]">
+                Click a client above, then add a project from their page.
+              </p>
+            )}
           </div>
         ) : (
           filteredProjects.map((p, i) => (

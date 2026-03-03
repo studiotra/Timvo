@@ -187,19 +187,19 @@ export function InvoicesContent({
                 <span className="min-w-[70px] text-right font-mono text-[12px] font-semibold text-[var(--text-primary)] sm:min-w-[80px] sm:text-[13px]">
                   ${Number(inv.total_amount ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
                 </span>
-                <span
-                  className={`min-w-[70px] text-center rounded px-2 py-0.5 text-[9px] font-bold uppercase ${
-                    (() => {
+                <span className="min-w-[70px] flex justify-center">
+                  <span
+                    className="rounded-full px-2.5 py-0.5 text-[9px] font-bold uppercase"
+                    style={(() => {
                       const s = getDisplayStatus(inv);
-                      if (s === "paid") return "bg-emerald-500/10 text-emerald-300";
-                      if (s === "overdue") return "bg-amber-500/10 text-amber-300";
-                      if (s === "sent") return "bg-indigo-500/10 text-indigo-300";
-                      if (s === "draft") return "bg-gray-500/10 text-gray-400";
-                      return "bg-red-500/10 text-red-400";
-                    })()
-                  }`}
-                >
-                  {getDisplayStatus(inv)}
+                      return {
+                        backgroundColor: `var(--status-${s}-bg)`,
+                        color: `var(--status-${s}-text)`,
+                      };
+                    })()}
+                  >
+                    {getDisplayStatus(inv)}
+                  </span>
                 </span>
               </Link>
             ))}

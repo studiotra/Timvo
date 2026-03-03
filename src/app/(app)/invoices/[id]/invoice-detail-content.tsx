@@ -1,5 +1,7 @@
 "use client";
 
+import { toast } from "sonner";
+
 import { useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -74,9 +76,10 @@ export function InvoiceDetailContent({
     if (!confirm("Delete this invoice? This cannot be undone.")) return;
     const r = await deleteInvoice(invoice.id);
     if (r?.error) {
-      alert(r.error);
+      toast.error(r.error);
       return;
     }
+    toast.success("Invoice deleted");
     router.push("/invoices");
     router.refresh();
   }

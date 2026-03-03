@@ -1,5 +1,7 @@
 "use client";
 
+import { toast } from "sonner";
+
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { startTimer, stopTimer } from "@/app/actions/time-logs";
@@ -104,7 +106,7 @@ export function SidebarTimerWidget() {
     if (!newTaskName.trim() || !selectedProjectId || !serviceId) return;
     const r = await createTask(selectedProjectId, serviceId, newTaskName.trim());
     if (r?.error) {
-      alert(r.error);
+      toast.error(r.error);
       return;
     }
     if (r?.task) {
@@ -135,7 +137,7 @@ export function SidebarTimerWidget() {
     if (actionLoading || !activeTimer) return;
     setActionLoading(true);
     const r = await stopTimer();
-    if (r?.error) alert(r.error);
+    if (r?.error) toast.error(r.error);
     else {
       setActiveTimer(null);
       router.refresh();
@@ -147,16 +149,16 @@ export function SidebarTimerWidget() {
     if (actionLoading) return;
     const pid = selectedProjectId || projects[0]?.id;
     if (!pid) {
-      alert("Add a project first (Clients & Projects → select client → Add Project)");
+      toast.error("Add a project first (Clients & Projects → select client → Add Project)");
       return;
     }
     if (!serviceId && services.length > 0) {
-      alert("Select a service type (e.g. Design, Development) to record time at the correct rate.");
+      toast.error("Select a service type (e.g. Design, Development) to record time at the correct rate.");
       return;
     }
     setActionLoading(true);
     const r = await startTimer(pid, { taskId: taskId || undefined });
-    if (r?.error) alert(r.error);
+    if (r?.error) toast.error(r.error);
     else if (r?.startedAt) {
       const proj = projects.find((p) => p.id === pid);
       const client = clients.find((c) => c.id === clientId);

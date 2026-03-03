@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { toast } from "sonner";
 import { SlideOver } from "./slide-over";
 import { createInvoice, getDefaultInvoiceSettings } from "@/app/actions/invoices";
 import {
@@ -235,6 +236,7 @@ export function CreateInvoiceSlideOver({
       setError("Invoice created but could not navigate.");
       return;
     }
+    toast.success("Invoice created");
     onClose();
     window.location.href = `/invoices/${result.invoiceId}`;
   }
@@ -483,9 +485,12 @@ export function CreateInvoiceSlideOver({
           </div>
           )}
           {(selected.size > 0 || manualItems.length > 0) && (
-            <p className="font-mono text-sm font-semibold">
-              Total: ${totalAmount.toFixed(2)}
-            </p>
+            <div className="rounded-lg border-2 border-accent/50 bg-accent/10 px-4 py-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Live total</p>
+              <p className="font-mono text-2xl font-bold text-[var(--text-primary)]">
+                ${totalAmount.toFixed(2)}
+              </p>
+            </div>
           )}
           <label className="flex items-center gap-2 cursor-pointer">
             <input
@@ -500,7 +505,13 @@ export function CreateInvoiceSlideOver({
           </label>
           {error && <p className="text-sm text-red-400">{error}</p>}
         </div>
-        <div className="p-5 border-t border-[var(--border)] flex gap-3 justify-end">
+        <div className="p-5 border-t border-[var(--border)] flex items-center justify-between gap-4 flex-wrap">
+          {(selected.size > 0 || manualItems.length > 0) && (
+            <p className="font-mono text-lg font-bold text-[var(--text-primary)]">
+              Total: ${totalAmount.toFixed(2)}
+            </p>
+          )}
+          <div className="flex gap-3 ml-auto">
           <button
             type="button"
             onClick={onClose}
@@ -516,6 +527,7 @@ export function CreateInvoiceSlideOver({
           >
             {submitting ? "Creating…" : "Create & Lock"}
           </button>
+          </div>
         </div>
       </div>
     </SlideOver>

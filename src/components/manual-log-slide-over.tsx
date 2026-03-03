@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { toast } from "sonner";
 import { useFormStatus } from "react-dom";
 import { SlideOver } from "./slide-over";
 import { addManualLog } from "@/app/actions/time-logs";
@@ -47,6 +48,7 @@ export function ManualLogSlideOver({
   const [newTaskName, setNewTaskName] = useState("");
   const [services, setServices] = useState<ServiceOpt[]>([]);
   const initializingRef = useRef(false);
+  const restoringFromStorageRef = useRef(false);
 
   useEffect(() => {
     if (!open) return;
@@ -63,7 +65,26 @@ export function ManualLogSlideOver({
         setProjects(projs);
         initializingRef.current = false;
       });
+      return;
     }
+    try {
+      const savedClient = typeof window !== "undefined" ? localStorage.getItem("manualLog_lastClient") : null;
+      const savedProject = typeof window !== "undefined" ? localStorage.getItem("manualLog_lastProject") : null;
+      if (savedClient && savedProject) {
+        restoringFromStorageRef.current = true;
+        setClientId(savedClient);
+        setProjectId(savedProject);
+        getProjectsByClient(savedClient).then((projs) => {
+          setProjects(projs);
+          restoringFromStorageRef.current = false;
+        });
+        return;
+      }
+    } catch (_) {}
+    setClientId("");
+    setProjectId("");
+    setServiceId("");
+    setTaskId("");
   }, [open, initialClientId, initialProjectId]);
 
   useEffect(() => {
@@ -75,7 +96,7 @@ export function ManualLogSlideOver({
       setTaskId("");
       return;
     }
-    if (initializingRef.current) return;
+    if (initializingRef.current || restoringFromStorageRef.current) return;
     getProjectsByClient(clientId).then(setProjects);
     setProjectId("");
     setServiceId("");
@@ -110,14 +131,6 @@ export function ManualLogSlideOver({
     getServicesForSelect().then((s) => setServices(s.map((x) => ({ id: x.id, name: x.name }))));
   }, [open]);
 
-  useEffect(() => {
-    if (open && !initialClientId && !initialProjectId) {
-      setClientId("");
-      setProjectId("");
-      setServiceId("");
-      setTaskId("");
-    }
-  }, [open, initialClientId, initialProjectId]);
 
   async function handleAddTask() {
     if (!newTaskName.trim() || !projectId || !serviceId) return;
@@ -148,6 +161,13 @@ export function ManualLogSlideOver({
       setError(result.error);
       return;
     }
+    if (typeof window !== "undefined" && clientId) {
+      try {
+        localStorage.setItem("manualLog_lastClient", clientId);
+        localStorage.setItem("manualLog_lastProject", projectId);
+      } catch (_) {}
+    }
+    toast.success("Time log added");
     onClose();
   }
 
