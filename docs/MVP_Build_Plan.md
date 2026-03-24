@@ -293,3 +293,33 @@ The build prioritizes:
 6. **Phase 6** (Weekly summary + polish)
 
 Phases 4 and 5 can be parallelized; Phase 5 has higher impact for "first screen" UX.
+
+
+*Summary of UX updates: Mar 3 2026*
+1. Toast notifications
+Replaced all alert() with toast (success and error)
+Added Sonner: position="top-center", richColors, closeButton
+Success toasts for: invoice created, manual log added, invoice deleted, invite resent/revoked
+2. Hours progress colors
+Green (accent): &lt; 80% of estimated hours
+Amber: 80–100% of estimated hours
+Red: over estimated hours
+3. Create invoice: live total
+Highlighted “Live total” box with accent border
+Large total amount in the scrollable area
+Footer total kept next to the Create button
+4. Breadcrumbs
+Client detail: Clients / Client Name
+Project detail: Clients / Client Name / Project Name
+Breadcrumb links for navigation
+5. Invoice status badges
+Pill-shaped badges using theme variables
+Consistent draft / sent / paid / overdue styling
+6. Empty states
+Clients list: “No clients yet” or “No projects yet” with short guidance and primary CTA
+Client projects: “No projects yet” with brief copy and Add Project button
+Project tasks: “No tasks yet. Add a task manually or log time — tasks will appear as you track.”
+7. Manual log: remember last client/project
+Last-used client and project saved to localStorage on successful submit
+When opening from the dashboard (no preselected project), loads last selection
+Skips this when opened from a project page (client/project already preselected)
