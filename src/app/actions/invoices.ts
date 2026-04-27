@@ -292,8 +292,9 @@ export async function createInvoice(formData: FormData) {
   if (logIds.length > 0) {
     await supabase
       .from("time_logs")
-      .update({ is_billed: true })
-      .in("id", logIds);
+      .update({ is_billed: true, billed_invoice_id: inv.id })
+      .in("id", logIds)
+      .eq("user_id", user.id);
   }
 
   revalidatePath("/");
@@ -327,21 +328,8 @@ export async function deleteInvoice(invoiceId: string) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Unauthorized" };
 
-  const { data: items } = await supabase
-    .from("invoice_items")
-    .select("time_log_id")
-    .eq("invoice_id", invoiceId)
-    .not("time_log_id", "is", null);
-
-  const logIds = (items ?? []).map((i) => i.time_log_id).filter(Boolean);
-  if (logIds.length > 0) {
-    await supabase
-      .from("time_logs")
-      .update({ is_billed: false })
-      .in("id", logIds)
-      .eq("user_id", user.id);
-  }
-
+  // DB trigger also clears time_logs by billed_invoice_id when the invoice row
+  // is deleted (covers all logs, not only invoice_items.time_log_id).
   const { error } = await supabase
     .from("invoices")
     .delete()
