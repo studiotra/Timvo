@@ -10,6 +10,14 @@ function slackMessage(text: string) {
   return NextResponse.json({ response_type: "ephemeral", text });
 }
 
+export async function GET() {
+  return NextResponse.json({
+    ok: true,
+    hasSigningSecret: Boolean(process.env.SLACK_SIGNING_SECRET?.trim()),
+    hasClientId: Boolean(process.env.SLACK_CLIENT_ID?.trim()),
+  });
+}
+
 export async function POST(req: NextRequest) {
   try {
     const rawBody = await req.text();
