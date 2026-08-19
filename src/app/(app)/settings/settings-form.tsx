@@ -1,9 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { updateProfile } from "@/app/actions/settings";
 import { useTranslations } from "@/contexts/locale-context";
+import { CURRENCIES } from "@/lib/currencies";
+import { getTimezones, timezoneLabel } from "@/lib/timezones";
+import { LOCALE_OPTIONS } from "@/lib/i18n";
 
 type Profile = {
   full_name: string | null;
@@ -28,9 +32,16 @@ type Profile = {
 };
 
 export function SettingsForm({ profile }: { profile: Profile | null }) {
+  const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const t = useTranslations();
+  const timezones = useMemo(() => {
+    const list = getTimezones();
+    const current = profile?.timezone;
+    if (current && !list.includes(current)) return [current, ...list];
+    return list;
+  }, [profile?.timezone]);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -44,6 +55,7 @@ export function SettingsForm({ profile }: { profile: Profile | null }) {
       setMessage(result.error);
     } else {
       setMessage(t("common.saved"));
+      router.refresh();
     }
   }
 
@@ -62,14 +74,11 @@ export function SettingsForm({ profile }: { profile: Profile | null }) {
             defaultValue={profile?.timezone ?? "America/New_York"}
             className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-[13px] text-[var(--text-primary)]"
           >
-            <option value="America/New_York">Eastern (New York)</option>
-            <option value="America/Los_Angeles">Pacific (Los Angeles)</option>
-            <option value="America/Chicago">Central (Chicago)</option>
-            <option value="Europe/London">London</option>
-            <option value="Europe/Paris">Paris</option>
-            <option value="Asia/Tokyo">Tokyo</option>
-            <option value="Asia/Seoul">Seoul</option>
-            <option value="UTC">UTC</option>
+            {timezones.map((tz) => (
+              <option key={tz} value={tz}>
+                {timezoneLabel(tz)}
+              </option>
+            ))}
           </select>
         </div>
         <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-4">
@@ -81,8 +90,11 @@ export function SettingsForm({ profile }: { profile: Profile | null }) {
             defaultValue={profile?.locale ?? "en"}
             className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-[13px] text-[var(--text-primary)]"
           >
-            <option value="en">English</option>
-            <option value="ko">한국어 (Korean)</option>
+            {LOCALE_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
           </select>
         </div>
       </section>
@@ -297,9 +309,11 @@ export function SettingsForm({ profile }: { profile: Profile | null }) {
               defaultValue={profile?.default_currency ?? "USD"}
               className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-[13px] text-[var(--text-primary)]"
             >
-              <option value="USD">USD</option>
-              <option value="EUR">EUR</option>
-              <option value="GBP">GBP</option>
+              {CURRENCIES.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
             </select>
           </div>
           <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-4">

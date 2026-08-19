@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { AppShell } from "@/components/app-shell";
 import { LocaleProvider } from "@/contexts/locale-context";
-import type { Locale } from "@/lib/i18n";
+import { parseLocale } from "@/lib/i18n";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -15,7 +15,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       .single();
     profile = data;
   }
-  const locale: Locale = profile?.locale === "ko" ? "ko" : "en";
+  const locale = parseLocale(profile?.locale);
 
   return (
     <LocaleProvider locale={locale}>

@@ -7,7 +7,7 @@ import { SlideOver } from "./slide-over";
 import { addClient, updateClient } from "@/app/actions/clients";
 import type { ClientListItem } from "@/types/database";
 
-const CURRENCIES = ["USD", "EUR", "GBP", "JPY", "CAD", "AUD"];
+import { CURRENCIES } from "@/lib/currencies";
 
 function SubmitButton() {
   const { pending } = useFormStatus();

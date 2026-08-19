@@ -2,7 +2,7 @@
 
 import { toast } from "sonner";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { startTimer, stopTimer } from "@/app/actions/time-logs";
 import {
@@ -18,6 +18,30 @@ import {
   type TaskOpt,
   type ActiveTimer,
 } from "@/app/actions/timer";
+
+const TIMER_SELECTION_KEY = "timvo-timer-selection";
+
+type SavedSelection = {
+  clientId: string;
+  projectId: string;
+  serviceId: string;
+  taskId: string;
+};
+
+function readSavedSelection(): SavedSelection | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(TIMER_SELECTION_KEY);
+    return raw ? (JSON.parse(raw) as SavedSelection) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeSavedSelection(value: SavedSelection) {
+  if (typeof window === "undefined") return;
+  sessionStorage.setItem(TIMER_SELECTION_KEY, JSON.stringify(value));
+}
 
 function formatTime(secs: number) {
   const h = Math.floor(secs / 3600).toString().padStart(2, "0");
@@ -41,6 +65,7 @@ export function SidebarTimerWidget() {
   const [activeTimer, setActiveTimer] = useState<ActiveTimer>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+  const restoredRef = useRef(false);
 
   const load = useCallback(async () => {
     const [clientsList, servicesList, active] = await Promise.all([
@@ -52,6 +77,17 @@ export function SidebarTimerWidget() {
     setServices(servicesList);
     setActiveTimer(active);
     setLoading(false);
+
+    if (!restoredRef.current) {
+      restoredRef.current = true;
+      const saved = readSavedSelection();
+      if (saved?.clientId && clientsList.some((c) => c.id === saved.clientId)) {
+        setClientId(saved.clientId);
+        setSelectedProjectId(saved.projectId);
+        setServiceId(saved.serviceId);
+        setTaskId(saved.taskId);
+      }
+    }
   }, []);
 
   useEffect(() => {
@@ -59,47 +95,55 @@ export function SidebarTimerWidget() {
   }, [load]);
 
   useEffect(() => {
+    writeSavedSelection({
+      clientId,
+      projectId: selectedProjectId,
+      serviceId,
+      taskId,
+    });
+  }, [clientId, selectedProjectId, serviceId, taskId]);
+
+  useEffect(() => {
     if (!clientId) {
       setProjects([]);
       setSelectedProjectId("");
-      setServices([]);
-      setServiceId("");
       setTasks([]);
       setTaskId("");
       return;
     }
+    let cancelled = false;
     getProjectsForTimer(clientId).then((projs) => {
+      if (cancelled) return;
       setProjects(projs);
       setSelectedProjectId((prev) => {
-        const exists = projs.some((p) => p.id === prev);
-        return exists ? prev : projs[0]?.id ?? "";
+        if (prev && projs.some((p) => p.id === prev)) return prev;
+        const saved = readSavedSelection();
+        if (saved?.projectId && projs.some((p) => p.id === saved.projectId)) {
+          return saved.projectId;
+        }
+        return projs[0]?.id ?? "";
       });
-      setServiceId("");
-      setTasks([]);
-      setTaskId("");
     });
+    return () => {
+      cancelled = true;
+    };
   }, [clientId]);
 
   useEffect(() => {
     if (!selectedProjectId) {
-      setServiceId("");
       setTasks([]);
       setTaskId("");
       return;
     }
-    setServiceId("");
-    setTasks([]);
-    setTaskId("");
-  }, [selectedProjectId]);
-
-  useEffect(() => {
-    if (!selectedProjectId || !serviceId) {
-      setTasks([]);
-      setTaskId("");
-      return;
-    }
-    getTasksForTimer(selectedProjectId, serviceId).then(setTasks);
-    setTaskId("");
+    let cancelled = false;
+    getTasksForTimer(selectedProjectId, serviceId || undefined).then((list) => {
+      if (cancelled) return;
+      setTasks(list);
+      setTaskId((prev) => (list.some((t) => t.id === prev) ? prev : ""));
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [selectedProjectId, serviceId]);
 
   async function handleAddTask() {
@@ -188,7 +232,7 @@ export function SidebarTimerWidget() {
     return (
       <div className="relative mx-3 my-4 overflow-hidden rounded-xl border border-indigo-500/30 bg-gradient-to-br from-indigo-500/15 to-indigo-500/5 p-3">
         <div className="absolute left-0 right-0 top-0 h-px bg-gradient-to-r from-transparent via-indigo-500/60 to-transparent" />
-        <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-indigo-300">
+        <div className="mb-1 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-widest text-[var(--accent-text)]">
           <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
           Active Session
         </div>
@@ -204,7 +248,7 @@ export function SidebarTimerWidget() {
           type="button"
           onClick={handleStop}
           disabled={actionLoading}
-          className="w-full rounded-md border border-red-500/30 bg-red-500/15 px-2 py-1.5 text-[11px] font-semibold text-red-200 transition-colors hover:bg-red-500/25 disabled:opacity-50"
+          className="w-full rounded-md border border-red-500/30 bg-red-500/15 px-2 py-1.5 text-[11px] font-semibold text-red-400 transition-colors hover:bg-red-500/25 disabled:opacity-50"
         >
           ■ Stop Timer
         </button>
@@ -219,7 +263,13 @@ export function SidebarTimerWidget() {
       </div>
       <select
         value={clientId}
-        onChange={(e) => setClientId(e.target.value)}
+        onChange={(e) => {
+          setClientId(e.target.value);
+          setSelectedProjectId("");
+          setServiceId("");
+          setTaskId("");
+          setTasks([]);
+        }}
         className="mb-1.5 w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-2 py-1.5 text-[11px] text-[var(--text-primary)]"
       >
         <option value="">{clients.length === 0 ? "No clients" : "Select client"}</option>
@@ -231,7 +281,10 @@ export function SidebarTimerWidget() {
       </select>
       <select
         value={selectedProjectId}
-        onChange={(e) => setSelectedProjectId(e.target.value)}
+        onChange={(e) => {
+          setSelectedProjectId(e.target.value);
+          setTaskId("");
+        }}
         disabled={!clientId}
         className="mb-1.5 w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-2 py-1.5 text-[11px] text-[var(--text-primary)] disabled:opacity-50"
       >
@@ -266,7 +319,7 @@ export function SidebarTimerWidget() {
         <select
           value={taskId}
           onChange={(e) => setTaskId(e.target.value)}
-          disabled={!selectedProjectId || !serviceId}
+          disabled={!selectedProjectId}
           className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-2 py-1.5 text-[11px] text-[var(--text-primary)] disabled:opacity-50"
         >
           <option value="">Task (optional)</option>

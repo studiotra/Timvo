@@ -64,6 +64,9 @@ In your Vercel project → **Settings** → **Environment Variables**, add:
 | `STRIPE_WEBHOOK_SECRET` | Webhook signing secret | Set after adding webhook (see below) |
 | `NEXT_PUBLIC_APP_URL` | `https://your-app.vercel.app` | Your Vercel deployment URL |
 | `OPENAI_API_KEY` | (optional) | Only if using AI features |
+| `SLACK_CLIENT_ID` | Slack app Client ID | From api.slack.com/apps |
+| `SLACK_CLIENT_SECRET` | Slack app Client Secret | Same |
+| `SLACK_SIGNING_SECRET` | Slack signing secret | Used to verify slash commands |
 
 Add each variable for **Production**, **Preview**, and **Development** as needed.
 
@@ -124,6 +127,7 @@ For testing, a Resend default domain is fine (e.g. `onboarding@resend.dev`).
 | Invite emails not sending | Verify RESEND_API_KEY and EMAIL_FROM. Resend free tier: send only to your account email until you add a domain at resend.com/domains |
 | Magic link / forgot password emails not sending | Configure custom SMTP in Supabase Auth, or add your domain to Supabase’s allowed redirect URLs |
 | Stripe webhook fails | Confirm `STRIPE_WEBHOOK_SECRET` and endpoint URL are correct |
+| Slack `/timvo` does nothing | Confirm slash command URL, signing secret, and that you clicked **Connect Slack** in Settings |
 | Emails not sending | Verify Resend API key, `EMAIL_FROM`, and domain status |
 | Client invite shows "Check your email" but no confirmation email | Fixed in code: invite flow now creates users server-side with `email_confirm: true`, so no Supabase auth email is needed. Supabase's default email only sends to org team addresses. |
 | Blank page / hydration errors | Clear cache and redeploy; check browser console for errors |

@@ -95,7 +95,7 @@ export function AppShell({ children, logoUrl, displayName = "?" }: AppShellProps
         <SidebarTimerWidget />
 
         <nav className="flex-1 px-3 pb-4 pt-2">
-          <div className="px-2 pb-1.5 pt-3 text-[9px] font-bold uppercase tracking-[0.2em] text-gray-600">
+          <div className="px-2 pb-1.5 pt-3 text-[9px] font-bold uppercase tracking-[0.2em] text-[var(--text-muted)]">
             {t("nav.main")}
           </div>
           <div className="flex flex-col gap-0.5">
@@ -109,8 +109,8 @@ export function AppShell({ children, logoUrl, displayName = "?" }: AppShellProps
                   className={cn(
                     "relative flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] font-medium transition-all",
                     isActive
-                      ? "bg-indigo-500/12 text-indigo-200"
-                      : "text-[var(--text-secondary)] hover:bg-white/5 hover:text-gray-200"
+                      ? "bg-indigo-500/12 text-[var(--accent-text)]"
+                      : "text-[var(--text-secondary)] hover:bg-[var(--row-hover)] hover:text-[var(--text-primary)]"
                   )}
                 >
                   {isActive && (

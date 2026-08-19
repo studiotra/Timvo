@@ -3,14 +3,15 @@
 import { useState, useEffect, useMemo } from "react";
 import { toast } from "sonner";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ChevronLeft, ChevronRight, Pencil, Plus, Trash2, List, Calendar } from "lucide-react";
+import { ChevronLeft, ChevronRight, Pencil, Plus, Trash2, List, Calendar, Map as MapIcon } from "lucide-react";
 import { type TimeLogRow } from "@/app/actions/time-logs";
 import { deleteTimeLog } from "@/app/actions/time-logs";
 import { EditLogSlideOver } from "@/components/edit-log-slide-over";
 import { ManualLogSlideOver } from "@/components/manual-log-slide-over";
 
 type ViewMode = "week" | "month";
-type DisplayMode = "list" | "calendar";
+type DisplayMode = "list" | "calendar" | "map";
+type MapGroup = "all" | "client" | "project";
 type ClientOpt = { id: string; name: string };
 
 function formatWeekLabel(offsetWeeks: number): string {
@@ -43,7 +44,10 @@ export function LogsContent({
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const displayMode = (searchParams.get("display") || initialDisplayMode) as DisplayMode;
+  const displayMode = (["list", "calendar", "map"].includes(searchParams.get("display") || "")
+    ? searchParams.get("display")
+    : initialDisplayMode) as DisplayMode;
+  const mapGroup = (searchParams.get("group") || "all") as MapGroup;
   const view = displayMode === "calendar" ? "week" : (searchParams.get("view") || "week") as ViewMode;
   const offset = parseInt(searchParams.get("offset") || "0", 10);
 
@@ -174,10 +178,17 @@ export function LogsContent({
             </button>
             <button
               onClick={() => setDisplayMode("calendar")}
-              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition ${displayMode === "calendar" ? "bg-accent text-white" : "text-[var(--text-secondary)] hover:bg-white/5"}`}
+              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition ${displayMode === "calendar" ? "bg-accent text-white" : "text-[var(--text-secondary)] hover:bg-[var(--row-hover)]"}`}
             >
               <Calendar className="h-4 w-4" />
               Calendar
+            </button>
+            <button
+              onClick={() => setDisplayMode("map")}
+              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition ${displayMode === "map" ? "bg-accent text-white" : "text-[var(--text-secondary)] hover:bg-[var(--row-hover)]"}`}
+            >
+              <MapIcon className="h-4 w-4" />
+              Map
             </button>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -227,6 +238,24 @@ export function LogsContent({
               </button>
             )}
           </div>
+          {displayMode === "map" && (
+            <div className="flex rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-1">
+              {([
+                ["all", "All"],
+                ["client", "By client"],
+                ["project", "By project"],
+              ] as const).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => updateParams({ group: value === "all" ? "" : value })}
+                  className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${mapGroup === value ? "bg-accent text-white" : "text-[var(--text-secondary)] hover:bg-[var(--row-hover)]"}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
           {displayMode === "list" && (
             <div className="flex rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-1">
               <button
@@ -327,7 +356,15 @@ export function LogsContent({
         </div>
       )}
 
-      {displayMode === "calendar" ? (
+      {displayMode === "map" ? (
+        <LogsMapView
+          logs={logs}
+          group={mapGroup}
+          onEdit={setEditingLog}
+          onDelete={handleDelete}
+          deletingId={deletingId}
+        />
+      ) : displayMode === "calendar" ? (
         <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden">
           <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3 sm:px-5 sm:py-4">
             <h2 className="text-base font-bold text-[var(--text-primary)] sm:text-lg">
@@ -380,7 +417,7 @@ export function LogsContent({
                       <button
                         key={log.id}
                         onClick={() => setEditingLog(log)}
-                        className="block w-full text-left text-[9px] truncate rounded px-1 py-0.5 bg-indigo-500/15 text-indigo-200 hover:bg-indigo-500/25 sm:text-[10px]"
+                        className="block w-full text-left text-[9px] truncate rounded px-1 py-0.5 bg-indigo-500/15 text-[var(--accent-text)] hover:bg-indigo-500/25 sm:text-[10px]"
                       >
                         {log.project_name}: {log.duration_minutes}m
                       </button>
@@ -504,6 +541,192 @@ export function LogsContent({
           router.refresh();
         }}
       />
+    </div>
+  );
+}
+
+function formatLogMins(mins: number) {
+  return `${Math.floor(mins / 60)}h ${mins % 60}m`;
+}
+
+function LogsMapView({
+  logs,
+  group,
+  onEdit,
+  onDelete,
+  deletingId,
+}: {
+  logs: TimeLogRow[];
+  group: MapGroup;
+  onEdit: (log: TimeLogRow) => void;
+  onDelete: (id: string) => void;
+  deletingId: string | null;
+}) {
+  const branches = useMemo(() => {
+    if (group === "project") {
+      const map = new globalThis.Map<string, { title: string; subtitle: string; logs: TimeLogRow[] }>();
+      for (const log of logs) {
+        const key = log.project_id || log.project_name;
+        const existing = map.get(key);
+        if (existing) existing.logs.push(log);
+        else {
+          map.set(key, {
+            title: log.project_name,
+            subtitle: log.client_name,
+            logs: [log],
+          });
+        }
+      }
+      return [...map.values()].sort((a, b) => a.title.localeCompare(b.title));
+    }
+
+    const map = new globalThis.Map<string, { title: string; children: globalThis.Map<string, TimeLogRow[]> }>();
+    for (const log of logs) {
+      const clientKey = log.client_id || log.client_name;
+      if (!map.has(clientKey)) {
+        map.set(clientKey, { title: log.client_name, children: new globalThis.Map() });
+      }
+      const client = map.get(clientKey)!;
+      const projectKey = group === "all" ? log.project_id || log.project_name : "_all";
+      const list = client.children.get(projectKey) ?? [];
+      list.push(log);
+      client.children.set(projectKey, list);
+    }
+    return [...map.values()]
+      .sort((a, b) => a.title.localeCompare(b.title))
+      .map((client) => ({
+        title: client.title,
+        subtitle: `${[...client.children.values()].reduce((s, l) => s + l.length, 0)} logs`,
+        logs: [] as TimeLogRow[],
+        projects: [...client.children.entries()].map(([key, projectLogs]) => ({
+          title: key === "_all" ? "All projects" : projectLogs[0]?.project_name || "Project",
+          logs: projectLogs,
+        })),
+      }));
+  }, [logs, group]);
+
+  if (logs.length === 0) {
+    return (
+      <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] px-4 py-12 text-center text-[var(--text-muted)]">
+        No time logs for this period.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {group === "project"
+        ? (branches as { title: string; subtitle: string; logs: TimeLogRow[] }[]).map((node) => {
+            const mins = node.logs.reduce((s, l) => s + (l.duration_minutes ?? 0), 0);
+            return (
+              <div key={node.title + node.subtitle} className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-4">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
+                    <h3 className="font-semibold text-[var(--text-primary)]">{node.title}</h3>
+                    <p className="text-sm text-[var(--text-secondary)]">{node.subtitle}</p>
+                  </div>
+                  <span className="font-mono text-sm text-[var(--accent-text)]">{formatLogMins(mins)}</span>
+                </div>
+                <div className="relative ml-3 space-y-2 border-l border-[var(--border)] pl-4">
+                  {node.logs.map((log) => (
+                    <MapLogCard
+                      key={log.id}
+                      log={log}
+                      onEdit={onEdit}
+                      onDelete={onDelete}
+                      deletingId={deletingId}
+                    />
+                  ))}
+                </div>
+              </div>
+            );
+          })
+        : (branches as unknown as { title: string; subtitle: string; projects: { title: string; logs: TimeLogRow[] }[] }[]).map(
+            (client) => {
+              const mins = client.projects.reduce(
+                (s, p) => s + p.logs.reduce((n, l) => n + (l.duration_minutes ?? 0), 0),
+                0
+              );
+              return (
+                <div key={client.title} className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-4">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                      <h3 className="font-semibold text-[var(--text-primary)]">{client.title}</h3>
+                      <p className="text-sm text-[var(--text-secondary)]">{client.subtitle}</p>
+                    </div>
+                    <span className="font-mono text-sm text-[var(--accent-text)]">{formatLogMins(mins)}</span>
+                  </div>
+                  <div className="relative ml-3 space-y-4 border-l border-[var(--border)] pl-4">
+                    {client.projects.map((project) => {
+                      const pMins = project.logs.reduce((s, l) => s + (l.duration_minutes ?? 0), 0);
+                      return (
+                        <div key={project.title}>
+                          {group === "all" && (
+                            <div className="mb-2 flex items-center justify-between">
+                              <span className="text-sm font-medium text-[var(--text-primary)]">
+                                {project.title}
+                              </span>
+                              <span className="font-mono text-xs text-[var(--text-muted)]">
+                                {formatLogMins(pMins)}
+                              </span>
+                            </div>
+                          )}
+                          <div className="space-y-2">
+                            {project.logs.map((log) => (
+                              <MapLogCard
+                                key={log.id}
+                                log={log}
+                                onEdit={onEdit}
+                                onDelete={onDelete}
+                                deletingId={deletingId}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            }
+          )}
+    </div>
+  );
+}
+
+function MapLogCard({
+  log,
+  onEdit,
+  onDelete,
+  deletingId,
+}: {
+  log: TimeLogRow;
+  onEdit: (log: TimeLogRow) => void;
+  onDelete: (id: string) => void;
+  deletingId: string | null;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2">
+      <button type="button" onClick={() => onEdit(log)} className="min-w-0 flex-1 text-left">
+        <div className="truncate text-sm text-[var(--text-primary)]">
+          {log.description || log.project_name}
+        </div>
+        <div className="text-xs text-[var(--text-muted)]">
+          {log.started_at ? new Date(log.started_at).toLocaleDateString("en-US") : "—"}
+          {" · "}
+          {log.duration_minutes} min
+          {log.is_billed ? " · billed" : log.is_billable ? " · billable" : " · non-billable"}
+        </div>
+      </button>
+      <button
+        type="button"
+        onClick={() => onDelete(log.id)}
+        disabled={deletingId === log.id || log.is_billed}
+        className="rounded p-1.5 text-[var(--text-secondary)] hover:bg-red-500/20 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-50"
+        title={log.is_billed ? "Cannot delete billed log" : "Delete"}
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+      </button>
     </div>
   );
 }

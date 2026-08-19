@@ -107,7 +107,23 @@ When you send an invoice, a Stripe Checkout link is created and included in the 
 
 To send invites to real client emails, [verify your domain](https://resend.com/domains) in Resend and set `EMAIL_FROM` to e.g. `noreply@yourdomain.com`.
 
-### 7. Run the app
+### 7. Slack (optional, timer from Slack)
+
+1. Create an app at [api.slack.com/apps](https://api.slack.com/apps) → **From scratch**
+2. **OAuth & Permissions** → Redirect URL: `https://your-domain.com/api/slack/oauth/callback` (or `http://localhost:3000/api/slack/oauth/callback` for local)
+3. Bot token scopes: `commands`, `chat:write`
+4. **Slash Commands** → Create `/timvo` → Request URL: `https://your-domain.com/api/slack/commands`
+5. **Interactivity & Shortcuts** → Enable → Request URL: `https://your-domain.com/api/slack/interactions`
+6. Add to `.env.local`:
+   - `SLACK_CLIENT_ID`
+   - `SLACK_CLIENT_SECRET`
+   - `SLACK_SIGNING_SECRET`
+7. Run migration `supabase/migrations/20250819000000_slack_connections.sql` in the Supabase SQL editor
+8. In Timvo **Settings** → **Connect Slack**
+
+Then: `/timvo start Acme`, `/timvo stop`, `/timvo status`
+
+### 8. Run the app
 
 ```bash
 npm run dev

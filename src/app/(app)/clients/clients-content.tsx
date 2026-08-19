@@ -208,7 +208,7 @@ export function ClientsContent({
             <Link
               key={p.id}
               href={`/clients/${p.clientId}/projects/${p.id}`}
-              className={`flex items-center gap-3 px-5 py-3 transition-colors hover:bg-white/5 ${
+              className={`flex items-center gap-3 px-5 py-3 transition-colors hover:bg-[var(--row-hover)] ${
                 i < filteredProjects.length - 1 ? "border-b border-white/5" : ""
               }`}
             >
@@ -219,7 +219,7 @@ export function ClientsContent({
                 }}
               />
               <div className="flex-1">
-                <div className="text-[13px] font-semibold text-gray-200">
+                <div className="text-[13px] font-semibold text-[var(--text-primary)]">
                   {p.name}
                 </div>
                 <div className="mt-0.5 text-[11px] text-[var(--text-muted)]">

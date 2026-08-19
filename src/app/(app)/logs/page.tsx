@@ -18,7 +18,8 @@ export default async function LogsPage({
   searchParams: Promise<SearchParams>;
 }) {
   const params = await searchParams;
-  const displayMode = params.display === "calendar" ? "calendar" : "list";
+  const displayMode =
+    params.display === "calendar" || params.display === "map" ? params.display : "list";
   const view = displayMode === "calendar" ? "week" : ((params.view || "week") as "week" | "month");
   const offset = parseInt(params.offset || "0", 10);
   const filters = {

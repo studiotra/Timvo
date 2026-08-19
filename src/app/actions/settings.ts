@@ -2,6 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import { parseLocale } from "@/lib/i18n";
 
 export async function updateProfile(formData: FormData) {
   const supabase = await createClient();
@@ -23,8 +24,7 @@ export async function updateProfile(formData: FormData) {
   const bankAccount = (formData.get("bank_account") as string)?.trim() || null;
   const bankRouting = (formData.get("bank_routing") as string)?.trim() || null;
   const logoUrl = (formData.get("logo_url") as string)?.trim() || null;
-  const locale = ((formData.get("locale") as string)?.trim() || "en") as "en" | "ko";
-  const validLocale = locale === "ko" ? "ko" : "en";
+  const locale = parseLocale((formData.get("locale") as string)?.trim());
   const timezone = (formData.get("timezone") as string)?.trim() || "America/New_York";
   const targetHourlyRateRaw = (formData.get("target_hourly_rate") as string)?.trim();
   const targetHourlyRate = targetHourlyRateRaw ? parseFloat(targetHourlyRateRaw) : null;
@@ -51,7 +51,7 @@ export async function updateProfile(formData: FormData) {
         default_invoice_footer: defaultInvoiceFooter,
         default_invoice_terms: defaultInvoiceTerms,
         default_due_days: defaultDueDays,
-        locale: validLocale,
+        locale,
         timezone,
         target_hourly_rate: targetHourlyRate,
         annual_income_goal: annualIncomeGoal,
@@ -61,6 +61,7 @@ export async function updateProfile(formData: FormData) {
     );
 
   if (error) return { error: error.message };
+  revalidatePath("/", "layout");
   revalidatePath("/settings");
   return { success: true };
 }

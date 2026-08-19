@@ -11,7 +11,8 @@
 }
 
 @layer base {
-  :root {
+  :root,
+  .dark {
     --bg-app: #111827;
     --bg-sidebar: #0d1424;
     --bg-card: rgba(255, 255, 255, 0.03);
@@ -20,11 +21,13 @@
     --text-muted: #6b7280;
     --accent: #6366f1;
     --accent-hover: #818cf8;
+    --accent-text: #c7d2fe;
     --success: #10b981;
     --amber: #f59e0b;
     --red: #ef4444;
     --border: rgba(255, 255, 255, 0.08);
     --border-strong: rgba(255, 255, 255, 0.12);
+    --row-hover: rgba(255, 255, 255, 0.05);
   }
 
   .light {
@@ -34,8 +37,15 @@
     --text-primary: #111827;
     --text-secondary: #4b5563;
     --text-muted: #6b7280;
+    --accent: #4f46e5;
+    --accent-hover: #4338ca;
+    --accent-text: #4338ca;
+    --success: #059669;
+    --amber: #d97706;
+    --red: #dc2626;
     --border: rgba(0, 0, 0, 0.08);
     --border-strong: rgba(0, 0, 0, 0.12);
+    --row-hover: rgba(0, 0, 0, 0.04);
   }
 
   /* Status badge colors (theme-aware) */

@@ -81,8 +81,8 @@ export function InvoicesContent({
               onClick={() => setActiveTab(t)}
               className={`shrink-0 rounded-lg px-3 py-1.5 text-[11px] font-semibold transition-all sm:px-4 sm:text-[12px] ${
                 activeTab === t
-                  ? "bg-indigo-500/15 text-indigo-200"
-                  : "text-[var(--text-muted)] hover:text-gray-200"
+                  ? "bg-indigo-500/15 text-[var(--accent-text)]"
+                  : "text-[var(--text-muted)] hover:text-[var(--text-primary)]"
               }`}
             >
               {t}
@@ -165,12 +165,12 @@ export function InvoicesContent({
               <Link
                 key={inv.id}
                 href={`/invoices/${inv.id}`}
-                className="flex items-center gap-2 border-b border-white/5 px-3 py-2 transition-colors last:border-0 hover:bg-white/5 sm:gap-3 sm:px-5 sm:py-3"
+                className="flex items-center gap-2 border-b border-white/5 px-3 py-2 transition-colors last:border-0 hover:bg-[var(--row-hover)] sm:gap-3 sm:px-5 sm:py-3"
               >
                 <span className="min-w-[55px] font-mono text-[10px] font-semibold text-accent sm:min-w-[70px] sm:text-[11px]">
                   #{inv.id.slice(0, 8)}
                 </span>
-                <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-gray-200 sm:text-[12px]">
+                <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-[var(--text-primary)] sm:text-[12px]">
                   {(inv.clients as { name?: string } | null)?.name ?? "—"}
                 </span>
                 <span className="hidden min-w-[60px] text-[11px] text-[var(--text-muted)] sm:inline">

@@ -118,7 +118,7 @@ export function DashboardContent({
           <div className="text-[11px] font-bold uppercase tracking-wide text-indigo-300/80">
             {t("dashboard.effectiveRate")}
           </div>
-          <div className="mt-2 font-mono text-2xl font-bold text-indigo-200">
+          <div className="mt-2 font-mono text-2xl font-bold text-[var(--accent-text)]">
             {effectiveRate != null ? (
               <>${effectiveRate.toFixed(0)}/hr</>
             ) : (
@@ -225,7 +225,7 @@ export function DashboardContent({
           <div className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg-card)]">
             <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-4">
               <div>
-                <div className="text-[13px] font-bold text-gray-200">
+                <div className="text-[13px] font-bold text-[var(--text-primary)]">
                   {t("dashboard.weeklyActivity")}
                 </div>
                 <div className="mt-0.5 text-[11px] text-[var(--text-muted)]">
@@ -275,7 +275,7 @@ export function DashboardContent({
             <div className="mx-5 mb-4 flex flex-wrap items-center justify-between gap-4 rounded-xl border border-indigo-500/25 bg-gradient-to-br from-indigo-500/12 to-indigo-500/5 px-4 py-3.5">
               <div className="flex items-center gap-6">
                 <div>
-                  <div className="font-mono text-[22px] font-semibold tracking-tight text-indigo-200">
+                  <div className="font-mono text-[22px] font-semibold tracking-tight text-[var(--accent-text)]">
                     ${unbilledTotal.toLocaleString("en-US", { minimumFractionDigits: 2 })}
                   </div>
                   <div className="mt-0.5 text-[11px] font-medium text-[var(--text-muted)]">
@@ -304,7 +304,7 @@ export function DashboardContent({
           {/* Recent Logs */}
           <div className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg-card)]">
             <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-4">
-              <div className="text-[13px] font-bold text-gray-200">
+              <div className="text-[13px] font-bold text-[var(--text-primary)]">
                 {t("dashboard.recentLogs")}
               </div>
               <Link
@@ -335,7 +335,7 @@ export function DashboardContent({
                       }}
                     />
                     <div className="min-w-0 flex-1">
-                      <div className="text-[12px] font-medium text-gray-200">
+                      <div className="text-[12px] font-medium text-[var(--text-primary)]">
                         {log.description || "Time"}
                       </div>
                       <div className="text-[10px] font-semibold text-[var(--text-muted)]">
@@ -368,7 +368,7 @@ export function DashboardContent({
         <div className="flex flex-col gap-0">
           <div className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg-card)]">
             <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-4">
-              <div className="text-[13px] font-bold text-gray-200">
+              <div className="text-[13px] font-bold text-[var(--text-primary)]">
                 {t("dashboard.recentInvoices")}
               </div>
               <Link
@@ -388,13 +388,13 @@ export function DashboardContent({
                   <Link
                     key={inv.id}
                     href={`/invoices/${inv.id}`}
-                    className="flex items-center gap-3 px-5 py-3 transition-colors hover:bg-white/5"
+                    className="flex items-center gap-3 px-5 py-3 transition-colors hover:bg-[var(--row-hover)]"
                   >
                     <div>
                       <div className="font-mono text-[11px] font-semibold text-accent">
                         #{inv.id.slice(0, 8)}
                       </div>
-                      <div className="text-[12px] font-medium text-gray-200">
+                      <div className="text-[12px] font-medium text-[var(--text-primary)]">
                         {inv.clientName}
                       </div>
                       <div className="text-[11px] text-[var(--text-muted)]">
