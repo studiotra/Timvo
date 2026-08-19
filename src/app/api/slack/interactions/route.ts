@@ -17,7 +17,7 @@ function slackMessage(text: string) {
 export async function POST(req: NextRequest) {
   try {
     const rawBody = await req.text();
-    const valid = verifySlackSignature(
+    const valid = await verifySlackSignature(
       rawBody,
       req.headers.get("x-slack-request-timestamp"),
       req.headers.get("x-slack-signature")

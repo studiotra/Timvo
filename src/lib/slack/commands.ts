@@ -10,12 +10,7 @@ import {
   type SlackProject,
 } from "./timer-ops";
 
-export const HELP_TEXT = `*Timvo commands*
-\`/timvo start [client or project]\` — start a timer
-\`/timvo stop\` — stop the running timer
-\`/timvo status\` — what’s running
-\`/timvo projects\` — list active projects
-\`/timvo help\` — this message`;
+import { HELP_TEXT } from "./help";
 
 function label(p: SlackProject) {
   return p.clientName ? `${p.clientName} · ${p.name}` : p.name;

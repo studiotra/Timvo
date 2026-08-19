@@ -1,10 +1,23 @@
 import { createHmac, timingSafeEqual } from "crypto";
 
-export function verifySlackSignature(
+function toHex(buf: ArrayBuffer): string {
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function safeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let out = 0;
+  for (let i = 0; i < a.length; i++) out |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return out === 0;
+}
+
+export async function verifySlackSignature(
   rawBody: string,
   timestamp: string | null,
   signature: string | null
-): boolean {
+): Promise<boolean> {
   const secret = process.env.SLACK_SIGNING_SECRET?.trim();
   if (!secret || !timestamp || !signature) return false;
 
@@ -12,18 +25,19 @@ export function verifySlackSignature(
   if (!Number.isFinite(ts)) return false;
   if (Math.abs(Date.now() / 1000 - ts) > 60 * 5) return false;
 
-  const digest =
-    "v0=" +
-    createHmac("sha256", secret).update(`v0:${timestamp}:${rawBody}`).digest("hex");
-
-  try {
-    const a = Buffer.from(digest);
-    const b = Buffer.from(signature);
-    if (a.length !== b.length) return false;
-    return timingSafeEqual(a, b);
-  } catch {
-    return false;
-  }
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const sigBuf = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(`v0:${timestamp}:${rawBody}`)
+  );
+  return safeEqual("v0=" + toHex(sigBuf), signature);
 }
 
 function stateSecret() {
