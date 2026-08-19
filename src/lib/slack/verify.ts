@@ -5,7 +5,7 @@ export function verifySlackSignature(
   timestamp: string | null,
   signature: string | null
 ): boolean {
-  const secret = process.env.SLACK_SIGNING_SECRET;
+  const secret = process.env.SLACK_SIGNING_SECRET?.trim();
   if (!secret || !timestamp || !signature) return false;
 
   const ts = Number(timestamp);
