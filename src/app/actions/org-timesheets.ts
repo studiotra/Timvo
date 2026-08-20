@@ -58,6 +58,20 @@ export async function submitTimeLogsToOrg(
     .select("id, project_id, projects(client_id, clients(organization_id))")
     .in("id", toSubmit);
 
+  const projectIds = [
+    ...new Set((logProjects ?? []).map((l) => l.project_id).filter(Boolean)),
+  ];
+
+  const { data: shares } = await supabase
+    .from("project_shares")
+    .select("project_id")
+    .eq("organization_id", organizationId)
+    .eq("shared_by", user.id)
+    .eq("status", "active")
+    .in("project_id", projectIds);
+
+  const sharedProjectIds = new Set((shares ?? []).map((s) => s.project_id));
+
   for (const log of logProjects ?? []) {
     const project = log.projects as unknown as {
       client_id: string;
@@ -66,6 +80,12 @@ export async function submitTimeLogsToOrg(
     const logOrgId = project?.clients?.organization_id;
     if (logOrgId && logOrgId !== organizationId) {
       return { error: "One or more logs belong to a different organization" };
+    }
+    if (!sharedProjectIds.has(log.project_id)) {
+      return {
+        error:
+          "Only logs from projects shared with this agency can be submitted. Share the project first.",
+      };
     }
   }
 

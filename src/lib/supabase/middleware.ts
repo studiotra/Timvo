@@ -106,5 +106,13 @@ export async function updateSession(request: NextRequest) {
     }
   }
 
+  // Business users should never be trapped on the end-client portal
+  if (data.user && path.startsWith("/client") && !(await isPortalOnlyUser(supabase, data.user.id))) {
+    const url = request.nextUrl.clone();
+    url.pathname = await resolveHomePath(supabase, data.user.id);
+    url.search = "";
+    return NextResponse.redirect(url);
+  }
+
   return supabaseResponse;
 }

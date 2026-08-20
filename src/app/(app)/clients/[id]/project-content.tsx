@@ -4,11 +4,11 @@ import { useState, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ProjectSlideOver } from "@/components/project-slide-over";
-import { InviteToPortalSlideOver } from "@/components/invite-to-portal-slide-over";
-import { InviteActions } from "@/components/invite-actions";
+import { ShareProjectToOrgButton } from "@/components/share-project-to-org-button";
 import { deleteProject } from "@/app/actions/projects";
 import type { ProjectListItem } from "@/types/database";
-import type { ClientInviteRow } from "@/app/actions/client-invites";
+import type { ContractorOrgOption } from "@/app/actions/organizations";
+import type { ProjectShareStatus } from "@/app/actions/project-shares";
 
 type ProjectWithCreated = ProjectListItem & { created_at?: string };
 type ProjectEffectiveRate = {
@@ -24,7 +24,8 @@ type SortOption = "name-asc" | "name-desc" | "created-desc" | "created-asc";
 export function ProjectContent({
   client,
   projects,
-  invites,
+  organizations = [],
+  sharesByProject = {},
   effectiveRatesByProject = new Map<string, ProjectEffectiveRate>(),
 }: {
   client: {
@@ -40,12 +41,12 @@ export function ProjectContent({
     note?: string | null;
   };
   projects: ProjectWithCreated[];
-  invites: ClientInviteRow[];
+  organizations?: ContractorOrgOption[];
+  sharesByProject?: Record<string, ProjectShareStatus[]>;
   effectiveRatesByProject?: Map<string, ProjectEffectiveRate>;
 }) {
   const router = useRouter();
   const [slideOpen, setSlideOpen] = useState(false);
-  const [inviteOpen, setInviteOpen] = useState(false);
   const [editing, setEditing] = useState<ProjectListItem | null>(null);
   const [sortBy, setSortBy] = useState<SortOption>("name-asc");
 
@@ -91,12 +92,7 @@ export function ProjectContent({
 
   return (
     <>
-      <nav className="text-sm text-[var(--text-secondary)] mb-4 flex items-center gap-1.5">
-        <Link href="/clients" className="hover:text-accent transition-colors">Clients</Link>
-        <span>/</span>
-        <span className="text-[var(--text-primary)] font-medium">{client.name}</span>
-      </nav>
-      <header className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <header className="mb-8 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">{client.name}</h1>
           <div className="mt-1 space-y-0.5 text-sm text-[var(--text-secondary)]">
@@ -105,68 +101,26 @@ export function ProjectContent({
             <div className="flex flex-wrap gap-x-4 gap-y-0 text-xs text-[var(--text-muted)]">
               {client.phone_number && <span>Phone: {client.phone_number}</span>}
               {client.business_phone && (
-                <span>Business: {client.business_phone}{client.extension ? ` ext. ${client.extension}` : ""}</span>
+                <span>
+                  Business: {client.business_phone}
+                  {client.extension ? ` ext. ${client.extension}` : ""}
+                </span>
               )}
               <span>{client.currency}</span>
               {client.tax_id && <span>Tax ID: {client.tax_id}</span>}
             </div>
             {client.note && (
-              <p className="mt-2 text-xs text-[var(--text-muted)] italic">{client.note}</p>
+              <p className="mt-2 text-xs italic text-[var(--text-muted)]">{client.note}</p>
             )}
           </div>
         </div>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => setInviteOpen(true)}
-            className="px-4 py-2 border border-[var(--border)] rounded-lg text-sm font-semibold text-[var(--text-primary)] hover:bg-[var(--bg-card)]"
-          >
-            Invite to portal
-          </button>
-          <button
-            onClick={openAdd}
-            className="px-4 py-2 bg-accent hover:bg-accent-hover text-white font-semibold rounded-lg text-sm w-fit"
-          >
-            Add Project
-          </button>
-        </div>
+        <button
+          onClick={openAdd}
+          className="w-fit rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-hover"
+        >
+          Add Project
+        </button>
       </header>
-
-      {invites.length > 0 && (
-        <div className="mb-6 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-4">
-          <h3 className="text-sm font-semibold text-[var(--text-secondary)] mb-2">
-            Portal invites
-          </h3>
-          <ul className="space-y-2 text-sm">
-            {invites.map((inv) => (
-              <li key={inv.id} className="flex items-center justify-between gap-3">
-                <span className="text-[var(--text-primary)]">{inv.email}</span>
-                <div className="flex items-center gap-2">
-                  <span
-                    className={
-                      inv.status === "accepted"
-                        ? "text-success"
-                        : "text-[var(--text-muted)]"
-                    }
-                  >
-                    {inv.status === "accepted" ? "Accepted" : "Pending"}
-                  </span>
-                  {inv.status === "pending" && (
-                    <InviteActions inviteId={inv.id} />
-                  )}
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      <InviteToPortalSlideOver
-        clientId={client.id}
-        clientName={client.name}
-        open={inviteOpen}
-        onClose={() => setInviteOpen(false)}
-      />
 
       <ProjectSlideOver
         open={slideOpen}
@@ -181,21 +135,21 @@ export function ProjectContent({
 
       <div className="mt-6">
         {projects.length === 0 ? (
-          <div className="bg-[var(--bg-card)] backdrop-blur-xl border border-[var(--border)] rounded-xl p-12 text-center">
-            <p className="text-[var(--text-secondary)] font-medium mb-1">No projects yet</p>
-            <p className="text-sm text-[var(--text-muted)] mb-6 max-w-sm mx-auto">
-              Add a project to start tracking time, creating invoices, and managing tasks.
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-12 text-center backdrop-blur-xl">
+            <p className="mb-1 font-medium text-[var(--text-secondary)]">No projects yet</p>
+            <p className="mx-auto mb-6 max-w-sm text-sm text-[var(--text-muted)]">
+              Add a project, share it with an agency, then submit time for approval.
             </p>
             <button
               onClick={openAdd}
-              className="px-5 py-2.5 bg-accent hover:bg-accent-hover text-white font-semibold rounded-lg transition-colors"
+              className="rounded-lg bg-accent px-5 py-2.5 font-semibold text-white transition-colors hover:bg-accent-hover"
             >
               + Add Project
             </button>
           </div>
         ) : (
           <>
-            <div className="flex items-center justify-between gap-4 mb-3">
+            <div className="mb-3 flex items-center justify-between gap-4">
               <p className="text-sm text-[var(--text-secondary)]">
                 {projects.length} project{projects.length !== 1 ? "s" : ""}
               </p>
@@ -214,13 +168,13 @@ export function ProjectContent({
               {sortedProjects.map((project) => (
                 <div
                   key={project.id}
-                  className="bg-[var(--bg-card)] backdrop-blur-xl border border-[var(--border)] rounded-xl overflow-hidden"
+                  className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-card)] backdrop-blur-xl"
                 >
-                  <Link
-                    href={`/clients/${client.id}/projects/${project.id}`}
-                    className="block p-4 flex items-center justify-between group hover:bg-white/[0.02] transition-colors"
-                  >
-                    <div>
+                  <div className="flex items-center justify-between gap-3 p-4">
+                    <Link
+                      href={`/clients/${client.id}/projects/${project.id}`}
+                      className="min-w-0 flex-1 transition-colors hover:opacity-90"
+                    >
                       <h3 className="font-semibold">{project.name}</h3>
                       <p className="text-sm text-[var(--text-secondary)]">
                         {project.billing_type === "hourly"
@@ -247,28 +201,29 @@ export function ProjectContent({
                           ) : null;
                         })()}
                       </p>
-                    </div>
-                    <div className="flex gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <span
-                        onClick={(e) => {
-                          e.preventDefault();
-                          openEdit(project);
-                        }}
-                        className="text-sm text-accent hover:underline cursor-pointer"
+                    </Link>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <ShareProjectToOrgButton
+                        projectId={project.id}
+                        organizations={organizations}
+                        existingShares={sharesByProject[project.id] ?? []}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => openEdit(project)}
+                        className="text-sm text-accent hover:underline"
                       >
                         Edit
-                      </span>
-                      <span
-                        onClick={(e) => {
-                          e.preventDefault();
-                          handleDelete(project.id);
-                        }}
-                        className="text-sm text-red-400 hover:underline cursor-pointer"
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(project.id)}
+                        className="text-sm text-red-400 hover:underline"
                       >
                         Delete
-                      </span>
+                      </button>
                     </div>
-                  </Link>
+                  </div>
                 </div>
               ))}
             </div>

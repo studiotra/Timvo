@@ -11,6 +11,7 @@ import { Menu, X } from "lucide-react";
 const navItems = [
   { href: "/org", label: "Dashboard", icon: "🏠" },
   { href: "/org/clients", label: "Clients", icon: "📁" },
+  { href: "/org/assignments", label: "Assignments", icon: "🧩" },
   { href: "/org/timesheets", label: "Timesheets", icon: "⏱️" },
   { href: "/org/contractors", label: "Contractors", icon: "👥" },
   { href: "/org/reports", label: "Reports", icon: "📊" },

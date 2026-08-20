@@ -9,9 +9,7 @@ import { deleteTimeLog } from "@/app/actions/time-logs";
 import { EditLogSlideOver } from "@/components/edit-log-slide-over";
 import { ManualLogSlideOver } from "@/components/manual-log-slide-over";
 import { SubmitToOrgBar } from "@/components/submit-to-org-bar";
-import { ShareToViewerBar } from "@/components/share-to-viewer-bar";
 import type { ContractorOrgOption } from "@/app/actions/organizations";
-import type { ViewerClientOption } from "@/app/actions/viewer-shares";
 
 type ViewMode = "week" | "month";
 type DisplayMode = "list" | "calendar" | "map";
@@ -39,18 +37,14 @@ export function LogsContent({
   logs,
   clients,
   organizations,
-  viewerClients,
   shareStatuses,
-  viewerShareStatuses,
   displayMode: initialDisplayMode,
   initialFilters,
 }: {
   logs: TimeLogRow[];
   clients: ClientOpt[];
   organizations: ContractorOrgOption[];
-  viewerClients: ViewerClientOption[];
   shareStatuses: Record<string, { orgName: string; status: string }[]>;
-  viewerShareStatuses: Record<string, { clientName: string; source: string }[]>;
   displayMode: DisplayMode;
   initialFilters: { clientId: string; fromDate: string; toDate: string };
 }) {
@@ -177,20 +171,13 @@ export function LogsContent({
     });
   }, [weekStart]);
 
-  const showSelection = organizations.length > 0 || viewerClients.length > 0;
+  const showSelection = organizations.length > 0;
 
   return (
     <div className="space-y-6">
       {organizations.length > 0 && (
         <SubmitToOrgBar
           organizations={organizations}
-          selectedLogIds={selectedIds}
-          onClearSelection={() => setSelectedIds([])}
-        />
-      )}
-      {viewerClients.length > 0 && (
-        <ShareToViewerBar
-          viewerClients={viewerClients}
           selectedLogIds={selectedIds}
           onClearSelection={() => setSelectedIds([])}
         />
@@ -522,14 +509,6 @@ export function LogsContent({
                           className="mt-0.5 mr-1 inline-block rounded bg-violet-500/15 px-1.5 py-0.5 text-[10px] text-violet-300"
                         >
                           {s.orgName}: {s.status}
-                        </span>
-                      ))}
-                      {(viewerShareStatuses[log.id] ?? []).map((s) => (
-                        <span
-                          key={`${log.id}-v-${s.clientName}`}
-                          className="mt-0.5 mr-1 inline-block rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] text-emerald-300"
-                        >
-                          Viewer: {s.clientName}
                         </span>
                       ))}
                     </td>

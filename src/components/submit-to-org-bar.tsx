@@ -66,7 +66,7 @@ export function SubmitToOrgBar({
             : "Select logs below"}
       </button>
       <span className="text-xs text-[var(--text-muted)]">
-        Or check rows in the list, then submit for approval
+        Only logs from projects shared with the agency can be submitted
       </span>
     </div>
   );

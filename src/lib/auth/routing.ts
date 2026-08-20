@@ -27,10 +27,23 @@ export async function getPendingInvitePath(
   return `/accept-invite?token=${encodeURIComponent(token)}`;
 }
 
+/** True only when the user has portal access and no contractor/org business role. */
 export async function isPortalOnlyUser(
   supabase: SupabaseClient,
   userId: string
 ): Promise<boolean> {
+  if (await isOrganizationMember(supabase, userId)) return false;
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("account_type")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (profile?.account_type === "contractor" || profile?.account_type === "organization") {
+    return false;
+  }
+
   const [{ data: portalAccess }, { data: ownedClient }] = await Promise.all([
     supabase
       .from("client_portal_access")
@@ -38,8 +51,15 @@ export async function isPortalOnlyUser(
       .eq("user_id", userId)
       .limit(1)
       .maybeSingle(),
-    supabase.from("clients").select("id").eq("user_id", userId).is("organization_id", null).limit(1).maybeSingle(),
+    supabase
+      .from("clients")
+      .select("id")
+      .eq("user_id", userId)
+      .is("organization_id", null)
+      .limit(1)
+      .maybeSingle(),
   ]);
+
   return Boolean(portalAccess) && !ownedClient;
 }
 
@@ -78,15 +98,37 @@ export async function isOrganizationPrimaryUser(
   return !soloClient;
 }
 
-/** Where to send a user after login. */
+/**
+ * Home after login.
+ * Priority: pending invite → agency → contractor business → portal-only → contractor.
+ * Portal never wins over contractor/org membership.
+ */
 export async function resolveHomePath(
   supabase: SupabaseClient,
   userId: string
 ): Promise<string> {
   const pending = await getPendingInvitePath(supabase);
   if (pending) return pending;
-  if (await isPortalOnlyUser(supabase, userId)) return "/client";
   if (await isOrganizationPrimaryUser(supabase, userId)) return "/org";
+  if (await isOrganizationMember(supabase, userId)) return "/org";
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("account_type")
+    .eq("id", userId)
+    .maybeSingle();
+  if (profile?.account_type === "contractor") return "/";
+
+  const { data: ownedClient } = await supabase
+    .from("clients")
+    .select("id")
+    .eq("user_id", userId)
+    .is("organization_id", null)
+    .limit(1)
+    .maybeSingle();
+  if (ownedClient) return "/";
+
+  if (await isPortalOnlyUser(supabase, userId)) return "/client";
   return "/";
 }
 

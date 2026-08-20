@@ -83,12 +83,23 @@ export async function createInvitedUser(
     return { error: error.message };
   }
 
-  // New user created — delay so Auth can propagate before client signIn
+  // New user created — only mark as portal client if they have no business role yet
   if (createdUser?.user) {
-    await admin
+    const { data: profile } = await admin
       .from("profiles")
-      .update({ account_type: "client" })
-      .eq("id", createdUser.user.id);
+      .select("account_type")
+      .eq("id", createdUser.user.id)
+      .maybeSingle();
+    if (
+      !profile?.account_type ||
+      profile.account_type === "client" ||
+      profile.account_type === null
+    ) {
+      await admin
+        .from("profiles")
+        .update({ account_type: "client" })
+        .eq("id", createdUser.user.id);
+    }
     await new Promise((r) => setTimeout(r, 1800));
   }
   return {};
