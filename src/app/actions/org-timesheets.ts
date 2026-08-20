@@ -10,8 +10,14 @@ export type TimeLogShareRow = {
   status: string;
   submittedAt: string;
   contractorEmail: string;
+  /** Contractor's own client/project names */
   clientName: string;
   projectName: string;
+  /** Agency end-client mapping (null if unmapped) */
+  mappedClientName: string | null;
+  mappedProjectName: string | null;
+  mappedProjectId: string | null;
+  isMapped: boolean;
   durationMinutes: number;
   description: string | null;
   startedAt: string;
@@ -143,8 +149,8 @@ export async function listOrgTimesheets(status?: string): Promise<TimeLogShareRo
   if (!ctx) return [];
   if (!["owner", "admin", "manager"].includes(ctx.role)) return [];
 
-  const supabase = await createClient();
-  let query = supabase
+  const admin = await import("@/lib/supabase/admin").then((m) => m.createAdminClient());
+  let query = admin
     .from("time_log_shares")
     .select(
       "id, status, created_at, submitted_by, cost_rate, bill_rate, time_logs(id, started_at, duration_minutes, description, project_id, projects(name, bill_rate, clients(name, organization_id)))"
@@ -157,7 +163,6 @@ export async function listOrgTimesheets(status?: string): Promise<TimeLogShareRo
   const { data } = await query;
   if (!data?.length) return [];
 
-  const admin = await import("@/lib/supabase/admin").then((m) => m.createAdminClient());
   const { data: usersData } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
   const emailById = new Map(
     (usersData?.users ?? []).map((u) => [u.id, u.email ?? "Unknown"])
@@ -174,27 +179,114 @@ export async function listOrgTimesheets(status?: string): Promise<TimeLogShareRo
     ),
   ];
 
-  const assignmentRates = new Map<
+  // Map contractor project → agency end client/project
+  const mappingByContractorProject = new Map<
+    string,
+    {
+      targetProjectId: string;
+      targetClientName: string;
+      targetProjectName: string;
+      billRate: number | null;
+    }
+  >();
+  /** Key: `${contractorProjectId}:${contractorUserId}` → rates from mapped agency project assignment */
+  const assignmentByTarget = new Map<
     string,
     { cost_rate: number | null; bill_rate: number | null }
   >();
+
   if (projectIds.length) {
-    const { data: assignments } = await supabase
-      .from("project_contractors")
-      .select("project_id, contractor_user_id, cost_rate, bill_rate")
+    const { data: projectShares } = await admin
+      .from("project_shares")
+      .select("id, project_id")
+      .eq("organization_id", ctx.org.id)
+      .eq("status", "active")
       .in("project_id", projectIds);
-    for (const a of assignments ?? []) {
-      assignmentRates.set(`${a.project_id}:${a.contractor_user_id}`, {
-        cost_rate: a.cost_rate != null ? Number(a.cost_rate) : null,
-        bill_rate: a.bill_rate != null ? Number(a.bill_rate) : null,
-      });
+
+    const shareIds = (projectShares ?? []).map((s) => s.id);
+    const shareProjectById = new Map(
+      (projectShares ?? []).map((s) => [s.id, s.project_id])
+    );
+
+    if (shareIds.length) {
+      const { data: mappings } = await admin
+        .from("project_share_mappings")
+        .select("project_share_id, target_client_id, target_project_id")
+        .eq("organization_id", ctx.org.id)
+        .in("project_share_id", shareIds);
+
+      const targetProjectIds = [
+        ...new Set((mappings ?? []).map((m) => m.target_project_id)),
+      ];
+      const targetClientIds = [
+        ...new Set((mappings ?? []).map((m) => m.target_client_id)),
+      ];
+
+      const [{ data: targetProjects }, { data: targetClients }, { data: assignments }] =
+        await Promise.all([
+          targetProjectIds.length
+            ? admin
+                .from("projects")
+                .select("id, name, bill_rate")
+                .in("id", targetProjectIds)
+            : Promise.resolve({ data: [] as { id: string; name: string; bill_rate: number | null }[] }),
+          targetClientIds.length
+            ? admin.from("clients").select("id, name").in("id", targetClientIds)
+            : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+          targetProjectIds.length
+            ? admin
+                .from("project_contractors")
+                .select("project_id, contractor_user_id, cost_rate, bill_rate")
+                .in("project_id", targetProjectIds)
+            : Promise.resolve({
+                data: [] as {
+                  project_id: string;
+                  contractor_user_id: string;
+                  cost_rate: number | null;
+                  bill_rate: number | null;
+                }[],
+              }),
+        ]);
+
+      const projectMeta = new Map(
+        (targetProjects ?? []).map((p) => [
+          p.id,
+          {
+            name: p.name,
+            billRate: p.bill_rate != null ? Number(p.bill_rate) : null,
+          },
+        ])
+      );
+      const clientMeta = new Map((targetClients ?? []).map((c) => [c.id, c.name]));
+
+      for (const m of mappings ?? []) {
+        const contractorProjectId = shareProjectById.get(m.project_share_id);
+        if (!contractorProjectId) continue;
+        const tp = projectMeta.get(m.target_project_id);
+        mappingByContractorProject.set(contractorProjectId, {
+          targetProjectId: m.target_project_id,
+          targetClientName: clientMeta.get(m.target_client_id) ?? "—",
+          targetProjectName: tp?.name ?? "—",
+          billRate: tp?.billRate ?? null,
+        });
+      }
+
+      for (const a of assignments ?? []) {
+        for (const [contractorProjectId, mapping] of mappingByContractorProject) {
+          if (mapping.targetProjectId !== a.project_id) continue;
+          assignmentByTarget.set(`${contractorProjectId}:${a.contractor_user_id}`, {
+            cost_rate: a.cost_rate != null ? Number(a.cost_rate) : null,
+            bill_rate: a.bill_rate != null ? Number(a.bill_rate) : null,
+          });
+        }
+      }
     }
   }
 
   const linkRates = new Map<string, number | null>();
   const contractorIds = [...new Set(data.map((row) => row.submitted_by))];
   if (contractorIds.length) {
-    const { data: links } = await supabase
+    const { data: links } = await admin
       .from("contractor_org_links")
       .select("contractor_user_id, default_cost_rate")
       .eq("organization_id", ctx.org.id)
@@ -223,13 +315,15 @@ export async function listOrgTimesheets(status?: string): Promise<TimeLogShareRo
       } | null;
       if (!log) return null;
 
-      const assignment = assignmentRates.get(`${log.project_id}:${row.submitted_by}`);
+      const mapping = mappingByContractorProject.get(log.project_id);
+      const assignment = assignmentByTarget.get(`${log.project_id}:${row.submitted_by}`);
       const orgLinkCost = linkRates.get(row.submitted_by) ?? null;
-      const projectBill =
-        log.projects?.bill_rate != null ? Number(log.projects.bill_rate) : null;
 
       const defaultCostRate = assignment?.cost_rate ?? orgLinkCost;
-      const defaultBillRate = assignment?.bill_rate ?? projectBill;
+      const defaultBillRate =
+        assignment?.bill_rate ??
+        mapping?.billRate ??
+        (log.projects?.bill_rate != null ? Number(log.projects.bill_rate) : null);
 
       return {
         shareId: row.id,
@@ -239,6 +333,10 @@ export async function listOrgTimesheets(status?: string): Promise<TimeLogShareRo
         contractorEmail: emailById.get(row.submitted_by) ?? "Unknown",
         clientName: log.projects?.clients?.name ?? "—",
         projectName: log.projects?.name ?? "—",
+        mappedClientName: mapping?.targetClientName ?? null,
+        mappedProjectName: mapping?.targetProjectName ?? null,
+        mappedProjectId: mapping?.targetProjectId ?? null,
+        isMapped: Boolean(mapping),
         durationMinutes: log.duration_minutes ?? 0,
         description: log.description,
         startedAt: log.started_at,
@@ -263,51 +361,81 @@ async function resolveApprovalRates(
   shareId: string,
   overrides?: { costRate?: number | null; billRate?: number | null }
 ): Promise<{ costRate: number | null; billRate: number | null }> {
-  const { data: share } = await supabase
+  const admin = await import("@/lib/supabase/admin").then((m) => m.createAdminClient());
+
+  const { data: share } = await admin
     .from("time_log_shares")
-    .select(
-      "submitted_by, time_logs(project_id, projects(bill_rate, clients(organization_id)))"
-    )
+    .select("submitted_by, time_logs(project_id)")
     .eq("id", shareId)
     .eq("organization_id", orgId)
     .maybeSingle();
 
   if (!share) return { costRate: null, billRate: null };
 
-  const log = share.time_logs as unknown as {
-    project_id: string;
-    projects: { bill_rate: number | null } | null;
-  } | null;
+  const log = share.time_logs as unknown as { project_id: string } | null;
+  const contractorProjectId = log?.project_id;
 
-  const [{ data: link }, { data: assignment }] = await Promise.all([
-    supabase
-      .from("contractor_org_links")
-      .select("default_cost_rate")
+  const { data: link } = await admin
+    .from("contractor_org_links")
+    .select("default_cost_rate")
+    .eq("organization_id", orgId)
+    .eq("contractor_user_id", share.submitted_by)
+    .maybeSingle();
+
+  let mappedTargetProjectId: string | null = null;
+  let mappedBillRate: number | null = null;
+  let assignmentCost: number | null = null;
+  let assignmentBill: number | null = null;
+
+  if (contractorProjectId) {
+    const { data: projectShare } = await admin
+      .from("project_shares")
+      .select("id")
       .eq("organization_id", orgId)
-      .eq("contractor_user_id", share.submitted_by)
-      .maybeSingle(),
-    log?.project_id
-      ? supabase
-          .from("project_contractors")
-          .select("cost_rate, bill_rate")
-          .eq("project_id", log.project_id)
-          .eq("contractor_user_id", share.submitted_by)
-          .maybeSingle()
-      : Promise.resolve({ data: null }),
-  ]);
+      .eq("project_id", contractorProjectId)
+      .eq("status", "active")
+      .maybeSingle();
+
+    if (projectShare) {
+      const { data: mapping } = await admin
+        .from("project_share_mappings")
+        .select("target_project_id")
+        .eq("organization_id", orgId)
+        .eq("project_share_id", projectShare.id)
+        .maybeSingle();
+
+      if (mapping?.target_project_id) {
+        mappedTargetProjectId = mapping.target_project_id;
+        const [{ data: targetProject }, { data: assignment }] = await Promise.all([
+          admin
+            .from("projects")
+            .select("bill_rate")
+            .eq("id", mapping.target_project_id)
+            .maybeSingle(),
+          admin
+            .from("project_contractors")
+            .select("cost_rate, bill_rate")
+            .eq("project_id", mapping.target_project_id)
+            .eq("contractor_user_id", share.submitted_by)
+            .maybeSingle(),
+        ]);
+        mappedBillRate =
+          targetProject?.bill_rate != null ? Number(targetProject.bill_rate) : null;
+        assignmentCost =
+          assignment?.cost_rate != null ? Number(assignment.cost_rate) : null;
+        assignmentBill =
+          assignment?.bill_rate != null ? Number(assignment.bill_rate) : null;
+      }
+    }
+  }
+
+  void mappedTargetProjectId;
+  void supabase;
 
   const defaultCost =
-    assignment?.cost_rate != null
-      ? Number(assignment.cost_rate)
-      : link?.default_cost_rate != null
-        ? Number(link.default_cost_rate)
-        : null;
-  const defaultBill =
-    assignment?.bill_rate != null
-      ? Number(assignment.bill_rate)
-      : log?.projects?.bill_rate != null
-        ? Number(log.projects.bill_rate)
-        : null;
+    assignmentCost ??
+    (link?.default_cost_rate != null ? Number(link.default_cost_rate) : null);
+  const defaultBill = assignmentBill ?? mappedBillRate;
 
   return {
     costRate: overrides?.costRate !== undefined ? overrides.costRate : defaultCost,

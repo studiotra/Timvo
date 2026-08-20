@@ -66,15 +66,62 @@ export async function listOrgProjects(clientId: string): Promise<OrgProjectRow[]
   if (!projects?.length) return [];
 
   const projectIds = projects.map((p) => p.id);
+
+  // Include hours from contractor projects mapped onto these agency projects
+  const { data: mappings } = await admin
+    .from("project_share_mappings")
+    .select("target_project_id, project_share_id")
+    .eq("organization_id", ctx.org.id)
+    .in("target_project_id", projectIds);
+
+  const shareIds = [...new Set((mappings ?? []).map((m) => m.project_share_id))];
+  const { data: mappedShares } = shareIds.length
+    ? await admin
+        .from("project_shares")
+        .select("id, project_id, status")
+        .in("id", shareIds)
+        .eq("status", "active")
+    : { data: [] as { id: string; project_id: string; status: string }[] };
+
+  const shareProjectById = new Map((mappedShares ?? []).map((s) => [s.id, s.project_id]));
+  const logProjectIds = new Set(projectIds);
+  for (const m of mappings ?? []) {
+    const contractorProjectId = shareProjectById.get(m.project_share_id);
+    if (contractorProjectId) logProjectIds.add(contractorProjectId);
+  }
+
   const { data: logs } = await admin
     .from("time_logs")
     .select("project_id, duration_minutes")
-    .in("project_id", projectIds);
+    .in("project_id", [...logProjectIds]);
+
+  const hoursTowardTarget: Record<string, number> = {};
+  for (const id of projectIds) hoursTowardTarget[id] = 0;
+
+  const targetByContractorProject = new Map<string, string>();
+  for (const m of mappings ?? []) {
+    const contractorProjectId = shareProjectById.get(m.project_share_id);
+    if (contractorProjectId) {
+      targetByContractorProject.set(contractorProjectId, m.target_project_id);
+    }
+  }
+
+  for (const log of logs ?? []) {
+    const mins = log.duration_minutes ?? 0;
+    if (hoursTowardTarget[log.project_id] != null) {
+      hoursTowardTarget[log.project_id] += mins;
+    }
+    const mappedTarget = targetByContractorProject.get(log.project_id);
+    if (mappedTarget && hoursTowardTarget[mappedTarget] != null) {
+      hoursTowardTarget[mappedTarget] += mins;
+    }
+  }
 
   const { data: assignments } = await admin
     .from("project_contractors")
     .select("id, project_id, contractor_user_id, cost_rate, bill_rate")
     .in("project_id", projectIds);
+
   const { data: usersData } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
   const emailById = new Map(
     (usersData?.users ?? []).map((u) => [u.id, u.email ?? "Unknown"])
@@ -92,12 +139,6 @@ export async function listOrgProjects(clientId: string): Promise<OrgProjectRow[]
     });
   }
 
-  const usedByProject: Record<string, number> = {};
-  for (const log of logs ?? []) {
-    usedByProject[log.project_id] =
-      (usedByProject[log.project_id] ?? 0) + (log.duration_minutes ?? 0);
-  }
-
   return projects.map((p) => ({
     id: p.id,
     name: p.name,
@@ -107,7 +148,7 @@ export async function listOrgProjects(clientId: string): Promise<OrgProjectRow[]
     retainer_hours: p.retainer_hours != null ? Number(p.retainer_hours) : null,
     retainer_amount: p.retainer_amount != null ? Number(p.retainer_amount) : null,
     alert_threshold_pct: p.alert_threshold_pct,
-    usedHours: (usedByProject[p.id] ?? 0) / 60,
+    usedHours: (hoursTowardTarget[p.id] ?? 0) / 60,
     contractors: contractorsByProject[p.id] ?? [],
   }));
 }
@@ -253,30 +294,63 @@ export async function getOrgRetainerAlerts(): Promise<RetainerAlertRow[]> {
   const ctx = await getOrgContext();
   if (!ctx) return [];
 
-  const supabase = await createClient();
-  const { data: clients } = await supabase
+  const admin = createAdminClient();
+  const { data: clients } = await admin
     .from("clients")
-    .select("id, name, projects(id, name, retainer_hours, status)")
+    .select("id, name, projects(id, name, retainer_hours, alert_threshold_pct, status)")
     .eq("organization_id", ctx.org.id);
+
+  // Hours on contractor projects that map to each agency project
+  const { data: mappings } = await admin
+    .from("project_share_mappings")
+    .select("target_project_id, project_share_id")
+    .eq("organization_id", ctx.org.id);
+
+  const shareIds = [...new Set((mappings ?? []).map((m) => m.project_share_id))];
+  const { data: projectShares } = shareIds.length
+    ? await admin
+        .from("project_shares")
+        .select("id, project_id, status")
+        .in("id", shareIds)
+    : { data: [] as { id: string; project_id: string; status: string }[] };
+
+  const shareById = new Map((projectShares ?? []).map((s) => [s.id, s]));
+  const contractorProjectsByTarget = new Map<string, string[]>();
+  for (const m of mappings ?? []) {
+    const share = shareById.get(m.project_share_id);
+    if (!share || share.status !== "active") continue;
+    const list = contractorProjectsByTarget.get(m.target_project_id) ?? [];
+    list.push(share.project_id);
+    contractorProjectsByTarget.set(m.target_project_id, list);
+  }
 
   const alerts: RetainerAlertRow[] = [];
   for (const client of clients ?? []) {
-    const projects = (client.projects as {
-      id: string;
-      name: string;
-      retainer_hours: number | null;
-      status: string;
-    }[]) ?? [];
+    const projects =
+      (client.projects as {
+        id: string;
+        name: string;
+        retainer_hours: number | null;
+        alert_threshold_pct: number | null;
+        status: string;
+      }[]) ?? [];
     for (const project of projects) {
       if (!project.retainer_hours || project.status !== "active") continue;
-      const { data: logs } = await supabase
+
+      const sourceProjectIds = [
+        project.id,
+        ...(contractorProjectsByTarget.get(project.id) ?? []),
+      ];
+      const { data: logs } = await admin
         .from("time_logs")
         .select("duration_minutes")
-        .eq("project_id", project.id);
+        .in("project_id", sourceProjectIds);
+
       const usedMins = (logs ?? []).reduce((s, l) => s + (l.duration_minutes ?? 0), 0);
       const usedHours = usedMins / 60;
+      const threshold = project.alert_threshold_pct ?? 80;
       const pct = (usedHours / Number(project.retainer_hours)) * 100;
-      if (pct >= 80) {
+      if (pct >= threshold) {
         alerts.push({
           projectId: project.id,
           projectName: project.name,
@@ -303,58 +377,86 @@ export async function getOrgProfitabilityReport(): Promise<ProfitabilityRow[]> {
   const ctx = await getOrgContext();
   if (!ctx) return [];
 
-  const supabase = await createClient();
-  const { data: shares } = await supabase
+  const admin = createAdminClient();
+  const { data: shares } = await admin
     .from("time_log_shares")
-    .select(
-      "cost_rate, bill_rate, time_logs(duration_minutes), organizations(name)"
-    )
+    .select("cost_rate, bill_rate, submitted_by, time_logs(duration_minutes, project_id)")
     .eq("organization_id", ctx.org.id)
     .in("status", ["approved", "published"]);
 
-  const byContractor: Record<string, { hours: number; cost: number; revenue: number }> = {};
+  const { data: projectShares } = await admin
+    .from("project_shares")
+    .select("id, project_id")
+    .eq("organization_id", ctx.org.id)
+    .eq("status", "active");
+
+  const shareIds = (projectShares ?? []).map((s) => s.id);
+  const contractorProjectToShare = new Map(
+    (projectShares ?? []).map((s) => [s.project_id, s.id])
+  );
+
+  const { data: mappings } = shareIds.length
+    ? await admin
+        .from("project_share_mappings")
+        .select("project_share_id, target_client_id, target_project_id")
+        .eq("organization_id", ctx.org.id)
+        .in("project_share_id", shareIds)
+    : { data: [] as { project_share_id: string; target_client_id: string; target_project_id: string }[] };
+
+  const targetClientIds = [...new Set((mappings ?? []).map((m) => m.target_client_id))];
+  const targetProjectIds = [...new Set((mappings ?? []).map((m) => m.target_project_id))];
+
+  const [{ data: targetClients }, { data: targetProjects }] = await Promise.all([
+    targetClientIds.length
+      ? admin.from("clients").select("id, name").in("id", targetClientIds)
+      : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+    targetProjectIds.length
+      ? admin.from("projects").select("id, name").in("id", targetProjectIds)
+      : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+  ]);
+
+  const clientName = new Map((targetClients ?? []).map((c) => [c.id, c.name]));
+  const projectName = new Map((targetProjects ?? []).map((p) => [p.id, p.name]));
+  const mappingByShareId = new Map(
+    (mappings ?? []).map((m) => [
+      m.project_share_id,
+      {
+        label: `${clientName.get(m.target_client_id) ?? "Client"} · ${projectName.get(m.target_project_id) ?? "Project"}`,
+      },
+    ])
+  );
+
+  const byLabel: Record<string, { hours: number; cost: number; revenue: number }> = {};
 
   for (const share of shares ?? []) {
-    const log = share.time_logs as unknown as { duration_minutes: number | null } | null;
+    const log = share.time_logs as unknown as {
+      duration_minutes: number | null;
+      project_id: string;
+    } | null;
     const mins = log?.duration_minutes ?? 0;
     const hours = mins / 60;
     const costRate = Number(share.cost_rate) || 0;
     const billRate = Number(share.bill_rate) || 0;
-    const key = "Contractor submissions";
-    if (!byContractor[key]) byContractor[key] = { hours: 0, cost: 0, revenue: 0 };
-    byContractor[key].hours += hours;
-    byContractor[key].cost += hours * costRate;
-    byContractor[key].revenue += hours * billRate;
+
+    const projectShareId = log?.project_id
+      ? contractorProjectToShare.get(log.project_id)
+      : undefined;
+    const mapped = projectShareId ? mappingByShareId.get(projectShareId) : undefined;
+    const key = mapped?.label ?? "Unmapped contractor submissions";
+
+    if (!byLabel[key]) byLabel[key] = { hours: 0, cost: 0, revenue: 0 };
+    byLabel[key].hours += hours;
+    byLabel[key].cost += hours * costRate;
+    byLabel[key].revenue += hours * billRate;
   }
 
-  const { data: orgProjects } = await supabase
-    .from("projects")
-    .select("id, name, bill_rate, clients!inner(name, organization_id)")
-    .eq("clients.organization_id", ctx.org.id);
-
-  for (const project of orgProjects ?? []) {
-    const client = project.clients as unknown as { name: string };
-    const { data: logs } = await supabase
-      .from("time_logs")
-      .select("duration_minutes")
-      .eq("project_id", project.id);
-    const hours =
-      (logs ?? []).reduce((s, l) => s + (l.duration_minutes ?? 0), 0) / 60;
-    if (hours <= 0) continue;
-    const billRate = Number(project.bill_rate) || 0;
-    const key = `${client.name} · ${project.name}`;
-    byContractor[key] = {
-      hours,
-      cost: 0,
-      revenue: hours * billRate,
-    };
-  }
-
-  return Object.entries(byContractor).map(([label, v]) => ({
-    label,
-    hours: Math.round(v.hours * 10) / 10,
-    cost: Math.round(v.cost * 100) / 100,
-    revenue: Math.round(v.revenue * 100) / 100,
-    margin: Math.round((v.revenue - v.cost) * 100) / 100,
-  }));
+  return Object.entries(byLabel)
+    .map(([label, v]) => ({
+      label,
+      hours: Math.round(v.hours * 10) / 10,
+      cost: Math.round(v.cost * 100) / 100,
+      revenue: Math.round(v.revenue * 100) / 100,
+      margin: Math.round((v.revenue - v.cost) * 100) / 100,
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label));
 }

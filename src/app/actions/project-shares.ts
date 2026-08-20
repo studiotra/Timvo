@@ -111,15 +111,49 @@ export async function getProjectSharesForProjects(
     .in("project_id", projectIds)
     .eq("status", "active");
 
+  const shareIds = (data ?? []).map((r) => r.id);
+  const { data: mappings } = shareIds.length
+    ? await supabase
+        .from("project_share_mappings")
+        .select("project_share_id, target_client_id, target_project_id")
+        .in("project_share_id", shareIds)
+    : { data: [] as { project_share_id: string; target_client_id: string; target_project_id: string }[] };
+
+  const targetClientIds = [...new Set((mappings ?? []).map((m) => m.target_client_id))];
+  const targetProjectIds = [...new Set((mappings ?? []).map((m) => m.target_project_id))];
+  const admin = createAdminClient();
+  const [{ data: clients }, { data: projects }] = await Promise.all([
+    targetClientIds.length
+      ? admin.from("clients").select("id, name").in("id", targetClientIds)
+      : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+    targetProjectIds.length
+      ? admin.from("projects").select("id, name").in("id", targetProjectIds)
+      : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+  ]);
+  const clientName = new Map((clients ?? []).map((c) => [c.id, c.name]));
+  const projectName = new Map((projects ?? []).map((p) => [p.id, p.name]));
+  const mappingByShare = new Map(
+    (mappings ?? []).map((m) => [
+      m.project_share_id,
+      {
+        mappedClientName: clientName.get(m.target_client_id) ?? null,
+        mappedProjectName: projectName.get(m.target_project_id) ?? null,
+      },
+    ])
+  );
+
   const out: Record<string, ProjectShareStatus[]> = {};
   for (const row of data ?? []) {
     const org = row.organizations as unknown as { name: string } | null;
+    const mapping = mappingByShare.get(row.id);
     if (!out[row.project_id]) out[row.project_id] = [];
     out[row.project_id].push({
       shareId: row.id,
       organizationId: row.organization_id,
       organizationName: org?.name ?? "Organization",
       status: row.status,
+      mappedClientName: mapping?.mappedClientName ?? null,
+      mappedProjectName: mapping?.mappedProjectName ?? null,
     });
   }
   return out;

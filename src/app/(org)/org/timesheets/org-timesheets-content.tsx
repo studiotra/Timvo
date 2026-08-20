@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { reviewTimeLogShare, type TimeLogShareRow } from "@/app/actions/org-timesheets";
 import { useState } from "react";
+import Link from "next/link";
 
 function formatDuration(mins: number) {
   const h = Math.floor(mins / 60);
@@ -47,8 +48,31 @@ function ShareRow({ row }: { row: TimeLogShareRow }) {
     <>
       <tr className="border-b border-[var(--border)]">
         <td className="py-3 pr-4 text-sm text-[var(--text-primary)]">{row.contractorEmail}</td>
-        <td className="py-3 pr-4 text-sm">{row.clientName}</td>
-        <td className="py-3 pr-4 text-sm">{row.projectName}</td>
+        <td className="py-3 pr-4 text-sm">
+          {row.isMapped ? (
+            <div>
+              <div className="text-[var(--text-primary)]">
+                {row.mappedClientName} · {row.mappedProjectName}
+              </div>
+              <div className="text-[10px] text-[var(--text-muted)]">
+                from {row.clientName} / {row.projectName}
+              </div>
+            </div>
+          ) : (
+            <div>
+              <div className="text-amber-400/90">Unmapped</div>
+              <div className="text-[10px] text-[var(--text-muted)]">
+                {row.clientName} / {row.projectName}
+              </div>
+              <Link
+                href="/org/assignments"
+                className="text-[10px] text-violet-400 hover:underline"
+              >
+                Assign on board →
+              </Link>
+            </div>
+          )}
+        </td>
         <td className="py-3 pr-4 font-mono text-sm">{formatDuration(row.durationMinutes)}</td>
         <td className="py-3 pr-4 text-sm">
           {row.status === "approved" || row.status === "published" ? (
@@ -83,7 +107,7 @@ function ShareRow({ row }: { row: TimeLogShareRow }) {
       </tr>
       {approving && row.status === "submitted" ? (
         <tr className="border-b border-[var(--border)] bg-[var(--bg-app)]/50">
-          <td colSpan={6} className="px-4 py-3">
+          <td colSpan={5} className="px-4 py-3">
             <div className="flex flex-wrap items-end gap-3">
               <label className="text-xs text-[var(--text-secondary)]">
                 Cost rate ($/hr)
@@ -118,13 +142,52 @@ function ShareRow({ row }: { row: TimeLogShareRow }) {
                 {busy ? "Saving…" : "Confirm approve"}
               </button>
               <p className="w-full text-xs text-[var(--text-muted)]">
-                Defaults from project assignment, project bill rate, or org contractor link.
+                {row.isMapped
+                  ? "Defaults from mapped agency project assignment / bill rate."
+                  : "Not mapped yet — map on Assignments for end-client defaults."}
               </p>
             </div>
           </td>
         </tr>
       ) : null}
     </>
+  );
+}
+
+function TimesheetTable({
+  rows,
+  empty,
+}: {
+  rows: TimeLogShareRow[];
+  empty: string;
+}) {
+  if (rows.length === 0) {
+    return (
+      <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-8 text-center text-[var(--text-muted)]">
+        {empty}
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--bg-card)]">
+      <table className="w-full min-w-[720px] text-left">
+        <thead>
+          <tr className="border-b border-[var(--border)] text-[11px] uppercase text-[var(--text-muted)]">
+            <th className="px-4 py-3">Contractor</th>
+            <th className="py-3">End client / project</th>
+            <th className="py-3">Duration</th>
+            <th className="py-3">Status / rates</th>
+            <th className="py-3">Actions</th>
+          </tr>
+        </thead>
+        <tbody className="px-4">
+          {rows.map((row) => (
+            <ShareRow key={row.shareId} row={row} />
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -135,65 +198,37 @@ export function OrgTimesheetsContent({
   pending: TimeLogShareRow[];
   all: TimeLogShareRow[];
 }) {
+  const unmappedPending = pending.filter((r) => !r.isMapped).length;
+
   return (
     <div>
       <h1 className="mb-2 text-2xl font-bold text-[var(--text-primary)]">Timesheets</h1>
       <p className="mb-6 text-sm text-[var(--text-secondary)]">
-        Review time contractors submit to your organization. Set cost and bill rates when
-        approving for profitability reports.
+        Review submitted time in the context of your end-client projects. Map shares on{" "}
+        <Link href="/org/assignments" className="text-violet-400 hover:underline">
+          Assignments
+        </Link>{" "}
+        first for the best rate defaults.
       </p>
 
-      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[var(--text-muted)]">
-        Pending ({pending.length})
-      </h2>
-      {pending.length === 0 ? (
-        <div className="mb-8 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-8 text-center text-[var(--text-muted)]">
-          No pending submissions.
-        </div>
-      ) : (
-        <div className="mb-8 overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--bg-card)]">
-          <table className="w-full min-w-[720px] px-4 text-left">
-            <thead>
-              <tr className="border-b border-[var(--border)] text-[11px] uppercase text-[var(--text-muted)]">
-                <th className="px-4 py-3">Contractor</th>
-                <th className="py-3">Client</th>
-                <th className="py-3">Project</th>
-                <th className="py-3">Duration</th>
-                <th className="py-3">Status / rates</th>
-                <th className="py-3">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="px-4">
-              {pending.map((row) => (
-                <ShareRow key={row.shareId} row={row} />
-              ))}
-            </tbody>
-          </table>
+      {unmappedPending > 0 && (
+        <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-amber-200">
+          {unmappedPending} pending submission{unmappedPending === 1 ? "" : "s"} not mapped to an
+          end-client project yet.
         </div>
       )}
 
       <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+        Pending ({pending.length})
+      </h2>
+      <div className="mb-8">
+        <TimesheetTable rows={pending} empty="No pending submissions." />
+      </div>
+
+      <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[var(--text-muted)]">
         All submissions
       </h2>
-      <div className="overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--bg-card)]">
-        <table className="w-full min-w-[720px] text-left">
-          <thead>
-            <tr className="border-b border-[var(--border)] text-[11px] uppercase text-[var(--text-muted)]">
-              <th className="px-4 py-3">Contractor</th>
-              <th className="py-3">Client</th>
-              <th className="py-3">Project</th>
-              <th className="py-3">Duration</th>
-              <th className="py-3">Status / rates</th>
-              <th className="py-3" />
-            </tr>
-          </thead>
-          <tbody>
-            {all.map((row) => (
-              <ShareRow key={row.shareId} row={row} />
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <TimesheetTable rows={all} empty="No submissions yet." />
     </div>
   );
 }

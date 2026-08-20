@@ -80,8 +80,8 @@ export function OrgReportsContent({
       </section>
 
       <p className="mt-6 text-xs text-[var(--text-muted)]">
-        Assign contractors to projects with default cost/bill rates, or set rates when approving
-        timesheets.
+        Profitability groups approved submissions by mapped end-client project. Retainer usage
+        includes hours from mapped contractor projects.
       </p>
     </div>
   );

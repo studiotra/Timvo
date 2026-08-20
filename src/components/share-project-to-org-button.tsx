@@ -71,17 +71,26 @@ export function ShareProjectToOrgButton({
               {active.map((s) => (
                 <li
                   key={s.shareId}
-                  className="flex items-center justify-between gap-2 text-xs text-[var(--text-secondary)]"
+                  className="flex flex-col gap-0.5 text-xs text-[var(--text-secondary)]"
                 >
-                  <span>{s.organizationName}</span>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => handleRevoke(s.organizationId)}
-                    className="text-red-400 hover:text-red-300 disabled:opacity-50"
-                  >
-                    Revoke
-                  </button>
+                  <div className="flex items-center justify-between gap-2">
+                    <span>{s.organizationName}</span>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => handleRevoke(s.organizationId)}
+                      className="text-red-400 hover:text-red-300 disabled:opacity-50"
+                    >
+                      Revoke
+                    </button>
+                  </div>
+                  {s.mappedClientName && s.mappedProjectName ? (
+                    <span className="text-[10px] text-emerald-400">
+                      Mapped → {s.mappedClientName} · {s.mappedProjectName}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-amber-400/80">Awaiting agency mapping</span>
+                  )}
                 </li>
               ))}
             </ul>
