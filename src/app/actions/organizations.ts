@@ -177,7 +177,8 @@ export async function listOrgClients(): Promise<OrgClientRow[]> {
   if (error || !clients?.length) return [];
 
   const clientIds = clients.map((c) => c.id);
-  const { data: projects } = await supabase
+  const admin = createAdminClient();
+  const { data: projects } = await admin
     .from("projects")
     .select("client_id")
     .in("client_id", clientIds);
@@ -313,7 +314,8 @@ export async function getOrgDashboardStats() {
   const clientIds = (orgClients ?? []).map((c) => c.id);
   let projectCount = 0;
   if (clientIds.length) {
-    const { count } = await supabase
+    const admin = createAdminClient();
+    const { count } = await admin
       .from("projects")
       .select("id", { count: "exact", head: true })
       .in("client_id", clientIds);

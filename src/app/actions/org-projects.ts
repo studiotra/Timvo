@@ -1,5 +1,6 @@
 "use server";
 
+import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { getOrgContext } from "@/app/actions/organizations";
 import { revalidatePath } from "next/cache";
@@ -44,8 +45,17 @@ export async function listOrgProjects(clientId: string): Promise<OrgProjectRow[]
   const ctx = await getOrgContext();
   if (!ctx) return [];
 
-  const supabase = await createClient();
-  const { data: projects } = await supabase
+  const admin = createAdminClient();
+  const { data: orgClient } = await admin
+    .from("clients")
+    .select("id")
+    .eq("id", clientId)
+    .eq("organization_id", ctx.org.id)
+    .maybeSingle();
+  if (!orgClient) return [];
+
+  // Service role: projects SELECT policies still recurse via clients RLS.
+  const { data: projects } = await admin
     .from("projects")
     .select(
       "id, name, status, billing_type, bill_rate, retainer_hours, retainer_amount, alert_threshold_pct"
@@ -56,17 +66,15 @@ export async function listOrgProjects(clientId: string): Promise<OrgProjectRow[]
   if (!projects?.length) return [];
 
   const projectIds = projects.map((p) => p.id);
-  const { data: logs } = await supabase
+  const { data: logs } = await admin
     .from("time_logs")
     .select("project_id, duration_minutes")
     .in("project_id", projectIds);
 
-  const { data: assignments } = await supabase
+  const { data: assignments } = await admin
     .from("project_contractors")
     .select("id, project_id, contractor_user_id, cost_rate, bill_rate")
     .in("project_id", projectIds);
-
-  const admin = await import("@/lib/supabase/admin").then((m) => m.createAdminClient());
   const { data: usersData } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
   const emailById = new Map(
     (usersData?.users ?? []).map((u) => [u.id, u.email ?? "Unknown"])
