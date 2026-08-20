@@ -66,7 +66,7 @@ export function SubmitToOrgBar({
             : "Select logs below"}
       </button>
       <span className="text-xs text-[var(--text-muted)]">
-        Only logs from projects shared with the agency can be submitted
+        Submit any of your project logs — they&apos;ll appear in the agency inbox automatically
       </span>
     </div>
   );

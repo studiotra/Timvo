@@ -64,7 +64,10 @@ export function ShareProjectToOrgButton({
       {open && (
         <div className="absolute right-0 z-20 mt-2 w-72 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-3 shadow-xl">
           <p className="mb-2 text-xs font-semibold text-[var(--text-primary)]">
-            Share project tracking with agency
+            Share project with agency
+          </p>
+          <p className="mb-2 text-[10px] text-[var(--text-muted)]">
+            Optional — submitting logs also shares the project automatically.
           </p>
           {active.length > 0 && (
             <ul className="mb-3 space-y-1">

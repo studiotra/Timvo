@@ -61,38 +61,44 @@ export async function submitTimeLogsToOrg(
 
   const { data: logProjects } = await supabase
     .from("time_logs")
-    .select("id, project_id, projects(client_id, clients(organization_id))")
+    .select("id, project_id, projects(client_id, clients(user_id, organization_id))")
     .in("id", toSubmit);
 
   const projectIds = [
     ...new Set((logProjects ?? []).map((l) => l.project_id).filter(Boolean)),
   ];
 
-  const { data: shares } = await supabase
-    .from("project_shares")
-    .select("project_id")
-    .eq("organization_id", organizationId)
-    .eq("shared_by", user.id)
-    .eq("status", "active")
-    .in("project_id", projectIds);
-
-  const sharedProjectIds = new Set((shares ?? []).map((s) => s.project_id));
-
   for (const log of logProjects ?? []) {
     const project = log.projects as unknown as {
       client_id: string;
-      clients: { organization_id: string | null } | null;
+      clients: { user_id: string; organization_id: string | null } | null;
     } | null;
-    const logOrgId = project?.clients?.organization_id;
-    if (logOrgId && logOrgId !== organizationId) {
-      return { error: "One or more logs belong to a different organization" };
+    if (!project?.clients || project.clients.user_id !== user.id) {
+      return { error: "You can only submit time from your own projects" };
     }
-    if (!sharedProjectIds.has(log.project_id)) {
+    // Org-owned projects belong to an agency workspace — don't submit those as contractor shares
+    if (project.clients.organization_id) {
       return {
         error:
-          "Only logs from projects shared with this agency can be submitted. Share the project first.",
+          "Use your own contractor projects when submitting to an agency (not agency-owned projects).",
       };
     }
+  }
+
+  // Auto-share projects on submit so they appear in the agency Assignments inbox
+  // without requiring a prior agency assignment or manual share step.
+  if (projectIds.length) {
+    const shareRows = projectIds.map((project_id) => ({
+      project_id,
+      organization_id: organizationId,
+      shared_by: user.id,
+      status: "active" as const,
+      updated_at: new Date().toISOString(),
+    }));
+    const { error: shareError } = await supabase.from("project_shares").upsert(shareRows, {
+      onConflict: "project_id,organization_id",
+    });
+    if (shareError) return { error: shareError.message };
   }
 
   const rows = toSubmit.map((time_log_id) => ({
@@ -113,7 +119,9 @@ export async function submitTimeLogsToOrg(
   }
 
   revalidatePath("/logs");
+  revalidatePath("/clients");
   revalidatePath("/org/timesheets");
+  revalidatePath("/org/assignments");
   return { submitted: toSubmit.length };
 }
 
