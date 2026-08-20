@@ -2,6 +2,8 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { SettingsForm } from "./settings-form";
 import { SlackSettings } from "./slack-settings";
+import { AgencyConnectionsSettings } from "@/components/agency-connections-settings";
+import { getContractorOrganizations } from "@/app/actions/organizations";
 import { t, parseLocale } from "@/lib/i18n";
 
 export default async function SettingsPage({
@@ -26,11 +28,14 @@ export default async function SettingsPage({
 
   const locale = parseLocale(profile?.locale);
 
-  const { data: slackConn } = await supabase
-    .from("slack_connections")
-    .select("slack_team_name, slack_user_id")
-    .eq("user_id", user.id)
-    .maybeSingle();
+  const [{ data: slackConn }, organizations] = await Promise.all([
+    supabase
+      .from("slack_connections")
+      .select("slack_team_name, slack_user_id")
+      .eq("user_id", user.id)
+      .maybeSingle(),
+    getContractorOrganizations(),
+  ]);
 
   return (
     <div className="max-w-2xl space-y-7">
@@ -48,6 +53,8 @@ export default async function SettingsPage({
           {t(locale, "settings.emailHint")}
         </p>
       </section>
+
+      <AgencyConnectionsSettings organizations={organizations} />
 
       <SlackSettings
         connection={slackConn}

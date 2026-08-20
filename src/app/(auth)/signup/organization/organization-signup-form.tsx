@@ -6,20 +6,31 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { signUpOrganization } from "@/app/actions/organizations";
 
-export function OrganizationSignupForm() {
+export function OrganizationSignupForm({
+  inviteToken,
+  inviteEmail,
+  contractorName,
+  inviteInvalid,
+}: {
+  inviteToken?: string | null;
+  inviteEmail?: string | null;
+  contractorName?: string | null;
+  inviteInvalid?: boolean;
+}) {
   const router = useRouter();
   const [orgName, setOrgName] = useState("");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(inviteEmail ?? "");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const emailLocked = Boolean(inviteToken && inviteEmail);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
-    const result = await signUpOrganization(orgName, email, password);
+    const result = await signUpOrganization(orgName, email, password, inviteToken);
     if (result.error) {
       setError(result.error);
       setLoading(false);
@@ -48,10 +59,23 @@ export function OrganizationSignupForm() {
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold text-white">Timvo for Organizations</h1>
           <p className="text-gray-400 text-sm mt-2">
-            Manage clients, contractors, and timesheet approvals in one place.
+            {contractorName
+              ? `${contractorName} invited you to manage clients, contractors, and timesheets.`
+              : "Manage clients, contractors, and timesheet approvals in one place."}
           </p>
         </div>
         <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-6 shadow-xl">
+          {inviteInvalid && (
+            <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+              This invite link is invalid or expired. You can still create an organization
+              account; the contractor can link you later.
+            </div>
+          )}
+          {inviteToken && (
+            <div className="mb-4 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-3 py-2 text-sm text-[var(--text-secondary)]">
+              After signup, you&apos;ll be linked to this contractor automatically.
+            </div>
+          )}
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-400 mb-1.5">
@@ -72,7 +96,8 @@ export function OrganizationSignupForm() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="w-full px-3 py-2 bg-charcoal border border-[var(--border)] rounded-lg text-white"
+                readOnly={emailLocked}
+                className="w-full px-3 py-2 bg-charcoal border border-[var(--border)] rounded-lg text-white read-only:opacity-80"
               />
             </div>
             <div>

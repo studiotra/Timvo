@@ -168,7 +168,7 @@ export function ProjectContent({
               {sortedProjects.map((project) => (
                 <div
                   key={project.id}
-                  className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-card)] backdrop-blur-xl"
+                  className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] backdrop-blur-xl"
                 >
                   <div className="flex items-center justify-between gap-3 p-4">
                     <Link

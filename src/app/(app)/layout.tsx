@@ -1,7 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
 import { AppShell } from "@/components/app-shell";
+import { OrgLinkBanner } from "@/components/org-link-banner";
 import { LocaleProvider } from "@/contexts/locale-context";
 import { isPortalOnlyUser, isOrganizationPrimaryUser } from "@/lib/auth/routing";
+import { getUnacknowledgedOrgLinks } from "@/app/actions/organizations";
 import { parseLocale } from "@/lib/i18n";
 import { redirect } from "next/navigation";
 
@@ -24,6 +26,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     profile = data;
   }
   const locale = parseLocale(profile?.locale);
+  const unackedLinks = user ? await getUnacknowledgedOrgLinks() : [];
 
   return (
     <LocaleProvider locale={locale}>
@@ -37,6 +40,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         "?"
       }
     >
+      <OrgLinkBanner links={unackedLinks} />
       {children}
     </AppShell>
     </LocaleProvider>

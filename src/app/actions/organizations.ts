@@ -4,6 +4,10 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { getPrimaryOrganizationId } from "@/lib/auth/routing";
 import { revalidatePath } from "next/cache";
+import { Resend } from "resend";
+import { randomBytes } from "crypto";
+
+const ORG_INVITE_EXPIRY_DAYS = 14;
 
 function slugify(name: string): string {
   const base = name
@@ -15,6 +19,10 @@ function slugify(name: string): string {
   return base || "org";
 }
 
+function appBaseUrl() {
+  return (process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
+}
+
 export type OrganizationSummary = {
   id: string;
   name: string;
@@ -24,7 +32,8 @@ export type OrganizationSummary = {
 export async function signUpOrganization(
   orgName: string,
   email: string,
-  password: string
+  password: string,
+  inviteToken?: string | null
 ): Promise<{ error?: string }> {
   const trimmedName = orgName.trim();
   const trimmedEmail = email.trim().toLowerCase();
@@ -33,6 +42,33 @@ export async function signUpOrganization(
   if (password.length < 6) return { error: "Password must be at least 6 characters" };
 
   const admin = createAdminClient();
+
+  let invite: {
+    id: string;
+    email: string;
+    contractor_user_id: string;
+    status: string;
+    expires_at: string;
+  } | null = null;
+
+  if (inviteToken?.trim()) {
+    const { data } = await admin
+      .from("org_invites")
+      .select("id, email, contractor_user_id, status, expires_at")
+      .eq("token", inviteToken.trim())
+      .maybeSingle();
+    if (!data || data.status !== "pending") {
+      return { error: "This invite link is invalid or already used" };
+    }
+    if (new Date(data.expires_at) < new Date()) {
+      return { error: "This invite link has expired" };
+    }
+    if (data.email.toLowerCase() !== trimmedEmail) {
+      return { error: `Sign up with the invited email (${data.email})` };
+    }
+    invite = data;
+  }
+
   const { data: created, error: authError } = await admin.auth.admin.createUser({
     email: trimmedEmail,
     password,
@@ -80,6 +116,26 @@ export async function signUpOrganization(
       updated_at: new Date().toISOString(),
     })
     .eq("id", userId);
+
+  if (invite) {
+    await admin.from("contractor_org_links").upsert(
+      {
+        organization_id: org.id,
+        contractor_user_id: invite.contractor_user_id,
+        status: "active",
+        invited_by: userId,
+      },
+      { onConflict: "organization_id,contractor_user_id" }
+    );
+    await admin
+      .from("org_invites")
+      .update({
+        status: "accepted",
+        organization_id: org.id,
+        accepted_at: new Date().toISOString(),
+      })
+      .eq("id", invite.id);
+  }
 
   return {};
 }
@@ -223,17 +279,74 @@ export async function inviteContractorByEmail(email: string) {
       contractor_user_id: contractor.id,
       status: "active",
       invited_by: ctx.userId,
+      contractor_acknowledged_at: null,
     },
     { onConflict: "organization_id,contractor_user_id" }
   );
 
   if (error) return { error: error.message };
+
+  await admin
+    .from("contractor_org_links")
+    .update({ contractor_acknowledged_at: null, status: "active" })
+    .eq("organization_id", ctx.org.id)
+    .eq("contractor_user_id", contractor.id);
+
+  const resendKey = process.env.RESEND_API_KEY;
+  const fromEmail = process.env.EMAIL_FROM ?? "onboarding@resend.dev";
+  let emailWarning: string | undefined;
+
+  if (resendKey?.trim()) {
+    const resend = new Resend(resendKey);
+    const loginUrl = `${appBaseUrl()}/login`;
+    const { error: sendError } = await resend.emails.send({
+      from: fromEmail,
+      to: trimmed,
+      subject: `${ctx.org.name} linked you on Timvo`,
+      html: `
+        <p>Hi,</p>
+        <p><strong>${ctx.org.name}</strong> linked your Timvo contractor account.</p>
+        <p>You can now submit time logs and share projects with them from your contractor dashboard.</p>
+        <p>
+          <a href="${loginUrl}" style="display:inline-block;padding:12px 24px;background:#6366f1;color:white;text-decoration:none;border-radius:8px;font-weight:600;">Open Timvo</a>
+        </p>
+        <p>— Timvo</p>
+      `,
+    });
+    if (sendError) {
+      console.error("Resend error:", sendError);
+      emailWarning = "Linked, but the notification email failed to send.";
+    }
+  } else {
+    emailWarning = "Linked, but email is not configured (RESEND_API_KEY).";
+  }
+
   revalidatePath("/org/contractors");
-  return { success: true };
+  return { success: true, emailWarning };
+}
+
+export async function unlinkContractor(linkId: string): Promise<{ error?: string }> {
+  const ctx = await getOrgContext();
+  if (!ctx) return { error: "Not in an organization" };
+  if (!["owner", "admin", "manager"].includes(ctx.role)) {
+    return { error: "Permission denied" };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("contractor_org_links")
+    .update({ status: "inactive" })
+    .eq("id", linkId)
+    .eq("organization_id", ctx.org.id);
+
+  if (error) return { error: error.message };
+  revalidatePath("/org/contractors");
+  return {};
 }
 
 export type OrgContractorRow = {
   id: string;
+  contractorUserId: string;
   email: string;
   status: string;
 };
@@ -247,6 +360,7 @@ export async function listOrgContractors(): Promise<OrgContractorRow[]> {
     .from("contractor_org_links")
     .select("id, status, contractor_user_id")
     .eq("organization_id", ctx.org.id)
+    .eq("status", "active")
     .order("created_at", { ascending: false });
 
   if (!data?.length) return [];
@@ -259,12 +373,13 @@ export async function listOrgContractors(): Promise<OrgContractorRow[]> {
 
   return data.map((row) => ({
     id: row.id,
+    contractorUserId: row.contractor_user_id,
     email: emailById.get(row.contractor_user_id) ?? "Unknown",
     status: row.status,
   }));
 }
 
-export type ContractorOrgOption = { id: string; name: string };
+export type ContractorOrgOption = { id: string; name: string; linkId?: string };
 
 export async function getContractorOrganizations(): Promise<ContractorOrgOption[]> {
   const supabase = await createClient();
@@ -275,14 +390,201 @@ export async function getContractorOrganizations(): Promise<ContractorOrgOption[
 
   const { data } = await supabase
     .from("contractor_org_links")
-    .select("organizations(id, name)")
+    .select("id, organizations(id, name)")
     .eq("contractor_user_id", user.id)
     .eq("status", "active");
 
   return (data ?? [])
-    .map((row) => row.organizations as unknown as { id: string; name: string } | null)
-    .filter(Boolean)
-    .map((org) => ({ id: org!.id, name: org!.name }));
+    .map((row) => {
+      const org = row.organizations as unknown as { id: string; name: string } | null;
+      if (!org) return null;
+      return { id: org.id, name: org.name, linkId: row.id };
+    })
+    .filter(Boolean) as ContractorOrgOption[];
+}
+
+export type UnacknowledgedOrgLink = {
+  linkId: string;
+  organizationId: string;
+  organizationName: string;
+};
+
+export async function getUnacknowledgedOrgLinks(): Promise<UnacknowledgedOrgLink[]> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return [];
+
+  const { data } = await supabase
+    .from("contractor_org_links")
+    .select("id, organization_id, organizations(name)")
+    .eq("contractor_user_id", user.id)
+    .eq("status", "active")
+    .is("contractor_acknowledged_at", null);
+
+  return (data ?? []).map((row) => {
+    const org = row.organizations as unknown as { name: string } | null;
+    return {
+      linkId: row.id,
+      organizationId: row.organization_id,
+      organizationName: org?.name ?? "Organization",
+    };
+  });
+}
+
+export async function acknowledgeOrgLink(linkId: string): Promise<{ error?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Unauthorized" };
+
+  const { error } = await supabase
+    .from("contractor_org_links")
+    .update({ contractor_acknowledged_at: new Date().toISOString() })
+    .eq("id", linkId)
+    .eq("contractor_user_id", user.id);
+
+  if (error) return { error: error.message };
+  revalidatePath("/");
+  revalidatePath("/logs");
+  revalidatePath("/settings");
+  return {};
+}
+
+export async function leaveOrganization(organizationId: string): Promise<{ error?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Unauthorized" };
+
+  const { error } = await supabase
+    .from("contractor_org_links")
+    .update({ status: "inactive" })
+    .eq("organization_id", organizationId)
+    .eq("contractor_user_id", user.id);
+
+  if (error) return { error: error.message };
+  revalidatePath("/");
+  revalidatePath("/logs");
+  revalidatePath("/settings");
+  revalidatePath("/clients");
+  return {};
+}
+
+export async function inviteAgencyByEmail(
+  email: string
+): Promise<{ error?: string; inviteUrl?: string }> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Unauthorized" };
+
+  const trimmed = email.trim().toLowerCase();
+  if (!trimmed) return { error: "Email is required" };
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("full_name, business_name")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  const contractorName =
+    profile?.business_name?.trim() ||
+    profile?.full_name?.trim() ||
+    user.email?.split("@")[0] ||
+    "A Timvo contractor";
+
+  const token = randomBytes(32).toString("hex");
+  const expiresAt = new Date();
+  expiresAt.setDate(expiresAt.getDate() + ORG_INVITE_EXPIRY_DAYS);
+
+  const { error: insertErr } = await supabase.from("org_invites").insert({
+    token,
+    email: trimmed,
+    contractor_user_id: user.id,
+    status: "pending",
+    invited_by: user.id,
+    expires_at: expiresAt.toISOString(),
+  });
+
+  if (insertErr) return { error: insertErr.message };
+
+  const inviteUrl = `${appBaseUrl()}/signup/organization?invite=${token}`;
+  const resendKey = process.env.RESEND_API_KEY;
+  const fromEmail = process.env.EMAIL_FROM ?? "onboarding@resend.dev";
+
+  if (!resendKey?.trim()) {
+    revalidatePath("/settings");
+    return {
+      error: "Invite created, but email is not configured. Add RESEND_API_KEY.",
+      inviteUrl,
+    };
+  }
+
+  const resend = new Resend(resendKey);
+  const { error: sendError } = await resend.emails.send({
+    from: fromEmail,
+    to: trimmed,
+    subject: `${contractorName} invited you to Timvo for Organizations`,
+    html: `
+      <p>Hi,</p>
+      <p><strong>${contractorName}</strong> invited your agency to Timvo.</p>
+      <p>Create your organization account with this email (<strong>${trimmed}</strong>) and you'll be linked to their contractor profile automatically.</p>
+      <p>
+        <a href="${inviteUrl}" style="display:inline-block;padding:12px 24px;background:#6366f1;color:white;text-decoration:none;border-radius:8px;font-weight:600;">Create organization account</a>
+      </p>
+      <p style="color:#6b7280;font-size:14px;">This link expires in ${ORG_INVITE_EXPIRY_DAYS} days.</p>
+      <p>— Timvo</p>
+    `,
+  });
+
+  if (sendError) {
+    console.error("Resend error:", sendError);
+    return {
+      error: `Invite saved but email failed: ${sendError.message}`,
+      inviteUrl,
+    };
+  }
+
+  revalidatePath("/settings");
+  return { inviteUrl };
+}
+
+export async function getOrgInviteByToken(token: string): Promise<{
+  email: string;
+  contractorName: string;
+} | null> {
+  if (!token.trim()) return null;
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("org_invites")
+    .select("email, status, expires_at, contractor_user_id")
+    .eq("token", token.trim())
+    .maybeSingle();
+
+  if (!data || data.status !== "pending") return null;
+  if (new Date(data.expires_at) < new Date()) return null;
+
+  const { data: profile } = await admin
+    .from("profiles")
+    .select("full_name, business_name")
+    .eq("id", data.contractor_user_id)
+    .maybeSingle();
+
+  const { data: userData } = await admin.auth.admin.getUserById(data.contractor_user_id);
+
+  return {
+    email: data.email,
+    contractorName:
+      profile?.business_name?.trim() ||
+      profile?.full_name?.trim() ||
+      userData.user?.email?.split("@")[0] ||
+      "A contractor",
+  };
 }
 
 export async function getOrgDashboardStats() {
