@@ -168,17 +168,30 @@ export async function listOrgClients(): Promise<OrgClientRow[]> {
   if (!ctx) return [];
 
   const supabase = await createClient();
-  const { data: clients } = await supabase
+  const { data: clients, error } = await supabase
     .from("clients")
-    .select("id, name, email, projects(id)")
+    .select("id, name, email")
     .eq("organization_id", ctx.org.id)
     .order("name");
 
-  return (clients ?? []).map((c) => ({
+  if (error || !clients?.length) return [];
+
+  const clientIds = clients.map((c) => c.id);
+  const { data: projects } = await supabase
+    .from("projects")
+    .select("client_id")
+    .in("client_id", clientIds);
+
+  const projectCountByClient: Record<string, number> = {};
+  for (const p of projects ?? []) {
+    projectCountByClient[p.client_id] = (projectCountByClient[p.client_id] ?? 0) + 1;
+  }
+
+  return clients.map((c) => ({
     id: c.id,
     name: c.name,
     email: c.email,
-    projectCount: (c.projects as { id: string }[] | null)?.length ?? 0,
+    projectCount: projectCountByClient[c.id] ?? 0,
   }));
 }
 
