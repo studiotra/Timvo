@@ -105,7 +105,11 @@ export function LoginForm({
           <h1 className="text-2xl font-bold text-white">Timvo</h1>
           <p className="text-gray-400 text-sm mt-1">See what your time is really worth — not just how long you worked.</p>
           <p className="text-gray-500 text-sm mt-2">
-            Sign in as a contractor or open your client portal invite link.
+            Sign in as a contractor, or{" "}
+            <a href="/signup/organization" className="text-accent hover:underline">
+              create an organization account
+            </a>
+            .
           </p>
         </div>
         <div className="bg-[var(--bg-card)] backdrop-blur-xl border border-[var(--border)] rounded-xl p-6 shadow-xl">

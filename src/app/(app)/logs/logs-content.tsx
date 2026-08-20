@@ -8,6 +8,8 @@ import { type TimeLogRow } from "@/app/actions/time-logs";
 import { deleteTimeLog } from "@/app/actions/time-logs";
 import { EditLogSlideOver } from "@/components/edit-log-slide-over";
 import { ManualLogSlideOver } from "@/components/manual-log-slide-over";
+import { SubmitToOrgBar } from "@/components/submit-to-org-bar";
+import type { ContractorOrgOption } from "@/app/actions/organizations";
 
 type ViewMode = "week" | "month";
 type DisplayMode = "list" | "calendar" | "map";
@@ -34,11 +36,15 @@ function formatMonthLabel(offsetMonths: number): string {
 export function LogsContent({
   logs,
   clients,
+  organizations,
+  shareStatuses,
   displayMode: initialDisplayMode,
   initialFilters,
 }: {
   logs: TimeLogRow[];
   clients: ClientOpt[];
+  organizations: ContractorOrgOption[];
+  shareStatuses: Record<string, { orgName: string; status: string }[]>;
   displayMode: DisplayMode;
   initialFilters: { clientId: string; fromDate: string; toDate: string };
 }) {
@@ -54,6 +60,7 @@ export function LogsContent({
   const [editingLog, setEditingLog] = useState<TimeLogRow | null>(null);
   const [addLogOpen, setAddLogOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [clientFilter, setClientFilter] = useState(initialFilters.clientId);
   const [fromDate, setFromDate] = useState(initialFilters.fromDate);
   const [toDate, setToDate] = useState(initialFilters.toDate);
@@ -166,6 +173,13 @@ export function LogsContent({
 
   return (
     <div className="space-y-6">
+      {organizations.length > 0 && (
+        <SubmitToOrgBar
+          organizations={organizations}
+          selectedLogIds={selectedIds}
+          onClearSelection={() => setSelectedIds([])}
+        />
+      )}
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <div className="flex items-center gap-1 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-1">
@@ -442,6 +456,9 @@ export function LogsContent({
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[var(--border)] bg-[var(--bg-sidebar)]/50">
+                {organizations.length > 0 && (
+                  <th className="w-10 px-2 py-2 sm:px-4 sm:py-3" />
+                )}
                 <th className="px-2 py-2 text-left text-xs font-medium text-[var(--text-secondary)] sm:px-4 sm:py-3 sm:text-sm">Client</th>
                 <th className="hidden px-4 py-3 text-left font-medium text-[var(--text-secondary)] sm:table-cell">Project</th>
                 <th className="px-2 py-2 text-left text-xs font-medium text-[var(--text-secondary)] sm:px-4 sm:py-3 sm:text-sm">Date</th>
@@ -455,7 +472,7 @@ export function LogsContent({
             <tbody>
               {logs.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-[var(--text-muted)]">
+                  <td colSpan={organizations.length > 0 ? 9 : 8} className="px-4 py-12 text-center text-[var(--text-muted)]">
                     No time logs for this period.
                   </td>
                 </tr>
@@ -465,7 +482,34 @@ export function LogsContent({
                     key={log.id}
                     className="border-b border-[var(--border)] last:border-0 hover:bg-white/5"
                   >
-                    <td className="px-2 py-2 text-xs text-[var(--text-primary)] sm:px-4 sm:py-3 sm:text-sm">{log.client_name}</td>
+                    {organizations.length > 0 && (
+                      <td className="px-2 py-2 sm:px-4 sm:py-3">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.includes(log.id)}
+                          onChange={(e) => {
+                            setSelectedIds((prev) =>
+                              e.target.checked
+                                ? [...prev, log.id]
+                                : prev.filter((id) => id !== log.id)
+                            );
+                          }}
+                          className="rounded border-[var(--border)]"
+                          aria-label={`Select log ${log.id}`}
+                        />
+                      </td>
+                    )}
+                    <td className="px-2 py-2 text-xs text-[var(--text-primary)] sm:px-4 sm:py-3 sm:text-sm">
+                      <div>{log.client_name}</div>
+                      {(shareStatuses[log.id] ?? []).map((s) => (
+                        <span
+                          key={`${log.id}-${s.orgName}`}
+                          className="mt-0.5 inline-block rounded bg-violet-500/15 px-1.5 py-0.5 text-[10px] text-violet-300"
+                        >
+                          {s.orgName}: {s.status}
+                        </span>
+                      ))}
+                    </td>
                     <td className="hidden px-4 py-3 text-[var(--text-primary)] sm:table-cell">{log.project_name}</td>
                     <td className="px-2 py-2 text-xs text-[var(--text-secondary)] sm:px-4 sm:py-3 sm:text-sm">
                       {log.started_at ? new Date(log.started_at).toLocaleDateString("en-US") : "—"}

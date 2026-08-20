@@ -3,6 +3,9 @@ import { NextResponse, type NextRequest } from "next/server";
 import {
   getPendingInvitePath,
   isContractorAppRoute,
+  isOrgAppRoute,
+  isOrganizationMember,
+  isOrganizationPrimaryUser,
   isPortalOnlyUser,
   resolveHomePath,
   safeNextPath,
@@ -43,6 +46,7 @@ export async function updateSession(request: NextRequest) {
   const path = request.nextUrl.pathname;
   const isAuthPage =
     path.startsWith("/login") ||
+    path.startsWith("/signup") ||
     path.startsWith("/auth") ||
     path.startsWith("/accept-invite") ||
     path.startsWith("/reset-password") ||
@@ -83,6 +87,21 @@ export async function updateSession(request: NextRequest) {
       const url = request.nextUrl.clone();
       url.pathname = "/client";
       url.search = "";
+      return NextResponse.redirect(url);
+    }
+
+    if (await isOrganizationPrimaryUser(supabase, data.user.id)) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/org";
+      url.search = "";
+      return NextResponse.redirect(url);
+    }
+  }
+
+  if (data.user && isOrgAppRoute(path)) {
+    if (!(await isOrganizationMember(supabase, data.user.id))) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/";
       return NextResponse.redirect(url);
     }
   }
