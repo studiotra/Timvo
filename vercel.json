@@ -7,6 +7,10 @@
     {
       "path": "/api/cron/slack-nudges",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/retainer-alerts",
+      "schedule": "0 */6 * * *"
     }
   ]
 }

@@ -20,7 +20,8 @@ export default async function OrgSettingsPage() {
           <p className="capitalize text-[var(--text-primary)]">{ctx.role}</p>
         </div>
         <p className="text-sm text-[var(--text-secondary)] pt-2">
-          Publishing to end-client viewers and profitability reports come in the next phase.
+          Retainer email and Slack alerts run every 6 hours for org managers when projects
+          cross their threshold (default 80%) or exceed 100%.
         </p>
       </div>
     </div>
