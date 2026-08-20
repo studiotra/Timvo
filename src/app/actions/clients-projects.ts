@@ -19,30 +19,38 @@ export async function getClientsForSelect(): Promise<ClientOpt[]> {
 
   const own = (ownClients ?? []).map((c) => ({ id: c.id, name: c.name, isOrg: false }));
 
+  // Avoid nested projects→clients joins (RLS recursion). Resolve via project_contractors first.
   const { data: assignments } = await supabase
     .from("project_contractors")
-    .select("project_id, projects(client_id, clients(id, name, organization_id, organizations(name)))")
+    .select("project_id")
     .eq("contractor_user_id", user.id);
 
+  const projectIds = [...new Set((assignments ?? []).map((a) => a.project_id))];
   const orgClients = new Map<string, ClientOpt>();
-  for (const row of assignments ?? []) {
-    const project = row.projects as unknown as {
-      client_id: string;
-      clients: {
-        id: string;
-        name: string;
-        organization_id: string | null;
-        organizations: { name: string } | null;
-      } | null;
-    } | null;
-    const client = project?.clients;
-    if (!client?.organization_id) continue;
-    const orgName = client.organizations?.name ?? "Organization";
-    orgClients.set(client.id, {
-      id: client.id,
-      name: `${client.name} (${orgName})`,
-      isOrg: true,
-    });
+
+  if (projectIds.length) {
+    const { data: projects } = await supabase
+      .from("projects")
+      .select("client_id")
+      .in("id", projectIds);
+
+    const clientIds = [...new Set((projects ?? []).map((p) => p.client_id).filter(Boolean))];
+    if (clientIds.length) {
+      const { data: clients } = await supabase
+        .from("clients")
+        .select("id, name, organization_id, organizations(name)")
+        .in("id", clientIds);
+
+      for (const client of clients ?? []) {
+        if (!client.organization_id) continue;
+        const org = client.organizations as unknown as { name: string } | null;
+        orgClients.set(client.id, {
+          id: client.id,
+          name: `${client.name} (${org?.name ?? "Organization"})`,
+          isOrg: true,
+        });
+      }
+    }
   }
 
   return [...own, ...orgClients.values()].sort((a, b) => a.name.localeCompare(b.name));
