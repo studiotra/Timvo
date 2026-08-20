@@ -111,17 +111,18 @@ To send invites to real client emails, [verify your domain](https://resend.com/d
 
 1. Create an app at [api.slack.com/apps](https://api.slack.com/apps) → **From scratch**
 2. **OAuth & Permissions** → Redirect URL: `https://your-domain.com/api/slack/oauth/callback` (or `http://localhost:3000/api/slack/oauth/callback` for local)
-3. Bot token scopes: `commands`, `chat:write`
+3. Bot token scopes: `commands`, `chat:write`, `im:write`
 4. **Slash Commands** → Create `/timvo` → Request URL: `https://your-domain.com/api/slack/commands`
 5. **Interactivity & Shortcuts** → Enable → Request URL: `https://your-domain.com/api/slack/interactions`
 6. Add to `.env.local`:
    - `SLACK_CLIENT_ID`
    - `SLACK_CLIENT_SECRET`
    - `SLACK_SIGNING_SECRET`
-7. Run migration `supabase/migrations/20250819000000_slack_connections.sql` in the Supabase SQL editor
-8. In Timvo **Settings** → **Connect Slack**
+7. Run migrations `20250819000000_slack_connections.sql` and `20250819010000_slack_timer_alerts.sql` in the Supabase SQL editor
+8. In Timvo **Settings** → **Connect Slack** (reconnect after adding `im:write` so DMs work)
+9. Optional: Vercel Hobby only runs cron once a day. For 1h/2h alerts every 10 minutes, use Vercel Pro or ping `https://www.timvo.work/api/cron/slack-timers?secret=YOUR_CRON_SECRET` from an external scheduler. Set `CRON_SECRET` in Vercel (or it falls back to `SLACK_SIGNING_SECRET`).
 
-Then: `/timvo start Acme`, `/timvo stop`, `/timvo status`
+Then: `/timvo start`, pick project → service → task. `/timvo status` shows live elapsed time. Forgotten timers get a 1 hour and 2 hour reminder.
 
 ### 8. Run the app
 

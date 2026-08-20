@@ -61,7 +61,7 @@ export function SlackSettings({
               Connected to {connection.slack_team_name || "Slack"}
             </p>
             <p className="text-[12px] text-[var(--text-muted)]">
-              /timvo start [project] · /timvo stop · /timvo status
+              /timvo start · /timvo status · /timvo stop. Reconnect if channel messages or 1h alerts don’t appear.
             </p>
             <button
               type="button"

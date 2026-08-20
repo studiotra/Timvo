@@ -19,7 +19,7 @@ export async function GET() {
   const redirectUri = `${appBaseUrl()}/api/slack/oauth/callback`;
   const url = new URL("https://slack.com/oauth/v2/authorize");
   url.searchParams.set("client_id", clientId);
-  url.searchParams.set("scope", "commands,chat:write");
+  url.searchParams.set("scope", "commands,chat:write,im:write");
   url.searchParams.set("redirect_uri", redirectUri);
   url.searchParams.set("state", signOAuthState(user.id));
 

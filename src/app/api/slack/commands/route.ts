@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
     const teamId = params.get("team_id") ?? "";
     const { data: conn, error } = await supabase
       .from("slack_connections")
-      .select("user_id")
+      .select("user_id, bot_access_token")
       .eq("slack_team_id", teamId)
       .eq("slack_user_id", slackUserId)
       .maybeSingle();
@@ -71,7 +71,17 @@ export async function POST(req: NextRequest) {
       return slackMessage(`Connect your Timvo account first: ${appBaseUrl()}/settings`);
     }
 
-    const payload = await handleTimvoCommand(supabase, conn.user_id, text);
+    const payload = await handleTimvoCommand(
+      supabase,
+      {
+        userId: conn.user_id,
+        botToken: conn.bot_access_token,
+        channelId: params.get("channel_id") ?? undefined,
+        slackUserId,
+        userName: params.get("user_name") ?? undefined,
+      },
+      text
+    );
     return NextResponse.json(payload);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
