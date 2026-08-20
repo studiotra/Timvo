@@ -80,8 +80,8 @@ export function OrgReportsContent({
       </section>
 
       <p className="mt-6 text-xs text-[var(--text-muted)]">
-        Set contractor cost rates when linking contractors. Set bill rates on approved timesheets
-        in Timesheets → Approve (defaults from org link).
+        Assign contractors to projects with default cost/bill rates, or set rates when approving
+        timesheets.
       </p>
     </div>
   );

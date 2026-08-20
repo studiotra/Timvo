@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { addOrgProject, type OrgProjectRow } from "@/app/actions/org-projects";
 import { inviteClientToPortal } from "@/app/actions/client-invites";
+import { ProjectContractorsPanel } from "./project-contractors-panel";
 
 export function OrgClientDetailContent({
   clientId,
@@ -137,6 +138,7 @@ export function OrgClientDetailContent({
                     </div>
                   </div>
                 )}
+                <ProjectContractorsPanel projectId={p.id} contractors={p.contractors} />
               </div>
             );
           })}

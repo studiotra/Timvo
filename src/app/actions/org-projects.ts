@@ -14,6 +14,15 @@ export type OrgProjectRow = {
   retainer_amount: number | null;
   alert_threshold_pct: number | null;
   usedHours: number;
+  contractors: ProjectContractorRow[];
+};
+
+export type ProjectContractorRow = {
+  id: string;
+  contractorUserId: string;
+  email: string;
+  costRate: number | null;
+  billRate: number | null;
 };
 
 export async function getOrgClient(clientId: string) {
@@ -52,6 +61,29 @@ export async function listOrgProjects(clientId: string): Promise<OrgProjectRow[]
     .select("project_id, duration_minutes")
     .in("project_id", projectIds);
 
+  const { data: assignments } = await supabase
+    .from("project_contractors")
+    .select("id, project_id, contractor_user_id, cost_rate, bill_rate")
+    .in("project_id", projectIds);
+
+  const admin = await import("@/lib/supabase/admin").then((m) => m.createAdminClient());
+  const { data: usersData } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+  const emailById = new Map(
+    (usersData?.users ?? []).map((u) => [u.id, u.email ?? "Unknown"])
+  );
+
+  const contractorsByProject: Record<string, ProjectContractorRow[]> = {};
+  for (const a of assignments ?? []) {
+    if (!contractorsByProject[a.project_id]) contractorsByProject[a.project_id] = [];
+    contractorsByProject[a.project_id].push({
+      id: a.id,
+      contractorUserId: a.contractor_user_id,
+      email: emailById.get(a.contractor_user_id) ?? "Unknown",
+      costRate: a.cost_rate != null ? Number(a.cost_rate) : null,
+      billRate: a.bill_rate != null ? Number(a.bill_rate) : null,
+    });
+  }
+
   const usedByProject: Record<string, number> = {};
   for (const log of logs ?? []) {
     usedByProject[log.project_id] =
@@ -68,6 +100,7 @@ export async function listOrgProjects(clientId: string): Promise<OrgProjectRow[]
     retainer_amount: p.retainer_amount != null ? Number(p.retainer_amount) : null,
     alert_threshold_pct: p.alert_threshold_pct,
     usedHours: (usedByProject[p.id] ?? 0) / 60,
+    contractors: contractorsByProject[p.id] ?? [],
   }));
 }
 
@@ -116,6 +149,21 @@ export async function assignContractorToProject(
 ) {
   const ctx = await getOrgContext();
   if (!ctx) return { error: "Not in an organization" };
+  if (!["owner", "admin", "manager"].includes(ctx.role)) {
+    return { error: "Permission denied" };
+  }
+
+  const supabase = await createClient();
+  const { data: project } = await supabase
+    .from("projects")
+    .select("id, client_id, clients!inner(organization_id)")
+    .eq("id", projectId)
+    .maybeSingle();
+
+  const client = project?.clients as unknown as { organization_id: string } | null;
+  if (!project || client?.organization_id !== ctx.org.id) {
+    return { error: "Project not found" };
+  }
 
   const admin = await import("@/lib/supabase/admin").then((m) => m.createAdminClient());
   const { data: listData } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
@@ -124,7 +172,18 @@ export async function assignContractorToProject(
   );
   if (!contractor) return { error: "Contractor account not found" };
 
-  const supabase = await createClient();
+  const { data: link } = await supabase
+    .from("contractor_org_links")
+    .select("id")
+    .eq("organization_id", ctx.org.id)
+    .eq("contractor_user_id", contractor.id)
+    .eq("status", "active")
+    .maybeSingle();
+
+  if (!link) {
+    return { error: "Contractor must be linked to your organization first" };
+  }
+
   const { error } = await supabase.from("project_contractors").upsert(
     {
       project_id: projectId,
@@ -136,7 +195,41 @@ export async function assignContractorToProject(
   );
 
   if (error) return { error: error.message };
+  revalidatePath(`/org/clients/${project.client_id}`);
   return { success: true };
+}
+
+export async function removeContractorFromProject(
+  projectId: string,
+  contractorUserId: string
+): Promise<{ error?: string }> {
+  const ctx = await getOrgContext();
+  if (!ctx) return { error: "Not in an organization" };
+  if (!["owner", "admin", "manager"].includes(ctx.role)) {
+    return { error: "Permission denied" };
+  }
+
+  const supabase = await createClient();
+  const { data: project } = await supabase
+    .from("projects")
+    .select("client_id, clients!inner(organization_id)")
+    .eq("id", projectId)
+    .maybeSingle();
+
+  const client = project?.clients as unknown as { organization_id: string } | null;
+  if (!project || client?.organization_id !== ctx.org.id) {
+    return { error: "Project not found" };
+  }
+
+  const { error } = await supabase
+    .from("project_contractors")
+    .delete()
+    .eq("project_id", projectId)
+    .eq("contractor_user_id", contractorUserId);
+
+  if (error) return { error: error.message };
+  revalidatePath(`/org/clients/${project.client_id}`);
+  return {};
 }
 
 export type RetainerAlertRow = {

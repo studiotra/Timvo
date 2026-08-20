@@ -3,25 +3,86 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 
-export type ClientOpt = { id: string; name: string };
+export type ClientOpt = { id: string; name: string; isOrg?: boolean };
 export type ProjectOpt = { id: string; name: string; client_id: string };
 
 export async function getClientsForSelect(): Promise<ClientOpt[]> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return [];
-  const { data } = await supabase
+
+  const { data: ownClients } = await supabase
     .from("clients")
     .select("id, name")
     .eq("user_id", user.id)
     .order("name");
-  return (data ?? []).map((c) => ({ id: c.id, name: c.name }));
+
+  const own = (ownClients ?? []).map((c) => ({ id: c.id, name: c.name, isOrg: false }));
+
+  const { data: assignments } = await supabase
+    .from("project_contractors")
+    .select("project_id, projects(client_id, clients(id, name, organization_id, organizations(name)))")
+    .eq("contractor_user_id", user.id);
+
+  const orgClients = new Map<string, ClientOpt>();
+  for (const row of assignments ?? []) {
+    const project = row.projects as unknown as {
+      client_id: string;
+      clients: {
+        id: string;
+        name: string;
+        organization_id: string | null;
+        organizations: { name: string } | null;
+      } | null;
+    } | null;
+    const client = project?.clients;
+    if (!client?.organization_id) continue;
+    const orgName = client.organizations?.name ?? "Organization";
+    orgClients.set(client.id, {
+      id: client.id,
+      name: `${client.name} (${orgName})`,
+      isOrg: true,
+    });
+  }
+
+  return [...own, ...orgClients.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export async function getProjectsByClient(clientId: string): Promise<ProjectOpt[]> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user || !clientId) return [];
+
+  const { data: client } = await supabase
+    .from("clients")
+    .select("id, user_id, organization_id")
+    .eq("id", clientId)
+    .maybeSingle();
+
+  if (!client) return [];
+
+  if (client.organization_id) {
+    const { data: assignments } = await supabase
+      .from("project_contractors")
+      .select("project_id, projects(id, name, client_id, status)")
+      .eq("contractor_user_id", user.id);
+
+    return (assignments ?? [])
+      .map((a) => {
+        const project = a.projects as unknown as {
+          id: string;
+          name: string;
+          client_id: string;
+          status: string;
+        } | null;
+        if (!project || project.client_id !== clientId || project.status !== "active") {
+          return null;
+        }
+        return { id: project.id, name: project.name, client_id: project.client_id };
+      })
+      .filter(Boolean) as ProjectOpt[];
+  }
+
   const { data } = await supabase
     .from("projects")
     .select("id, name, client_id")

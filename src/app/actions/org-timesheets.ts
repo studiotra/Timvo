@@ -15,6 +15,10 @@ export type TimeLogShareRow = {
   durationMinutes: number;
   description: string | null;
   startedAt: string;
+  defaultCostRate: number | null;
+  defaultBillRate: number | null;
+  costRate: number | null;
+  billRate: number | null;
 };
 
 export async function submitTimeLogsToOrg(
@@ -48,6 +52,22 @@ export async function submitTimeLogsToOrg(
   const ownedIds = new Set((logs ?? []).map((l) => l.id));
   const toSubmit = logIds.filter((id) => ownedIds.has(id));
   if (!toSubmit.length) return { error: "No valid time logs to submit" };
+
+  const { data: logProjects } = await supabase
+    .from("time_logs")
+    .select("id, project_id, projects(client_id, clients(organization_id))")
+    .in("id", toSubmit);
+
+  for (const log of logProjects ?? []) {
+    const project = log.projects as unknown as {
+      client_id: string;
+      clients: { organization_id: string | null } | null;
+    } | null;
+    const logOrgId = project?.clients?.organization_id;
+    if (logOrgId && logOrgId !== organizationId) {
+      return { error: "One or more logs belong to a different organization" };
+    }
+  }
 
   const rows = toSubmit.map((time_log_id) => ({
     time_log_id,
@@ -107,7 +127,7 @@ export async function listOrgTimesheets(status?: string): Promise<TimeLogShareRo
   let query = supabase
     .from("time_log_shares")
     .select(
-      "id, status, created_at, submitted_by, time_logs(id, started_at, duration_minutes, description, projects(name, clients(name)))"
+      "id, status, created_at, submitted_by, cost_rate, bill_rate, time_logs(id, started_at, duration_minutes, description, project_id, projects(name, bill_rate, clients(name, organization_id)))"
     )
     .eq("organization_id", ctx.org.id)
     .order("created_at", { ascending: false });
@@ -123,16 +143,74 @@ export async function listOrgTimesheets(status?: string): Promise<TimeLogShareRo
     (usersData?.users ?? []).map((u) => [u.id, u.email ?? "Unknown"])
   );
 
+  const projectIds = [
+    ...new Set(
+      data
+        .map((row) => {
+          const log = row.time_logs as unknown as { project_id?: string } | null;
+          return log?.project_id;
+        })
+        .filter(Boolean) as string[]
+    ),
+  ];
+
+  const assignmentRates = new Map<
+    string,
+    { cost_rate: number | null; bill_rate: number | null }
+  >();
+  if (projectIds.length) {
+    const { data: assignments } = await supabase
+      .from("project_contractors")
+      .select("project_id, contractor_user_id, cost_rate, bill_rate")
+      .in("project_id", projectIds);
+    for (const a of assignments ?? []) {
+      assignmentRates.set(`${a.project_id}:${a.contractor_user_id}`, {
+        cost_rate: a.cost_rate != null ? Number(a.cost_rate) : null,
+        bill_rate: a.bill_rate != null ? Number(a.bill_rate) : null,
+      });
+    }
+  }
+
+  const linkRates = new Map<string, number | null>();
+  const contractorIds = [...new Set(data.map((row) => row.submitted_by))];
+  if (contractorIds.length) {
+    const { data: links } = await supabase
+      .from("contractor_org_links")
+      .select("contractor_user_id, default_cost_rate")
+      .eq("organization_id", ctx.org.id)
+      .in("contractor_user_id", contractorIds);
+    for (const link of links ?? []) {
+      linkRates.set(
+        link.contractor_user_id,
+        link.default_cost_rate != null ? Number(link.default_cost_rate) : null
+      );
+    }
+  }
+
   return data
     .map((row) => {
       const log = row.time_logs as unknown as {
         id: string;
+        project_id: string;
         started_at: string;
         duration_minutes: number | null;
         description: string | null;
-        projects: { name: string; clients: { name: string } | null } | null;
+        projects: {
+          name: string;
+          bill_rate: number | null;
+          clients: { name: string; organization_id: string | null } | null;
+        } | null;
       } | null;
       if (!log) return null;
+
+      const assignment = assignmentRates.get(`${log.project_id}:${row.submitted_by}`);
+      const orgLinkCost = linkRates.get(row.submitted_by) ?? null;
+      const projectBill =
+        log.projects?.bill_rate != null ? Number(log.projects.bill_rate) : null;
+
+      const defaultCostRate = assignment?.cost_rate ?? orgLinkCost;
+      const defaultBillRate = assignment?.bill_rate ?? projectBill;
+
       return {
         shareId: row.id,
         timeLogId: log.id,
@@ -144,15 +222,87 @@ export async function listOrgTimesheets(status?: string): Promise<TimeLogShareRo
         durationMinutes: log.duration_minutes ?? 0,
         description: log.description,
         startedAt: log.started_at,
+        defaultCostRate,
+        defaultBillRate,
+        costRate: row.cost_rate != null ? Number(row.cost_rate) : null,
+        billRate: row.bill_rate != null ? Number(row.bill_rate) : null,
       };
     })
     .filter(Boolean) as TimeLogShareRow[];
 }
 
+function parseRate(value: number | string | null | undefined): number | null {
+  if (value == null || value === "") return null;
+  const n = typeof value === "number" ? value : parseFloat(value);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+async function resolveApprovalRates(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  orgId: string,
+  shareId: string,
+  overrides?: { costRate?: number | null; billRate?: number | null }
+): Promise<{ costRate: number | null; billRate: number | null }> {
+  const { data: share } = await supabase
+    .from("time_log_shares")
+    .select(
+      "submitted_by, time_logs(project_id, projects(bill_rate, clients(organization_id)))"
+    )
+    .eq("id", shareId)
+    .eq("organization_id", orgId)
+    .maybeSingle();
+
+  if (!share) return { costRate: null, billRate: null };
+
+  const log = share.time_logs as unknown as {
+    project_id: string;
+    projects: { bill_rate: number | null } | null;
+  } | null;
+
+  const [{ data: link }, { data: assignment }] = await Promise.all([
+    supabase
+      .from("contractor_org_links")
+      .select("default_cost_rate")
+      .eq("organization_id", orgId)
+      .eq("contractor_user_id", share.submitted_by)
+      .maybeSingle(),
+    log?.project_id
+      ? supabase
+          .from("project_contractors")
+          .select("cost_rate, bill_rate")
+          .eq("project_id", log.project_id)
+          .eq("contractor_user_id", share.submitted_by)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
+
+  const defaultCost =
+    assignment?.cost_rate != null
+      ? Number(assignment.cost_rate)
+      : link?.default_cost_rate != null
+        ? Number(link.default_cost_rate)
+        : null;
+  const defaultBill =
+    assignment?.bill_rate != null
+      ? Number(assignment.bill_rate)
+      : log?.projects?.bill_rate != null
+        ? Number(log.projects.bill_rate)
+        : null;
+
+  return {
+    costRate: overrides?.costRate !== undefined ? overrides.costRate : defaultCost,
+    billRate: overrides?.billRate !== undefined ? overrides.billRate : defaultBill,
+  };
+}
+
 export async function reviewTimeLogShare(
   shareId: string,
   action: "approve" | "reject",
-  note?: string
+  options?: {
+    note?: string;
+    costRate?: number | string | null;
+    billRate?: number | string | null;
+  }
 ): Promise<{ error?: string }> {
   const ctx = await getOrgContext();
   if (!ctx) return { error: "Not in an organization" };
@@ -166,22 +316,18 @@ export async function reviewTimeLogShare(
   let billRate: number | null = null;
 
   if (action === "approve") {
-    const { data: share } = await supabase
-      .from("time_log_shares")
-      .select("submitted_by")
-      .eq("id", shareId)
-      .eq("organization_id", ctx.org.id)
-      .maybeSingle();
-
-    if (share) {
-      const { data: link } = await supabase
-        .from("contractor_org_links")
-        .select("default_cost_rate")
-        .eq("organization_id", ctx.org.id)
-        .eq("contractor_user_id", share.submitted_by)
-        .maybeSingle();
-      costRate = link?.default_cost_rate != null ? Number(link.default_cost_rate) : null;
-    }
+    const overrides = {
+      costRate:
+        options?.costRate !== undefined ? parseRate(options.costRate) : undefined,
+      billRate:
+        options?.billRate !== undefined ? parseRate(options.billRate) : undefined,
+    };
+    ({ costRate, billRate } = await resolveApprovalRates(
+      supabase,
+      ctx.org.id,
+      shareId,
+      overrides
+    ));
   }
 
   const { error } = await supabase
@@ -190,7 +336,7 @@ export async function reviewTimeLogShare(
       status: action === "approve" ? "approved" : "rejected",
       reviewed_by: ctx.userId,
       reviewed_at: new Date().toISOString(),
-      review_note: note?.trim() || null,
+      review_note: options?.note?.trim() || null,
       ...(action === "approve" ? { cost_rate: costRate, bill_rate: billRate } : {}),
     })
     .eq("id", shareId)
@@ -199,5 +345,6 @@ export async function reviewTimeLogShare(
 
   if (error) return { error: error.message };
   revalidatePath("/org/timesheets");
+  revalidatePath("/org/reports");
   return {};
 }
