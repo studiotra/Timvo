@@ -21,7 +21,7 @@ export async function GET() {
   url.searchParams.set("client_id", clientId);
   url.searchParams.set("scope", "commands,chat:write,im:write");
   url.searchParams.set("redirect_uri", redirectUri);
-  url.searchParams.set("state", signOAuthState(user.id));
+  url.searchParams.set("state", await signOAuthState(user.id));
 
   return NextResponse.redirect(url.toString());
 }

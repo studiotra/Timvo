@@ -8,7 +8,7 @@ export async function GET(req: NextRequest) {
   const base = appBaseUrl();
   const code = req.nextUrl.searchParams.get("code");
   const state = req.nextUrl.searchParams.get("state");
-  const userId = readOAuthState(state);
+  const userId = await readOAuthState(state);
 
   if (!code || !userId) {
     return NextResponse.redirect(`${base}/settings?slack=error`);

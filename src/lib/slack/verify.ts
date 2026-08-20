@@ -1,5 +1,3 @@
-import { createHmac, timingSafeEqual } from "crypto";
-
 function toHex(buf: ArrayBuffer): string {
   return Array.from(new Uint8Array(buf))
     .map((b) => b.toString(16).padStart(2, "0"))
@@ -11,6 +9,35 @@ function safeEqual(a: string, b: string): boolean {
   let out = 0;
   for (let i = 0; i < a.length; i++) out |= a.charCodeAt(i) ^ b.charCodeAt(i);
   return out === 0;
+}
+
+function base64UrlEncodeBytes(bytes: Uint8Array): string {
+  let binary = "";
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function base64UrlEncodeText(text: string): string {
+  return base64UrlEncodeBytes(new TextEncoder().encode(text));
+}
+
+function base64UrlDecodeText(encoded: string): string {
+  const padded = encoded.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((encoded.length + 3) % 4);
+  const binary = atob(padded);
+  const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+
+async function hmacSha256Base64Url(secret: string, message: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const sigBuf = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(message));
+  return base64UrlEncodeBytes(new Uint8Array(sigBuf));
 }
 
 export async function verifySlackSignature(
@@ -44,28 +71,22 @@ function stateSecret() {
   return process.env.SLACK_SIGNING_SECRET || process.env.SLACK_CLIENT_SECRET || "";
 }
 
-export function signOAuthState(userId: string): string {
-  const payload = Buffer.from(
+export async function signOAuthState(userId: string): Promise<string> {
+  const payload = base64UrlEncodeText(
     JSON.stringify({ uid: userId, exp: Date.now() + 10 * 60 * 1000 })
-  ).toString("base64url");
-  const sig = createHmac("sha256", stateSecret()).update(payload).digest("base64url");
+  );
+  const sig = await hmacSha256Base64Url(stateSecret(), payload);
   return `${payload}.${sig}`;
 }
 
-export function readOAuthState(state: string | null): string | null {
+export async function readOAuthState(state: string | null): Promise<string | null> {
   if (!state) return null;
   const [payload, sig] = state.split(".");
   if (!payload || !sig) return null;
-  const expected = createHmac("sha256", stateSecret()).update(payload).digest("base64url");
+  const expected = await hmacSha256Base64Url(stateSecret(), payload);
+  if (!safeEqual(sig, expected)) return null;
   try {
-    const a = Buffer.from(sig);
-    const b = Buffer.from(expected);
-    if (a.length !== b.length || !timingSafeEqual(a, b)) return null;
-  } catch {
-    return null;
-  }
-  try {
-    const data = JSON.parse(Buffer.from(payload, "base64url").toString()) as {
+    const data = JSON.parse(base64UrlDecodeText(payload)) as {
       uid?: string;
       exp?: number;
     };
