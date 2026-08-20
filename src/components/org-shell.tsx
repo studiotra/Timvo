@@ -13,6 +13,7 @@ const navItems = [
   { href: "/org/clients", label: "Clients", icon: "📁" },
   { href: "/org/timesheets", label: "Timesheets", icon: "⏱️" },
   { href: "/org/contractors", label: "Contractors", icon: "👥" },
+  { href: "/org/reports", label: "Reports", icon: "📊" },
   { href: "/org/settings", label: "Settings", icon: "⚙️" },
 ] as const;
 

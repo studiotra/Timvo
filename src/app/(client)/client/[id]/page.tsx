@@ -23,7 +23,7 @@ export default async function ClientPortalDetailPage({
 
   const { data: client } = await supabase
     .from("clients")
-    .select("id, name")
+    .select("id, name, organization_id")
     .eq("id", id)
     .single();
 
@@ -31,39 +31,95 @@ export default async function ClientPortalDetailPage({
 
   const { data: projects } = await supabase
     .from("projects")
-    .select("id, name, status, billing_type, hourly_rate")
+    .select("id, name, status, billing_type, hourly_rate, bill_rate, retainer_hours")
     .eq("client_id", id)
     .order("name");
 
-  const projectIds = (projects ?? []).map((p) => p.id);
-  const logsResponse = projectIds.length > 0
-    ? await supabase
-        .from("time_logs")
-        .select(`
+  let logsList: {
+    id: string;
+    project_id: string;
+    project_name: string;
+    task_name: string | null;
+    started_at: string;
+    duration_minutes: number;
+    description: string | null;
+    is_billable: boolean;
+    is_billed: boolean;
+  }[] = [];
+
+  if (client.organization_id) {
+    const { data: shares } = await supabase
+      .from("time_log_viewer_shares")
+      .select(`
+        time_log_id,
+        time_logs(
+          id, project_id, started_at, duration_minutes, description,
+          is_billable, is_billed, tasks(name), projects(id, name)
+        )
+      `)
+      .eq("client_id", id)
+      .order("published_at", { ascending: false })
+      .limit(200);
+
+    logsList = (shares ?? [])
+      .map((s) => {
+        const l = s.time_logs as unknown as {
+          id: string;
+          project_id: string;
+          started_at: string;
+          duration_minutes: number | null;
+          description: string | null;
+          is_billable: boolean;
+          is_billed: boolean;
+          tasks: { name?: string } | null;
+          projects: { id: string; name: string } | null;
+        } | null;
+        if (!l) return null;
+        return {
+          id: l.id,
+          project_id: l.project_id,
+          project_name: l.projects?.name ?? "—",
+          task_name: l.tasks?.name ?? null,
+          started_at: l.started_at,
+          duration_minutes: l.duration_minutes ?? 0,
+          description: l.description,
+          is_billable: l.is_billable ?? true,
+          is_billed: l.is_billed ?? false,
+        };
+      })
+      .filter(Boolean) as typeof logsList;
+  } else {
+    const projectIds = (projects ?? []).map((p) => p.id);
+    const logsResponse =
+      projectIds.length > 0
+        ? await supabase
+            .from("time_logs")
+            .select(`
           id, project_id, started_at, duration_minutes, description,
           is_billable, is_billed, tasks(name), projects(id, name)
         `)
-        .in("project_id", projectIds)
-        .order("started_at", { ascending: false })
-        .limit(200)
-    : { data: [] as const };
+            .in("project_id", projectIds)
+            .order("started_at", { ascending: false })
+            .limit(200)
+        : { data: [] as const };
 
-  const logs = logsResponse.data ?? [];
-  const logsList = logs.map((l) => {
-    const p = l.projects as unknown as { id: string; name: string } | null;
-    const t = l.tasks as unknown as { name?: string } | null;
-    return {
-      id: l.id,
-      project_id: l.project_id,
-      project_name: p?.name ?? "—",
-      task_name: t?.name ?? null,
-      started_at: l.started_at,
-      duration_minutes: l.duration_minutes ?? 0,
-      description: l.description,
-      is_billable: l.is_billable ?? true,
-      is_billed: l.is_billed ?? false,
-    };
-  });
+    const logs = logsResponse.data ?? [];
+    logsList = logs.map((l) => {
+      const p = l.projects as unknown as { id: string; name: string } | null;
+      const t = l.tasks as unknown as { name?: string } | null;
+      return {
+        id: l.id,
+        project_id: l.project_id,
+        project_name: p?.name ?? "—",
+        task_name: t?.name ?? null,
+        started_at: l.started_at,
+        duration_minutes: l.duration_minutes ?? 0,
+        description: l.description,
+        is_billable: l.is_billable ?? true,
+        is_billed: l.is_billed ?? false,
+      };
+    });
+  }
 
   const totalMins = logsList.reduce((s, l) => s + l.duration_minutes, 0);
   const unbilledMins = logsList
@@ -83,7 +139,9 @@ export default async function ClientPortalDetailPage({
           {client.name}
         </h1>
         <p className="text-sm text-[var(--text-secondary)] mt-1">
-          Time records (read-only)
+          {client.organization_id
+            ? "Published time records (read-only)"
+            : "Time records (read-only)"}
         </p>
       </div>
 
@@ -172,11 +230,10 @@ export default async function ClientPortalDetailPage({
               <tbody>
                 {logsList.length === 0 ? (
                   <tr>
-                    <td
-                      colSpan={7}
-                      className="px-4 py-8 text-center text-[var(--text-muted)]"
-                    >
-                      No time logs yet.
+                    <td colSpan={7} className="px-4 py-8 text-center text-[var(--text-muted)]">
+                      {client.organization_id
+                        ? "No published time logs yet. Your agency will publish approved hours here."
+                        : "No time logs yet."}
                     </td>
                   </tr>
                 ) : (

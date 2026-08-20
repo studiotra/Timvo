@@ -9,7 +9,9 @@ import { deleteTimeLog } from "@/app/actions/time-logs";
 import { EditLogSlideOver } from "@/components/edit-log-slide-over";
 import { ManualLogSlideOver } from "@/components/manual-log-slide-over";
 import { SubmitToOrgBar } from "@/components/submit-to-org-bar";
+import { ShareToViewerBar } from "@/components/share-to-viewer-bar";
 import type { ContractorOrgOption } from "@/app/actions/organizations";
+import type { ViewerClientOption } from "@/app/actions/viewer-shares";
 
 type ViewMode = "week" | "month";
 type DisplayMode = "list" | "calendar" | "map";
@@ -37,14 +39,18 @@ export function LogsContent({
   logs,
   clients,
   organizations,
+  viewerClients,
   shareStatuses,
+  viewerShareStatuses,
   displayMode: initialDisplayMode,
   initialFilters,
 }: {
   logs: TimeLogRow[];
   clients: ClientOpt[];
   organizations: ContractorOrgOption[];
+  viewerClients: ViewerClientOption[];
   shareStatuses: Record<string, { orgName: string; status: string }[]>;
+  viewerShareStatuses: Record<string, { clientName: string; source: string }[]>;
   displayMode: DisplayMode;
   initialFilters: { clientId: string; fromDate: string; toDate: string };
 }) {
@@ -171,11 +177,20 @@ export function LogsContent({
     });
   }, [weekStart]);
 
+  const showSelection = organizations.length > 0 || viewerClients.length > 0;
+
   return (
     <div className="space-y-6">
       {organizations.length > 0 && (
         <SubmitToOrgBar
           organizations={organizations}
+          selectedLogIds={selectedIds}
+          onClearSelection={() => setSelectedIds([])}
+        />
+      )}
+      {viewerClients.length > 0 && (
+        <ShareToViewerBar
+          viewerClients={viewerClients}
           selectedLogIds={selectedIds}
           onClearSelection={() => setSelectedIds([])}
         />
@@ -456,7 +471,7 @@ export function LogsContent({
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-[var(--border)] bg-[var(--bg-sidebar)]/50">
-                {organizations.length > 0 && (
+                {showSelection && (
                   <th className="w-10 px-2 py-2 sm:px-4 sm:py-3" />
                 )}
                 <th className="px-2 py-2 text-left text-xs font-medium text-[var(--text-secondary)] sm:px-4 sm:py-3 sm:text-sm">Client</th>
@@ -472,7 +487,7 @@ export function LogsContent({
             <tbody>
               {logs.length === 0 ? (
                 <tr>
-                  <td colSpan={organizations.length > 0 ? 9 : 8} className="px-4 py-12 text-center text-[var(--text-muted)]">
+                  <td colSpan={showSelection ? 9 : 8} className="px-4 py-12 text-center text-[var(--text-muted)]">
                     No time logs for this period.
                   </td>
                 </tr>
@@ -482,7 +497,7 @@ export function LogsContent({
                     key={log.id}
                     className="border-b border-[var(--border)] last:border-0 hover:bg-white/5"
                   >
-                    {organizations.length > 0 && (
+                    {showSelection && (
                       <td className="px-2 py-2 sm:px-4 sm:py-3">
                         <input
                           type="checkbox"
@@ -504,9 +519,17 @@ export function LogsContent({
                       {(shareStatuses[log.id] ?? []).map((s) => (
                         <span
                           key={`${log.id}-${s.orgName}`}
-                          className="mt-0.5 inline-block rounded bg-violet-500/15 px-1.5 py-0.5 text-[10px] text-violet-300"
+                          className="mt-0.5 mr-1 inline-block rounded bg-violet-500/15 px-1.5 py-0.5 text-[10px] text-violet-300"
                         >
                           {s.orgName}: {s.status}
+                        </span>
+                      ))}
+                      {(viewerShareStatuses[log.id] ?? []).map((s) => (
+                        <span
+                          key={`${log.id}-v-${s.clientName}`}
+                          className="mt-0.5 mr-1 inline-block rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] text-emerald-300"
+                        >
+                          Viewer: {s.clientName}
                         </span>
                       ))}
                     </td>

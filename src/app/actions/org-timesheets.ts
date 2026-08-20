@@ -161,6 +161,29 @@ export async function reviewTimeLogShare(
   }
 
   const supabase = await createClient();
+
+  let costRate: number | null = null;
+  let billRate: number | null = null;
+
+  if (action === "approve") {
+    const { data: share } = await supabase
+      .from("time_log_shares")
+      .select("submitted_by")
+      .eq("id", shareId)
+      .eq("organization_id", ctx.org.id)
+      .maybeSingle();
+
+    if (share) {
+      const { data: link } = await supabase
+        .from("contractor_org_links")
+        .select("default_cost_rate")
+        .eq("organization_id", ctx.org.id)
+        .eq("contractor_user_id", share.submitted_by)
+        .maybeSingle();
+      costRate = link?.default_cost_rate != null ? Number(link.default_cost_rate) : null;
+    }
+  }
+
   const { error } = await supabase
     .from("time_log_shares")
     .update({
@@ -168,6 +191,7 @@ export async function reviewTimeLogShare(
       reviewed_by: ctx.userId,
       reviewed_at: new Date().toISOString(),
       review_note: note?.trim() || null,
+      ...(action === "approve" ? { cost_rate: costRate, bill_rate: billRate } : {}),
     })
     .eq("id", shareId)
     .eq("organization_id", ctx.org.id)

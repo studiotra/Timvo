@@ -1,8 +1,12 @@
 import Link from "next/link";
 import { getOrgDashboardStats } from "@/app/actions/organizations";
+import { getOrgRetainerAlerts } from "@/app/actions/org-projects";
 
 export default async function OrgDashboardPage() {
-  const stats = await getOrgDashboardStats();
+  const [stats, alerts] = await Promise.all([
+    getOrgDashboardStats(),
+    getOrgRetainerAlerts(),
+  ]);
 
   return (
     <div>
@@ -34,7 +38,16 @@ export default async function OrgDashboardPage() {
         ))}
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-3">
+        <Link
+          href="/org/clients"
+          className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-5 transition-colors hover:border-accent/40"
+        >
+          <h2 className="font-semibold text-[var(--text-primary)]">Manage clients</h2>
+          <p className="mt-1 text-sm text-[var(--text-secondary)]">
+            End clients, projects, viewer invites
+          </p>
+        </Link>
         <Link
           href="/org/timesheets"
           className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-5 transition-colors hover:border-accent/40"
@@ -47,15 +60,33 @@ export default async function OrgDashboardPage() {
           </p>
         </Link>
         <Link
-          href="/org/clients"
+          href="/org/reports"
           className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-5 transition-colors hover:border-accent/40"
         >
-          <h2 className="font-semibold text-[var(--text-primary)]">Manage clients</h2>
+          <h2 className="font-semibold text-[var(--text-primary)]">Reports & retainers</h2>
           <p className="mt-1 text-sm text-[var(--text-secondary)]">
-            Add end clients and configure their projects
+            {alerts.length > 0
+              ? `${alerts.length} project(s) nearing retainer limit`
+              : "Profitability and budget tracking"}
           </p>
         </Link>
       </div>
+
+      {alerts.length > 0 && (
+        <div className="mt-8 rounded-xl border border-amber-500/30 bg-amber-500/5 p-4">
+          <h2 className="text-sm font-semibold text-amber-400 mb-2">Retainer alerts</h2>
+          <ul className="space-y-1 text-sm text-[var(--text-secondary)]">
+            {alerts.slice(0, 5).map((a) => (
+              <li key={a.projectId}>
+                {a.clientName} · {a.projectName}: {a.pct}% used ({a.usedHours.toFixed(1)}h / {a.retainerHours}h)
+              </li>
+            ))}
+          </ul>
+          <Link href="/org/reports" className="mt-2 inline-block text-xs text-accent hover:underline">
+            View all reports →
+          </Link>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { createOrgClient, type OrgClientRow } from "@/app/actions/organizations";
@@ -70,18 +71,19 @@ export function OrgClientsContent({ clients }: { clients: OrgClientRow[] }) {
       ) : (
         <div className="grid gap-3 md:grid-cols-2">
           {clients.map((c) => (
-            <div
-              key={c.id}
-              className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-5"
-            >
+              <Link
+                key={c.id}
+                href={`/org/clients/${c.id}`}
+                className="group block rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-5 transition-all hover:border-accent/50 hover:bg-accent/5"
+              >
               <h3 className="font-semibold text-[var(--text-primary)]">{c.name}</h3>
               {c.email && (
                 <p className="mt-1 text-sm text-[var(--text-secondary)]">{c.email}</p>
               )}
               <p className="mt-2 text-xs text-[var(--text-muted)]">
-                {c.projectCount} project{c.projectCount === 1 ? "" : "s"}
+                {c.projectCount} project{c.projectCount === 1 ? "" : "s"} · Manage →
               </p>
-            </div>
+              </Link>
           ))}
         </div>
       )}
