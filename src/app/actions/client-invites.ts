@@ -85,6 +85,10 @@ export async function createInvitedUser(
 
   // New user created — delay so Auth can propagate before client signIn
   if (createdUser?.user) {
+    await admin
+      .from("profiles")
+      .update({ account_type: "client" })
+      .eq("id", createdUser.user.id);
     await new Promise((r) => setTimeout(r, 1800));
   }
   return {};

@@ -11,7 +11,13 @@ const ERROR_MESSAGES: Record<string, string> = {
   auth: "Authentication error.",
 };
 
-export function LoginForm({ error }: { error: string | null }) {
+export function LoginForm({
+  error,
+  next,
+}: {
+  error: string | null;
+  next?: string | null;
+}) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -36,7 +42,7 @@ export function LoginForm({ error }: { error: string | null }) {
       } else {
         const { error: err } = await supabase.auth.signInWithPassword({ email, password });
         if (err) throw err;
-        router.push("/");
+        router.push(next || "/");
         router.refresh();
       }
     } catch (err) {
@@ -56,7 +62,9 @@ export function LoginForm({ error }: { error: string | null }) {
     try {
       const { error: err } = await supabase.auth.signInWithOtp({
         email: email.trim(),
-        options: { emailRedirectTo: `${window.location.origin}/auth/callback?next=/` },
+        options: {
+          emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(next || "/")}`,
+        },
       });
       if (err) throw err;
       setMessage({ type: "success", text: "Check your email for the magic link to sign in." });
@@ -96,7 +104,9 @@ export function LoginForm({ error }: { error: string | null }) {
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold text-white">Timvo</h1>
           <p className="text-gray-400 text-sm mt-1">See what your time is really worth — not just how long you worked.</p>
-          <p className="text-gray-500 text-sm mt-2">Sign in to access your client dashboard.</p>
+          <p className="text-gray-500 text-sm mt-2">
+            Sign in as a contractor or open your client portal invite link.
+          </p>
         </div>
         <div className="bg-[var(--bg-card)] backdrop-blur-xl border border-[var(--border)] rounded-xl p-6 shadow-xl">
           {(errorMsg || message) && (

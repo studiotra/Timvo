@@ -1,11 +1,16 @@
 import { createClient } from "@/lib/supabase/server";
 import { AppShell } from "@/components/app-shell";
 import { LocaleProvider } from "@/contexts/locale-context";
+import { isPortalOnlyUser } from "@/lib/auth/routing";
 import { parseLocale } from "@/lib/i18n";
+import { redirect } from "next/navigation";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
+  if (user && (await isPortalOnlyUser(supabase, user.id))) {
+    redirect("/client");
+  }
   let profile: { logo_url: string | null; full_name: string | null; business_name: string | null; locale: string | null } | null = null;
   if (user) {
     const { data } = await supabase

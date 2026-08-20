@@ -125,9 +125,12 @@ export function AcceptInviteForm({ token, email, clientName }: Props) {
       </form>
       <p className="mt-4 text-center text-sm text-[var(--text-secondary)]">
         Already have an account?{" "}
-<Link href="/login" className="text-accent hover:underline font-medium">
-        Sign in
-      </Link>
+        <Link
+          href={`/login?next=${encodeURIComponent(`/accept-invite?token=${token}`)}`}
+          className="text-accent hover:underline font-medium"
+        >
+          Sign in
+        </Link>
       </p>
     </div>
   );

@@ -1,5 +1,12 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import {
+  getPendingInvitePath,
+  isContractorAppRoute,
+  isPortalOnlyUser,
+  resolveHomePath,
+  safeNextPath,
+} from "@/lib/auth/routing";
 
 export async function updateSession(request: NextRequest) {
   if (
@@ -48,33 +55,34 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (data.user && isAuthPage && path === "/login") {
+  if (data.user && path === "/login") {
     const url = request.nextUrl.clone();
-    url.pathname = "/";
+    const next = safeNextPath(request.nextUrl.searchParams.get("next"));
+    if (next) {
+      const nextUrl = new URL(next, request.url);
+      url.pathname = nextUrl.pathname;
+      url.search = nextUrl.search;
+      return NextResponse.redirect(url);
+    }
+    url.pathname = await resolveHomePath(supabase, data.user.id);
+    url.search = "";
     return NextResponse.redirect(url);
   }
 
-  // Redirect to client portal when user has portal access (signed up as client).
-  // Even if they also own clients (dual role), send to /client first so client users get the right experience.
-  if (data.user && path === "/") {
-    const { data: portalAccess } = await supabase
-      .from("client_portal_access")
-      .select("id")
-      .eq("user_id", data.user.id)
-      .limit(1)
-      .maybeSingle();
-    if (portalAccess) {
+  if (data.user && isContractorAppRoute(path)) {
+    const pending = await getPendingInvitePath(supabase);
+    if (pending) {
       const url = request.nextUrl.clone();
-      url.pathname = "/client";
+      const pendingUrl = new URL(pending, request.url);
+      url.pathname = pendingUrl.pathname;
+      url.search = pendingUrl.search;
       return NextResponse.redirect(url);
     }
-    // User has no portal access — check for pending invite (e.g. they logged in via /login after creating pw on accept-invite)
-    const { data: pendingInv } = await supabase.rpc("get_my_pending_invite");
-    const token = (pendingInv as { token?: string } | null)?.token;
-    if (token) {
+
+    if (await isPortalOnlyUser(supabase, data.user.id)) {
       const url = request.nextUrl.clone();
-      url.pathname = "/accept-invite";
-      url.searchParams.set("token", token);
+      url.pathname = "/client";
+      url.search = "";
       return NextResponse.redirect(url);
     }
   }
