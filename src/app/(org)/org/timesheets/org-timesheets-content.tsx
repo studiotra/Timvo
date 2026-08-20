@@ -1,10 +1,14 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { reviewTimeLogShare, type TimeLogShareRow } from "@/app/actions/org-timesheets";
-import { useState } from "react";
 import Link from "next/link";
+import {
+  bulkReviewTimeLogShares,
+  reviewTimeLogShare,
+  type TimeLogShareRow,
+} from "@/app/actions/org-timesheets";
 
 function formatDuration(mins: number) {
   const h = Math.floor(mins / 60);
@@ -18,7 +22,17 @@ function formatRate(rate: number | null) {
   return `$${rate.toFixed(2)}/hr`;
 }
 
-function ShareRow({ row }: { row: TimeLogShareRow }) {
+function ShareRow({
+  row,
+  selectable,
+  selected,
+  onToggle,
+}: {
+  row: TimeLogShareRow;
+  selectable?: boolean;
+  selected?: boolean;
+  onToggle?: (id: string) => void;
+}) {
   const router = useRouter();
   const [approving, setApproving] = useState(false);
   const [costRate, setCostRate] = useState(
@@ -44,9 +58,24 @@ function ShareRow({ row }: { row: TimeLogShareRow }) {
     }
   }
 
+  const colSpan = selectable ? 6 : 5;
+
   return (
     <>
       <tr className="border-b border-[var(--border)]">
+        {selectable ? (
+          <td className="px-4 py-3">
+            {row.status === "submitted" ? (
+              <input
+                type="checkbox"
+                checked={Boolean(selected)}
+                onChange={() => onToggle?.(row.shareId)}
+                className="rounded border-[var(--border)]"
+                aria-label={`Select ${row.shareId}`}
+              />
+            ) : null}
+          </td>
+        ) : null}
         <td className="py-3 pr-4 text-sm text-[var(--text-primary)]">{row.contractorEmail}</td>
         <td className="py-3 pr-4 text-sm">
           {row.isMapped ? (
@@ -107,7 +136,7 @@ function ShareRow({ row }: { row: TimeLogShareRow }) {
       </tr>
       {approving && row.status === "submitted" ? (
         <tr className="border-b border-[var(--border)] bg-[var(--bg-app)]/50">
-          <td colSpan={5} className="px-4 py-3">
+          <td colSpan={colSpan} className="px-4 py-3">
             <div className="flex flex-wrap items-end gap-3">
               <label className="text-xs text-[var(--text-secondary)]">
                 Cost rate ($/hr)
@@ -157,10 +186,25 @@ function ShareRow({ row }: { row: TimeLogShareRow }) {
 function TimesheetTable({
   rows,
   empty,
+  selectable,
+  selectedIds,
+  onToggle,
+  onToggleAll,
 }: {
   rows: TimeLogShareRow[];
   empty: string;
+  selectable?: boolean;
+  selectedIds?: Set<string>;
+  onToggle?: (id: string) => void;
+  onToggleAll?: (ids: string[], checked: boolean) => void;
 }) {
+  const selectableIds = useMemo(
+    () => rows.filter((r) => r.status === "submitted").map((r) => r.shareId),
+    [rows]
+  );
+  const allSelected =
+    selectableIds.length > 0 && selectableIds.every((id) => selectedIds?.has(id));
+
   if (rows.length === 0) {
     return (
       <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-8 text-center text-[var(--text-muted)]">
@@ -171,9 +215,20 @@ function TimesheetTable({
 
   return (
     <div className="overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--bg-card)]">
-      <table className="w-full min-w-[720px] text-left">
+      <table className="w-full min-w-[760px] text-left">
         <thead>
           <tr className="border-b border-[var(--border)] text-[11px] uppercase text-[var(--text-muted)]">
+            {selectable ? (
+              <th className="px-4 py-3">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={(e) => onToggleAll?.(selectableIds, e.target.checked)}
+                  className="rounded border-[var(--border)]"
+                  aria-label="Select all pending"
+                />
+              </th>
+            ) : null}
             <th className="px-4 py-3">Contractor</th>
             <th className="py-3">End client / project</th>
             <th className="py-3">Duration</th>
@@ -181,9 +236,15 @@ function TimesheetTable({
             <th className="py-3">Actions</th>
           </tr>
         </thead>
-        <tbody className="px-4">
+        <tbody>
           {rows.map((row) => (
-            <ShareRow key={row.shareId} row={row} />
+            <ShareRow
+              key={row.shareId}
+              row={row}
+              selectable={selectable}
+              selected={selectedIds?.has(row.shareId)}
+              onToggle={onToggle}
+            />
           ))}
         </tbody>
       </table>
@@ -198,7 +259,57 @@ export function OrgTimesheetsContent({
   pending: TimeLogShareRow[];
   all: TimeLogShareRow[];
 }) {
+  const router = useRouter();
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [busy, setBusy] = useState(false);
+
   const unmappedPending = pending.filter((r) => !r.isMapped).length;
+  const selectedCount = selectedIds.size;
+  const selectedUnmapped = pending.filter(
+    (r) => selectedIds.has(r.shareId) && !r.isMapped
+  ).length;
+
+  function toggle(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAll(ids: string[], checked: boolean) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) {
+        if (checked) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
+  }
+
+  async function bulk(action: "approve" | "reject") {
+    if (selectedCount === 0) {
+      toast.error("Select at least one timesheet");
+      return;
+    }
+    setBusy(true);
+    const result = await bulkReviewTimeLogShares([...selectedIds], action);
+    setBusy(false);
+    if (result.error && !result.processed) {
+      toast.error(result.error);
+      return;
+    }
+    const verb = action === "approve" ? "Approved" : "Rejected";
+    if (result.failed) {
+      toast.success(`${verb} ${result.processed}; ${result.failed} failed`);
+    } else {
+      toast.success(`${verb} ${result.processed} timesheet${result.processed === 1 ? "" : "s"}`);
+    }
+    setSelectedIds(new Set());
+    router.refresh();
+  }
 
   return (
     <div>
@@ -218,11 +329,62 @@ export function OrgTimesheetsContent({
         </div>
       )}
 
+      {pending.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-4 py-3">
+          <span className="text-sm text-[var(--text-primary)]">
+            {selectedCount === 0
+              ? "Select pending rows to bulk approve"
+              : `${selectedCount} selected`}
+          </span>
+          <button
+            type="button"
+            disabled={busy || selectedCount === 0}
+            onClick={() => bulk("approve")}
+            className="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            {busy ? "Working…" : "Bulk approve"}
+          </button>
+          <button
+            type="button"
+            disabled={busy || selectedCount === 0}
+            onClick={() => bulk("reject")}
+            className="rounded-lg bg-red-600/80 px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            Bulk reject
+          </button>
+          {selectedCount > 0 && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => setSelectedIds(new Set())}
+              className="text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+            >
+              Clear
+            </button>
+          )}
+          {selectedUnmapped > 0 && (
+            <span className="text-xs text-amber-300">
+              {selectedUnmapped} unmapped — rates may be incomplete
+            </span>
+          )}
+          <span className="text-xs text-[var(--text-muted)]">
+            Bulk approve uses each row&apos;s mapped default rates
+          </span>
+        </div>
+      )}
+
       <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[var(--text-muted)]">
         Pending ({pending.length})
       </h2>
       <div className="mb-8">
-        <TimesheetTable rows={pending} empty="No pending submissions." />
+        <TimesheetTable
+          rows={pending}
+          empty="No pending submissions."
+          selectable
+          selectedIds={selectedIds}
+          onToggle={toggle}
+          onToggleAll={toggleAll}
+        />
       </div>
 
       <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[var(--text-muted)]">

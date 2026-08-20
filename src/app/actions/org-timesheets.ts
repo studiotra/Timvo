@@ -496,3 +496,34 @@ export async function reviewTimeLogShare(
   revalidatePath("/org/reports");
   return {};
 }
+
+export async function bulkReviewTimeLogShares(
+  shareIds: string[],
+  action: "approve" | "reject"
+): Promise<{ error?: string; processed?: number; failed?: number }> {
+  if (!shareIds.length) return { error: "Select at least one timesheet" };
+
+  const ctx = await getOrgContext();
+  if (!ctx) return { error: "Not in an organization" };
+  if (!["owner", "admin", "manager"].includes(ctx.role)) {
+    return { error: "You do not have permission to review timesheets" };
+  }
+
+  const uniqueIds = [...new Set(shareIds)];
+  let processed = 0;
+  let failed = 0;
+
+  for (const shareId of uniqueIds) {
+    const result = await reviewTimeLogShare(shareId, action);
+    if (result.error) failed += 1;
+    else processed += 1;
+  }
+
+  if (processed === 0 && failed > 0) {
+    return { error: `Could not ${action} any selected timesheets`, processed, failed };
+  }
+
+  revalidatePath("/org/timesheets");
+  revalidatePath("/org/reports");
+  return { processed, failed };
+}
