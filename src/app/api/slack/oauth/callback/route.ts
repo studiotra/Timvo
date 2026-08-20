@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { sendWelcomeDm } from "@/lib/slack/onboarding";
+import { getActiveTimerForUser } from "@/lib/slack/timer-ops";
 import { appBaseUrl, readOAuthState } from "@/lib/slack/verify";
 
 export async function GET(req: NextRequest) {
@@ -58,6 +60,9 @@ export async function GET(req: NextRequest) {
   if (error) {
     return NextResponse.redirect(`${base}/settings?slack=error`);
   }
+
+  const active = await getActiveTimerForUser(supabase, userId);
+  await sendWelcomeDm(token.access_token, token.authed_user.id, active);
 
   return NextResponse.redirect(`${base}/settings?slack=connected`);
 }

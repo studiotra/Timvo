@@ -44,7 +44,9 @@ export function SlackSettings({
           .
         </p>
         {status === "connected" && (
-          <p className="text-sm text-emerald-400">Slack connected.</p>
+          <p className="text-sm text-emerald-400">
+            Slack connected. Check your Slack DMs for a welcome message from Timvo.
+          </p>
         )}
         {status === "error" && (
           <p className="text-sm text-red-400">Couldn’t connect Slack. Try again.</p>
@@ -61,7 +63,9 @@ export function SlackSettings({
               Connected to {connection.slack_team_name || "Slack"}
             </p>
             <p className="text-[12px] text-[var(--text-muted)]">
-              /timvo start · /timvo status · /timvo stop. Reconnect if channel messages or 1h alerts don’t appear.
+              /timvo start · /timvo status · /timvo stop. You&apos;ll get a welcome DM when
+              connected, a morning nudge at 9am if you haven&apos;t tracked yet, and 1h/2h alerts
+              if you forget to stop.
             </p>
             <button
               type="button"

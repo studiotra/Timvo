@@ -34,6 +34,105 @@ function projectLabel(p: SlackProject) {
   return p.clientName ? `${p.clientName} · ${p.name}` : p.name;
 }
 
+function parseStartSegments(query: string) {
+  if (!/[·|]/.test(query)) return null;
+  const parts = query.split(/[·|]/).map((s) => s.trim()).filter(Boolean);
+  if (parts.length >= 4) {
+    return {
+      projectQuery: `${parts[0]} ${parts[1]}`.trim(),
+      serviceQuery: parts[2],
+      taskQuery: parts[3],
+    };
+  }
+  if (parts.length === 3) {
+    return { projectQuery: parts[0], serviceQuery: parts[1], taskQuery: parts[2] };
+  }
+  if (parts.length === 2) {
+    return { projectQuery: parts[0], taskQuery: parts[1] };
+  }
+  return { projectQuery: parts[0] };
+}
+
+async function startFromParsedQuery(
+  supabase: SupabaseClient,
+  ctx: SlackCtx,
+  parsed: { projectQuery: string; serviceQuery?: string; taskQuery?: string }
+): Promise<Record<string, unknown>> {
+  const projects = await listActiveProjectsForUser(supabase, ctx.userId);
+  const projectMatches = matchProjects(projects, parsed.projectQuery);
+  if (projectMatches.length === 0) {
+    return {
+      response_type: "ephemeral",
+      text: `No project matched "${parsed.projectQuery}". Try \`/timvo projects\`.`,
+    };
+  }
+  if (projectMatches.length > 1) {
+    return projectButtons(projectMatches);
+  }
+  const project = projectMatches[0];
+  const services = await listServicesForUser(supabase, ctx.userId);
+
+  let serviceId: string | undefined;
+  if (parsed.serviceQuery) {
+    const sm = matchByName(services, parsed.serviceQuery);
+    if (sm.length === 0) {
+      return {
+        response_type: "ephemeral",
+        text: `No service matched "${parsed.serviceQuery}". Add services in Timvo Settings.`,
+      };
+    }
+    serviceId = sm[0].id;
+  } else if (parsed.taskQuery && services.length > 1) {
+    for (const svc of services) {
+      const tasks = await listTasksForProjectService(supabase, project.id, svc.id);
+      const tm = matchByName(tasks, parsed.taskQuery);
+      if (tm.length === 1) {
+        return startResponse(supabase, ctx, project.id, {
+          taskId: tm[0].id,
+          serviceId: svc.id,
+        });
+      }
+    }
+  }
+
+  if (!serviceId) {
+    if (services.length === 0) {
+      return startResponse(supabase, ctx, project.id);
+    }
+    if (services.length === 1) {
+      serviceId = services[0].id;
+    } else if (!parsed.taskQuery) {
+      return serviceButtons(project.id, services);
+    } else {
+      return {
+        response_type: "ephemeral",
+        text: `Could not match task "${parsed.taskQuery}". Include service: \`/timvo start ${project.name} · [service] · ${parsed.taskQuery}\``,
+      };
+    }
+  }
+
+  if (parsed.taskQuery) {
+    const tasks = await listTasksForProjectService(supabase, project.id, serviceId!);
+    const tm = matchByName(tasks, parsed.taskQuery);
+    if (tm.length === 1) {
+      return startResponse(supabase, ctx, project.id, {
+        taskId: tm[0].id,
+        serviceId: serviceId,
+      });
+    }
+    if (tasks.length === 0) {
+      return startResponse(supabase, ctx, project.id, { serviceId });
+    }
+    const picker = taskButtons(project.id, serviceId!, tasks);
+    return {
+      ...picker,
+      text: `No task matched "${parsed.taskQuery}". Pick one:`,
+    };
+  }
+
+  return promptAfterService(supabase, ctx, project.id, serviceId!);
+}
+
 function chunkButtons(
   items: { id: string; text: string }[],
   actionId: string,
@@ -208,6 +307,11 @@ export async function handleTimvoCommand(
         return promptAfterProject(supabase, ctx, projects[0].id);
       }
       return projectButtons(projects);
+    }
+
+    const parsed = parseStartSegments(query);
+    if (parsed) {
+      return startFromParsedQuery(supabase, ctx, parsed);
     }
 
     const matches = matchProjects(projects, query);
