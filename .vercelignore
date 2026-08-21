@@ -1,0 +1,5 @@
+# Desktop Tauri app is built separately — keep out of Vercel install/build noise
+apps/desktop/node_modules
+apps/desktop/src-tauri/target
+apps/desktop/dist
+.secrets
