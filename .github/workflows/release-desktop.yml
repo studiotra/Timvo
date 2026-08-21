@@ -59,17 +59,21 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
+          # Baked into the Vite bundle at build time (anon key is public by design).
+          VITE_SUPABASE_URL: https://bcagvllabtnqfpginnhq.supabase.co
+          VITE_SUPABASE_ANON_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJjYWd2bGxhYnRucWZwZ2lubmhxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE0NTQ1MDMsImV4cCI6MjA4NzAzMDUwM30.NyD29y6D6i9dNHeIX8eKGvVpgUb3L5yksXRc7O0Ry8A
+          VITE_API_BASE_URL: https://www.timvo.work        with:
           projectPath: apps/desktop
-          tagName: ${{ github.ref_type == 'tag' && github.ref_name || format('desktop-v{0}', '0.1.0') }}
-          releaseName: Timvo Desktop ${{ github.ref_type == 'tag' && github.ref_name || '0.1.0' }}
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || format('desktop-v{0}', '0.1.4') }}
+          releaseName: Timvo Desktop ${{ github.ref_type == 'tag' && github.ref_name || '0.1.4' }}
           releaseBody: |
             Timvo menu-bar / tray timer (same clock as web + Slack).
 
             ### Install (macOS)
             - Open the `.dmg` for your chip (Apple Silicon = `aarch64`, Intel = `x86_64`)
             - Drag Timvo to Applications
-            - First launch: right-click → Open if Gatekeeper warns (unsigned beta)
+            - If macOS says the app is “damaged”: `xattr -cr /Applications/Timvo.app`
+            - First launch may still need right-click → Open (unsigned beta)
 
             Notarized builds require Apple signing secrets on the repo.
             Auto-update artifacts require `TAURI_SIGNING_PRIVATE_KEY`.

@@ -167,6 +167,22 @@ export function DesktopDownloadPage({
               )}
             </div>
 
+            {macUrl && (
+              <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3.5 text-sm leading-relaxed text-white/55">
+                <p className="font-medium text-white/75">macOS unsigned beta</p>
+                <p className="mt-1.5">
+                  After installing, if macOS says Timvo is “damaged”, clear the quarantine flag
+                  (not actual corruption):
+                </p>
+                <pre className="mt-2 overflow-x-auto rounded-lg bg-black/40 px-3 py-2 font-mono text-[12px] text-indigo-100/90">
+                  xattr -cr /Applications/Timvo.app
+                </pre>
+                <p className="mt-2 text-white/40">
+                  Then open Timvo again from Applications.
+                </p>
+              </div>
+            )}
+
             <a
               href={releasesUrl}
               target="_blank"

@@ -1,6 +1,6 @@
 [package]
 name = "timvo-desktop"
-version = "0.1.0"
+version = "0.1.4"
 description = "Timvo desktop timer"
 authors = ["Timvo"]
 edition = "2021"
