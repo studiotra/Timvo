@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { DesktopDownloadPage } from "@/components/desktop-download-page";
+import { unlockDesktopDownload } from "@/lib/desktop/download-actions";
 import {
   getDesktopDownloadLinks,
   isDesktopDownloadUnlocked,
-  unlockDesktopDownload,
 } from "@/lib/desktop/download-access";
 
 export const metadata: Metadata = {

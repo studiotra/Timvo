@@ -6,7 +6,7 @@ import { useState, type FormEvent } from "react";
 import {
   lockDesktopDownload,
   unlockDesktopDownload,
-} from "@/lib/desktop/download-access";
+} from "@/lib/desktop/download-actions";
 
 type Props = {
   unlocked: boolean;
