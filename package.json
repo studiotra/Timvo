@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "desktop:dev": "npm run tauri --prefix apps/desktop -- dev",
+    "desktop:build": "npm run tauri --prefix apps/desktop -- build"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.0",

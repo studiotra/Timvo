@@ -1,0 +1,23 @@
+[package]
+name = "timvo-desktop"
+version = "0.1.0"
+description = "Timvo desktop timer"
+authors = ["Timvo"]
+edition = "2021"
+
+[lib]
+name = "timvo_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+# tauri-build 2.6.x pairs with the Tauri 2.9 runtime crates
+tauri-build = { version = "2.6", features = [] }
+
+[dependencies]
+tauri = { version = "2.9", features = ["macos-private-api", "tray-icon"] }
+tauri-plugin-opener = "2"
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

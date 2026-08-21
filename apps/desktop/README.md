@@ -1,0 +1,91 @@
+# Timvo Desktop (Tauri 2.9)
+
+Menubar/tray timer that uses the same `time_logs` data as the web app and Slack.
+
+## Prerequisites
+
+- Rust toolchain (`rustup`) — https://rustup.rs
+- Xcode Command Line Tools (macOS): `xcode-select --install`
+- Node 20+
+- Running Timvo web app (for `/api/desktop/*`) **or** point at production
+
+> Note: `rustc` / `cargo` must be on your PATH (`source "$HOME/.cargo/env"`).
+
+## Setup
+
+```bash
+cd "/path/to/Invoice Web App/apps/desktop"
+cp .env.example .env
+# Fill VITE_SUPABASE_* and VITE_API_BASE_URL (local :3000 or https://www.timvo.work)
+npm install
+npm run tauri dev
+```
+
+From the **repo root**:
+
+```bash
+npm run desktop:dev
+```
+
+## Hotkeys
+
+| Action | macOS | Windows / Linux |
+|--------|-------|-----------------|
+| Toggle timer | ⌘⇧T | Ctrl+Shift+T |
+| Stop | ⌘⇧S | Ctrl+Shift+S |
+| Show window | ⌘⇧Y | Ctrl+Shift+Y |
+
+On macOS, enable **System Settings → Privacy & Security → Accessibility → Timvo** if shortcuts don’t work.
+
+## Sync
+
+- Supabase Realtime on `time_logs` (migration `20250830000000_time_logs_realtime.sql`)
+- Poll every 15s + refresh on focus
+- Tray tooltip shows running timer state
+
+## Org / Team
+
+Org staff see Team clients first; dual-role users get **All / Team / Solo** filters. Assigned contractor projects appear as `Org · Client`.
+
+## Releases (Phase 3)
+
+Workflow: `.github/workflows/release-desktop.yml`  
+Trigger: push tag `desktop-v*` or **Actions → Release Desktop → Run workflow**.
+
+### GitHub secrets
+
+| Secret | Purpose |
+|--------|---------|
+| `TAURI_SIGNING_PRIVATE_KEY` | Updater private key (contents of `.secrets/timvo-updater.key`) |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Key password (empty if none) |
+| `APPLE_CERTIFICATE` | Base64 Developer ID Application `.p12` |
+| `APPLE_CERTIFICATE_PASSWORD` | `.p12` password |
+| `APPLE_SIGNING_IDENTITY` | e.g. `Developer ID Application: …` |
+| `APPLE_ID` | Apple ID email |
+| `APPLE_PASSWORD` | App-specific password |
+| `APPLE_TEAM_ID` | 10-char Team ID |
+| `KEYCHAIN_PASSWORD` | Temporary CI keychain password |
+
+Without Apple secrets, CI still builds **unsigned** drafts (Gatekeeper will warn).
+
+Public updater key is already in `src-tauri/tauri.conf.json`. Private key must stay in `.secrets/` / GitHub — never commit it.
+
+### Local production build
+
+```bash
+export TAURI_SIGNING_PRIVATE_KEY="$(cat ../../.secrets/timvo-updater.key)"
+npm run tauri build
+```
+
+## API
+
+All routes require `Authorization: Bearer <supabase_access_token>`:
+
+- `GET /api/desktop/me`
+- `GET /api/desktop/clients`
+- `GET /api/desktop/projects?clientId=`
+- `GET /api/desktop/services`
+- `GET /api/desktop/tasks?projectId=&serviceId=`
+- `GET /api/desktop/timer`
+- `POST /api/desktop/timer/start` `{ projectId, serviceId?, taskId?, description? }`
+- `POST /api/desktop/timer/stop`

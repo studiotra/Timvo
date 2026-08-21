@@ -56,7 +56,13 @@ export function MarketingLanding() {
             Timvo
           </span>
         </Link>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 md:gap-5">
+          <Link
+            href="/pricing"
+            className="hidden text-sm font-medium text-white/55 transition hover:text-white sm:inline"
+          >
+            Pricing
+          </Link>
           <Link
             href="/login"
             className="hidden text-sm font-medium text-white/60 transition hover:text-white sm:inline"
@@ -313,6 +319,9 @@ export function MarketingLanding() {
           <div className="flex gap-6">
             <Link href="/login" className="hover:text-white/70">
               Sign in
+            </Link>
+            <Link href="/pricing" className="hover:text-white/70">
+              Pricing
             </Link>
             <Link href="/signup/organization" className="hover:text-white/70">
               For organizations

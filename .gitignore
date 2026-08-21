@@ -32,3 +32,5 @@ Thumbs.db
 
 # Large reference files (do not upload)
 stripe 2
+
+.secrets/
