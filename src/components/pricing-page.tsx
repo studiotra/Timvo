@@ -54,6 +54,8 @@ function MarketingNav({ active }: { active?: "pricing" | "welcome" }) {
 type Billing = "monthly" | "annual";
 
 const TEAM_INCLUDED_SEATS = 3;
+const FREE_OWN_CLIENTS = 1;
+const FREE_OWN_PROJECTS = 3;
 
 const solo = {
   monthly: { per: 4.99, note: null as string | null },
@@ -76,28 +78,66 @@ const team = {
 
 const comparison: {
   section: string;
-  rows: { feature: string; solo: string | boolean; team: string | boolean }[];
+  rows: {
+    feature: string;
+    free: string | boolean;
+    solo: string | boolean;
+    team: string | boolean;
+  }[];
 }[] = [
   {
     section: "Time & projects",
     rows: [
-      { feature: "Unlimited clients & projects", solo: true, team: true },
-      { feature: "Web timer & manual logs", solo: true, team: true },
-      { feature: "Desktop menubar timer (macOS / Windows)", solo: "Beta", team: "Beta" },
-      { feature: "Services & tasks", solo: true, team: true },
-      { feature: "Slack timer commands", solo: true, team: true },
+      {
+        feature: "Own clients",
+        free: `${FREE_OWN_CLIENTS}`,
+        solo: "Unlimited",
+        team: "Unlimited",
+      },
+      {
+        feature: "Own projects",
+        free: `${FREE_OWN_PROJECTS}`,
+        solo: "Unlimited",
+        team: "Unlimited",
+      },
+      { feature: "Web timer & manual logs", free: true, solo: true, team: true },
+      {
+        feature: "Assigned org projects (agency work)",
+        free: "Unlimited",
+        solo: "Unlimited",
+        team: "Unlimited",
+      },
+      {
+        feature: "Desktop menubar timer",
+        free: false,
+        solo: "Beta",
+        team: "Beta",
+      },
+      { feature: "Services & tasks", free: true, solo: true, team: true },
+      { feature: "Slack timer commands", free: false, solo: true, team: true },
     ],
   },
   {
     section: "Freelance ↔ agency workflow",
     rows: [
-      { feature: "Invoice clients & Stripe pay links", solo: true, team: true },
-      { feature: "Link contractor ↔ agency", solo: true, team: true },
-      { feature: "Submit logs to organization", solo: true, team: true },
-      { feature: "Timesheet approve / reject", solo: false, team: true },
-      { feature: "Map shares to end-client projects", solo: false, team: true },
+      {
+        feature: "Invoice clients & Stripe pay links",
+        free: false,
+        solo: true,
+        team: true,
+      },
+      { feature: "Link contractor ↔ agency", free: true, solo: true, team: true },
+      { feature: "Submit logs to organization", free: true, solo: true, team: true },
+      { feature: "Timesheet approve / reject", free: false, solo: false, team: true },
+      {
+        feature: "Map shares to end-client projects",
+        free: false,
+        solo: false,
+        team: true,
+      },
       {
         feature: "Org seats (staff in the agency)",
+        free: false,
         solo: false,
         team: `${TEAM_INCLUDED_SEATS} included · then +$/seat`,
       },
@@ -106,42 +146,61 @@ const comparison: {
   {
     section: "Reporting & clients",
     rows: [
-      { feature: "Basic reports & income views", solo: true, team: true },
-      { feature: "Profitability & retainer alerts", solo: false, team: true },
-      { feature: "Public invoice / client view links", solo: true, team: true },
-      { feature: "End-client portal access", solo: "Free", team: "Free" },
+      { feature: "Basic reports & income views", free: false, solo: true, team: true },
+      {
+        feature: "Profitability & retainer alerts",
+        free: false,
+        solo: false,
+        team: true,
+      },
+      {
+        feature: "Public invoice / client view links",
+        free: false,
+        solo: true,
+        team: true,
+      },
+      {
+        feature: "End-client portal access",
+        free: "Free",
+        solo: "Free",
+        team: "Free",
+      },
     ],
   },
 ];
 
 const faqs = [
   {
+    q: "What’s included in Free?",
+    a: `Free is for getting started and for freelancers linked to an agency. You get ${FREE_OWN_CLIENTS} own client, ${FREE_OWN_PROJECTS} own projects, timer, logs, and submit-to-agency. Assigned org projects from agencies are unlimited. Upgrade to Solo for unlimited clients, invoices, Slack, and desktop.`,
+  },
+  {
     q: "Does my client need to pay to see invoices or shared timelines?",
     a: "No. Client view links and the end-client portal stay free. They open a secure link—no Timvo subscription required.",
   },
   {
-    q: "What’s the difference between Solo and Team?",
-    a: "Solo is the freelancer workspace (track, invoice, optionally submit to agencies). Team is the organization workspace: approve contractor timesheets, map work to end clients, manage staff seats, and run margin reports.",
+    q: "What’s the difference between Free, Solo, and Team?",
+    a: "Free is limited tracking (and agency-linked work). Solo is the full freelancer workspace (unlimited clients, invoices, Slack). Team is the organization workspace: approve contractor timesheets, map work to end clients, and manage staff seats.",
   },
   {
     q: "How do Team seats work?",
-    a: `Team includes ${TEAM_INCLUDED_SEATS} organization seats (the owner counts as one). Need more staff? Add seats at the extra-seat rate. Linked freelancers (contractors) are not org seats—they keep their own Solo or Free account and submit time to you.`,
+    a: `Team includes ${TEAM_INCLUDED_SEATS} organization seats (the owner counts as one). Need more staff? Add seats at the extra-seat rate. Linked freelancers (contractors) are not org seats—they stay on Free or Solo and submit time to you.`,
   },
   {
-    q: "What if I start Solo and later work with contractors?",
-    a: "Create or join an Organization (Team) when you’re ready. Your contractor account can stay linked so you still track on Solo while the agency reviews submissions.",
+    q: "What if I start Free and later need invoices?",
+    a: "Upgrade to Solo anytime. Your logs and agency links stay; you unlock unlimited clients, invoicing, and the rest of the freelancer toolkit.",
   },
   {
     q: "Is there a desktop app?",
-    a: "Yes — a menubar / tray timer for macOS and Windows that uses the same Timvo clock as the web app and Slack. Beta builds publish to GitHub Releases; installable notarized Mac builds need our Apple Developer signing secrets on CI.",
+    a: "Yes on Solo and Team (beta) — a menubar / tray timer for macOS and Windows. Free uses the web timer (and Slack is Solo+).",
   },
   {
     q: "Is there a limit on clients or projects?",
-    a: "No. Solo and Team both include unlimited clients and active projects. Team’s limit is on org seats (staff), not clients.",
+    a: `Free: ${FREE_OWN_CLIENTS} own client and ${FREE_OWN_PROJECTS} own projects (plus unlimited assigned agency projects). Solo and Team: unlimited own clients and projects. Team also limits org seats (staff), not clients.`,
   },
   {
     q: "Is there a mobile app?",
-    a: "Not yet. Use the web app or Slack (`/timvo`) on the go. Desktop covers the always-on Mac/Windows timer.",
+    a: "Not yet. Use the web app or Slack (`/timvo`) on the go. Desktop covers the always-on Mac/Windows timer on paid plans.",
   },
 ];
 
@@ -188,8 +247,7 @@ export function PricingPageContent() {
           Simple time tracking. Seamless invoicing.
         </h1>
         <p className="mx-auto mt-4 max-w-xl text-[15px] leading-relaxed text-white/55">
-          Stop losing billable hours. Timvo connects tracked time to invoices—and contractor
-          submissions to agency approval when you need a team.
+          Start free. Upgrade when you need unlimited clients, invoices, or an agency workspace.
         </p>
 
         <div className="mt-8 inline-flex rounded-full border border-white/10 bg-white/[0.04] p-1">
@@ -216,8 +274,43 @@ export function PricingPageContent() {
       </section>
 
       {/* Cards */}
-      <section className="relative z-10 mx-auto flex max-w-4xl flex-col gap-6 px-5 md:flex-row md:gap-6 md:px-10">
+      <section className="relative z-10 mx-auto flex max-w-5xl flex-col gap-6 px-5 md:flex-row md:items-stretch md:gap-5 md:px-10">
         <article className="flex flex-1 flex-col rounded-2xl border border-white/10 bg-white/[0.03] p-6 md:p-7">
+          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/50">
+            Free
+          </p>
+          <p className="mt-1 text-sm text-white/45">Try Timvo · agency-linked freelancers</p>
+          <div className="mt-5 flex items-baseline gap-1">
+            <span className="text-4xl font-bold tracking-tight text-white">$0</span>
+            <span className="text-sm text-white/45">/ forever</span>
+          </div>
+          <p className="mt-4 text-sm leading-relaxed text-white/55">
+            Track time, work on assigned agency projects, and submit logs—without a full Solo
+            workspace.
+          </p>
+          <Link
+            href="/login"
+            className="mt-6 inline-flex items-center justify-center rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
+          >
+            Get started free
+          </Link>
+          <ul className="mt-6 space-y-2.5 text-sm text-white/70">
+            {[
+              `${FREE_OWN_CLIENTS} own client · ${FREE_OWN_PROJECTS} own projects`,
+              "Unlimited assigned org projects",
+              "Web timer & manual logs",
+              "Submit time to linked agencies",
+              "No invoices, Slack, or desktop",
+            ].map((f) => (
+              <li key={f} className="flex gap-2">
+                <span className="text-white/40">✓</span>
+                {f}
+              </li>
+            ))}
+          </ul>
+        </article>
+
+        <article className="flex flex-1 flex-col rounded-2xl border border-indigo-400/30 bg-indigo-500/[0.08] p-6 md:p-7">
           <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-indigo-300/80">
             Solo
           </p>
@@ -242,10 +335,10 @@ export function PricingPageContent() {
           </Link>
           <ul className="mt-6 space-y-2.5 text-sm text-white/70">
             {[
-              "Unlimited time tracking",
+              "Unlimited clients & projects",
               "Automated invoice generation",
               "Client invoice / share links",
-              "Slack & email notifications",
+              "Slack & desktop timer",
               "Basic reporting",
               "Submit time to linked agencies",
             ].map((f) => (
@@ -279,8 +372,8 @@ export function PricingPageContent() {
             + ${teamPrice.extraSeat.toFixed(2)} / extra seat / month
           </p>
           <p className="mt-4 text-sm leading-relaxed text-white/55">
-            Built for agencies that need contractor approvals, end-client mapping, and margin
-            tracking—plus staff time on org projects. Linked freelancers are not seats.
+            Approvals, end-client mapping, and staff time. Linked freelancers stay on Free or Solo—not
+            seats.
           </p>
           <Link
             href="/signup/organization"
@@ -307,7 +400,7 @@ export function PricingPageContent() {
       </section>
 
       {/* Free banner */}
-      <section className="relative z-10 mx-auto mt-8 max-w-4xl px-5 md:px-10">
+      <section className="relative z-10 mx-auto mt-8 max-w-5xl px-5 md:px-10">
         <div className="rounded-2xl border border-white/10 bg-gradient-to-r from-indigo-500/15 to-emerald-500/10 px-6 py-5 text-center md:px-10">
           <p className="text-base font-semibold text-white">
             Client views stay 100% free.
@@ -320,7 +413,7 @@ export function PricingPageContent() {
       </section>
 
       {/* Comparison */}
-      <section className="relative z-10 mx-auto mt-16 max-w-4xl px-5 pb-8 md:px-10">
+      <section className="relative z-10 mx-auto mt-16 max-w-5xl px-5 pb-8 md:px-10">
         <h2
           className="mb-6 text-center text-2xl font-bold tracking-tight text-white md:text-3xl"
           style={{ fontFamily: "var(--font-serif)" }}
@@ -328,10 +421,11 @@ export function PricingPageContent() {
           Compare plans
         </h2>
         <div className="overflow-x-auto rounded-2xl border border-white/10">
-          <table className="w-full min-w-[520px] text-left text-sm">
+          <table className="w-full min-w-[640px] text-left text-sm">
             <thead className="sticky top-0 bg-[#121826]">
               <tr className="border-b border-white/10 text-[11px] uppercase tracking-wider text-white/40">
                 <th className="px-4 py-3 font-semibold">Feature</th>
+                <th className="px-4 py-3 font-semibold">Free</th>
                 <th className="px-4 py-3 font-semibold">
                   Solo (${solo.annual.per}/mo)
                 </th>
@@ -345,7 +439,7 @@ export function PricingPageContent() {
                 <Fragment key={block.section}>
                   <tr className="bg-white/[0.03]">
                     <td
-                      colSpan={3}
+                      colSpan={4}
                       className="px-4 py-2.5 text-[11px] font-bold uppercase tracking-wider text-indigo-200/70"
                     >
                       {block.section}
@@ -354,6 +448,9 @@ export function PricingPageContent() {
                   {block.rows.map((row) => (
                     <tr key={row.feature} className="border-t border-white/5">
                       <td className="px-4 py-3 text-white/75">{row.feature}</td>
+                      <td className="px-4 py-3">
+                        <Check on={row.free} />
+                      </td>
                       <td className="px-4 py-3">
                         <Check on={row.solo} />
                       </td>
@@ -368,7 +465,7 @@ export function PricingPageContent() {
           </table>
         </div>
         <p className="mt-3 text-center text-xs text-white/35">
-          Annual prices shown in the table header. Toggle above for monthly billing.
+          Annual prices shown in the table header for paid plans. Toggle above for monthly billing.
         </p>
       </section>
 
