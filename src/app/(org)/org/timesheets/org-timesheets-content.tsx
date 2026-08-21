@@ -315,11 +315,11 @@ export function OrgTimesheetsContent({
     <div>
       <h1 className="mb-2 text-2xl font-bold text-[var(--text-primary)]">Timesheets</h1>
       <p className="mb-6 text-sm text-[var(--text-secondary)]">
-        Review submitted time in the context of your end-client projects. Map shares on{" "}
+        Approve or reject contractor submissions here. Mapping on{" "}
         <Link href="/org/assignments" className="text-violet-400 hover:underline">
           Assignments
         </Link>{" "}
-        first for the best rate defaults.
+        is optional and improves rate defaults and reports.
       </p>
 
       {unmappedPending > 0 && (

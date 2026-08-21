@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { toast } from "sonner";
 import {
   mapProjectShare,
@@ -75,7 +76,7 @@ export function OrgAssignmentsBoard({ data }: { data: AssignmentBoardData }) {
     setBusy(false);
     if (result.error) toast.error(result.error);
     else {
-      toast.success("Returned to inbox");
+      toast.success("Unmapped from end-client project");
       router.refresh();
     }
   }
@@ -84,14 +85,18 @@ export function OrgAssignmentsBoard({ data }: { data: AssignmentBoardData }) {
     <div>
       <h1 className="mb-2 text-2xl font-bold text-[var(--text-primary)]">Assignments</h1>
       <p className="mb-6 text-sm text-[var(--text-secondary)]">
-        Drag contractor shared projects onto your end-client projects. Only shared
-        tracking can be submitted and billed.
+        Map a contractor&apos;s shared project to your end-client project (optional). Time for
+        approval lives on{" "}
+        <Link href="/org/timesheets" className="text-violet-400 hover:underline">
+          Timesheets
+        </Link>
+        .
       </p>
 
       <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
         <section>
           <h2 className="mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">
-            Inbox ({data.unmapped.length})
+            Unmapped ({data.unmapped.length})
           </h2>
           <div
             className="min-h-[200px] space-y-2 rounded-xl border border-dashed border-[var(--border)] bg-[var(--bg-card)]/50 p-3"
@@ -109,7 +114,7 @@ export function OrgAssignmentsBoard({ data }: { data: AssignmentBoardData }) {
           >
             {data.unmapped.length === 0 ? (
               <p className="p-4 text-center text-xs text-[var(--text-muted)]">
-                No unassigned shares. Contractors share projects from their dashboard.
+                No unmapped projects. Submitted time still shows on Timesheets.
               </p>
             ) : (
               data.unmapped.map((row) => (

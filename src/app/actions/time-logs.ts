@@ -144,6 +144,8 @@ export async function startTimer(projectId: string, options?: { taskId?: string;
   if (error) return { error: error.message };
   revalidatePath("/");
   revalidatePath("/clients");
+  revalidatePath("/logs");
+  revalidatePath("/org/logs");
   return { success: true, logId: data.id, startedAt: data.started_at };
 }
 
@@ -176,6 +178,8 @@ export async function stopTimer() {
   if (error) return { error: error.message };
   revalidatePath("/");
   revalidatePath("/clients");
+  revalidatePath("/logs");
+  revalidatePath("/org/logs");
   return { success: true };
 }
 
@@ -231,6 +235,8 @@ export async function addManualLog(formData: FormData) {
   if (error) return { error: error.message };
   revalidatePath("/");
   revalidatePath("/clients");
+  revalidatePath("/logs");
+  revalidatePath("/org/logs");
   return { success: true };
 }
 
@@ -265,6 +271,7 @@ export async function addTimeLogForTask(
   revalidatePath("/");
   revalidatePath("/clients");
   revalidatePath("/logs");
+  revalidatePath("/org/logs");
   return { success: true };
 }
 
@@ -313,6 +320,7 @@ export async function updateTimeLog(
   if (error) return { error: error.message };
   revalidatePath("/");
   revalidatePath("/logs");
+  revalidatePath("/org/logs");
   return { success: true };
 }
 
@@ -330,5 +338,6 @@ export async function deleteTimeLog(id: string) {
   if (error) return { error: error.message };
   revalidatePath("/");
   revalidatePath("/logs");
+  revalidatePath("/org/logs");
   return { success: true };
 }

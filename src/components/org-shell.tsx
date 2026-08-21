@@ -6,13 +6,16 @@ import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "./theme-toggle";
+import { SidebarTimerWidget } from "./sidebar-timer-widget";
 import { Menu, X } from "lucide-react";
 
 const navItems = [
   { href: "/org", label: "Dashboard", icon: "🏠" },
   { href: "/org/clients", label: "Clients", icon: "📁" },
+  { href: "/org/logs", label: "Logs", icon: "⏱️" },
+  { href: "/org/services", label: "Services", icon: "📋" },
+  { href: "/org/timesheets", label: "Timesheets", icon: "✅" },
   { href: "/org/assignments", label: "Assignments", icon: "🧩" },
-  { href: "/org/timesheets", label: "Timesheets", icon: "⏱️" },
   { href: "/org/contractors", label: "Contractors", icon: "👥" },
   { href: "/org/reports", label: "Reports", icon: "📊" },
   { href: "/org/settings", label: "Settings", icon: "⚙️" },
@@ -81,7 +84,9 @@ export function OrgShell({ children, orgName, hasContractorDashboard }: OrgShell
           {orgName}
         </p>
 
-        <nav className="flex-1 space-y-0.5 px-3 py-2">
+        <SidebarTimerWidget scope="org" />
+
+        <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-2">
           {navItems.map((item) => {
             const active =
               item.href === "/org"

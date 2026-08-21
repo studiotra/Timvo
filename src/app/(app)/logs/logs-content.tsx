@@ -36,17 +36,19 @@ function formatMonthLabel(offsetMonths: number): string {
 export function LogsContent({
   logs,
   clients,
-  organizations,
-  shareStatuses,
+  organizations = [],
+  shareStatuses = {},
   displayMode: initialDisplayMode,
   initialFilters,
+  basePath = "/logs",
 }: {
   logs: TimeLogRow[];
   clients: ClientOpt[];
-  organizations: ContractorOrgOption[];
-  shareStatuses: Record<string, { orgName: string; status: string }[]>;
+  organizations?: ContractorOrgOption[];
+  shareStatuses?: Record<string, { orgName: string; status: string }[]>;
   displayMode: DisplayMode;
   initialFilters: { clientId: string; fromDate: string; toDate: string };
+  basePath?: string;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -84,7 +86,7 @@ export function LogsContent({
       if (v) params.set(k, v);
       else params.delete(k);
     }
-    router.push(`/logs?${params.toString()}`);
+    router.push(`${basePath}?${params.toString()}`);
   }
 
   function setViewOffset(v: ViewMode, o: number) {
@@ -93,7 +95,7 @@ export function LogsContent({
     params.set("offset", String(o));
     params.delete("from");
     params.delete("to");
-    router.push(`/logs?${params.toString()}`);
+    router.push(`${basePath}?${params.toString()}`);
   }
 
   function setDisplayMode(d: DisplayMode) {
@@ -103,7 +105,7 @@ export function LogsContent({
       params.set("view", "week");
       params.set("offset", "0");
     }
-    router.push(`/logs?${params.toString()}`);
+    router.push(`${basePath}?${params.toString()}`);
   }
 
   function applyFilters() {
@@ -391,7 +393,7 @@ export function LogsContent({
                 onClick={() => {
                   const params = new URLSearchParams(searchParams);
                   params.set("offset", String(offset - 1));
-                  router.push(`/logs?${params.toString()}`);
+                  router.push(`${basePath}?${params.toString()}`);
                 }}
                 className="rounded-lg border border-[var(--border)] p-2 text-[var(--text-secondary)] hover:bg-[var(--bg-app)]"
               >
@@ -401,7 +403,7 @@ export function LogsContent({
                 onClick={() => {
                   const params = new URLSearchParams(searchParams);
                   params.set("offset", String(offset + 1));
-                  router.push(`/logs?${params.toString()}`);
+                  router.push(`${basePath}?${params.toString()}`);
                 }}
                 className="rounded-lg border border-[var(--border)] p-2 text-[var(--text-secondary)] hover:bg-[var(--bg-app)]"
               >
@@ -574,6 +576,7 @@ export function LogsContent({
           key={editingLog.id}
           log={editingLog}
           open={!!editingLog}
+          scope={basePath.startsWith("/org") ? "org" : "contractor"}
           onClose={() => {
             setEditingLog(null);
             router.refresh();
@@ -582,6 +585,7 @@ export function LogsContent({
       )}
       <ManualLogSlideOver
         open={addLogOpen}
+        scope={basePath.startsWith("/org") ? "org" : "contractor"}
         onClose={() => {
           setAddLogOpen(false);
           router.refresh();

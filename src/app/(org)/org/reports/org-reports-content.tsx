@@ -44,8 +44,8 @@ export function OrgReportsContent({
         </h2>
         {rows.length === 0 ? (
           <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-8 text-center text-[var(--text-muted)]">
-            No data yet. Approve contractor timesheets with bill/cost rates, or log time on org
-            projects.
+            No data yet. Approve contractor timesheets with bill/cost rates, or track staff time
+            on org projects from Logs.
           </div>
         ) : (
           <div className="overflow-x-auto rounded-xl border border-[var(--border)] bg-[var(--bg-card)]">

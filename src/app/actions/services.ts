@@ -44,6 +44,8 @@ export async function addService(formData: FormData) {
 
   if (error) return { error: error.message };
   revalidatePath("/settings");
+  revalidatePath("/services");
+  revalidatePath("/org/services");
   return { success: true };
 }
 
@@ -68,6 +70,8 @@ export async function updateService(id: string, formData: FormData) {
 
   if (error) return { error: error.message };
   revalidatePath("/settings");
+  revalidatePath("/services");
+  revalidatePath("/org/services");
   return { success: true };
 }
 
@@ -84,5 +88,7 @@ export async function deleteService(id: string) {
 
   if (error) return { error: error.message };
   revalidatePath("/settings");
+  revalidatePath("/services");
+  revalidatePath("/org/services");
   return { success: true };
 }

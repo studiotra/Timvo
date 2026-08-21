@@ -165,10 +165,22 @@ export async function createTask(projectId: string, serviceId: string, name: str
 
   const { data: client } = await supabase
     .from("clients")
-    .select("user_id")
+    .select("user_id, organization_id")
     .eq("id", proj.client_id)
     .single();
-  if (!client || client.user_id !== user.id) return { error: "Unauthorized" };
+  if (!client) return { error: "Unauthorized" };
+
+  let allowed = client.user_id === user.id;
+  if (!allowed && client.organization_id) {
+    const { data: membership } = await supabase
+      .from("organization_members")
+      .select("id")
+      .eq("organization_id", client.organization_id)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    allowed = Boolean(membership);
+  }
+  if (!allowed) return { error: "Unauthorized" };
 
   const { data: svc } = await supabase
     .from("services")

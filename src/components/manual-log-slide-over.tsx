@@ -6,7 +6,14 @@ import { useFormStatus } from "react-dom";
 import { SlideOver } from "./slide-over";
 import { addManualLog } from "@/app/actions/time-logs";
 import { getClientsForSelect, getProjectsByClient, getTasksByProjectAndService, createTask, type TaskOpt } from "@/app/actions/clients-projects";
+import {
+  getOrgClientsForSelect,
+  getOrgProjectsByClient,
+  createOrgTask,
+} from "@/app/actions/org-tracking";
 import { getServicesForSelect } from "@/app/actions/services";
+
+type TrackingScope = "contractor" | "org";
 
 type ClientOpt = { id: string; name: string };
 type ProjectOpt = { id: string; name: string; client_id: string };
@@ -30,12 +37,15 @@ export function ManualLogSlideOver({
   onClose,
   initialClientId,
   initialProjectId,
+  scope = "contractor",
 }: {
   open: boolean;
   onClose: () => void;
   initialClientId?: string;
   initialProjectId?: string;
+  scope?: TrackingScope;
 }) {
+  const storagePrefix = scope === "org" ? "orgManualLog" : "manualLog";
   const [error, setError] = useState<string | null>(null);
   const [clients, setClients] = useState<ClientOpt[]>([]);
   const [projects, setProjects] = useState<ProjectOpt[]>([]);
@@ -52,8 +62,9 @@ export function ManualLogSlideOver({
 
   useEffect(() => {
     if (!open) return;
-    getClientsForSelect().then(setClients);
-  }, [open]);
+    const load = scope === "org" ? getOrgClientsForSelect : getClientsForSelect;
+    load().then(setClients);
+  }, [open, scope]);
 
   useEffect(() => {
     if (!open) return;
@@ -61,20 +72,20 @@ export function ManualLogSlideOver({
       initializingRef.current = true;
       setClientId(initialClientId);
       setProjectId(initialProjectId);
-      getProjectsByClient(initialClientId).then((projs) => {
+      (scope === "org" ? getOrgProjectsByClient : getProjectsByClient)(initialClientId).then((projs) => {
         setProjects(projs);
         initializingRef.current = false;
       });
       return;
     }
     try {
-      const savedClient = typeof window !== "undefined" ? localStorage.getItem("manualLog_lastClient") : null;
-      const savedProject = typeof window !== "undefined" ? localStorage.getItem("manualLog_lastProject") : null;
+      const savedClient = typeof window !== "undefined" ? localStorage.getItem(storagePrefix + "_lastClient") : null;
+      const savedProject = typeof window !== "undefined" ? localStorage.getItem(storagePrefix + "_lastProject") : null;
       if (savedClient && savedProject) {
         restoringFromStorageRef.current = true;
         setClientId(savedClient);
         setProjectId(savedProject);
-        getProjectsByClient(savedClient).then((projs) => {
+        (scope === "org" ? getOrgProjectsByClient : getProjectsByClient)(savedClient).then((projs) => {
           setProjects(projs);
           restoringFromStorageRef.current = false;
         });
@@ -85,7 +96,7 @@ export function ManualLogSlideOver({
     setProjectId("");
     setServiceId("");
     setTaskId("");
-  }, [open, initialClientId, initialProjectId]);
+  }, [open, initialClientId, initialProjectId, scope]);
 
   useEffect(() => {
     if (!clientId) {
@@ -97,12 +108,12 @@ export function ManualLogSlideOver({
       return;
     }
     if (initializingRef.current || restoringFromStorageRef.current) return;
-    getProjectsByClient(clientId).then(setProjects);
+    (scope === "org" ? getOrgProjectsByClient : getProjectsByClient)(clientId).then(setProjects);
     setProjectId("");
     setServiceId("");
     setTasks([]);
     setTaskId("");
-  }, [clientId]);
+  }, [clientId, scope]);
 
   useEffect(() => {
     if (!projectId) {
@@ -134,7 +145,7 @@ export function ManualLogSlideOver({
 
   async function handleAddTask() {
     if (!newTaskName.trim() || !projectId || !serviceId) return;
-    const r = await createTask(projectId, serviceId, newTaskName.trim());
+    const r = await (scope === "org" ? createOrgTask : createTask)(projectId, serviceId, newTaskName.trim());
     if (r?.error) {
       setError(r.error);
       return;
@@ -163,8 +174,8 @@ export function ManualLogSlideOver({
     }
     if (typeof window !== "undefined" && clientId) {
       try {
-        localStorage.setItem("manualLog_lastClient", clientId);
-        localStorage.setItem("manualLog_lastProject", projectId);
+        localStorage.setItem(storagePrefix + "_lastClient", clientId);
+        localStorage.setItem(storagePrefix + "_lastProject", projectId);
       } catch (_) {}
     }
     toast.success("Time log added");

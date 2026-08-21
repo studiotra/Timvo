@@ -6,6 +6,9 @@ import { SlideOver } from "./slide-over";
 import { updateTimeLog } from "@/app/actions/time-logs";
 import { type TimeLogRow } from "@/app/actions/time-logs";
 import { getClientsForSelect, getProjectsByClient } from "@/app/actions/clients-projects";
+import { getOrgClientsForSelect, getOrgProjectsByClient } from "@/app/actions/org-tracking";
+
+type TrackingScope = "contractor" | "org";
 
 type ClientOpt = { id: string; name: string };
 type ProjectOpt = { id: string; name: string; client_id: string };
@@ -27,10 +30,12 @@ export function EditLogSlideOver({
   log,
   open,
   onClose,
+  scope = "contractor",
 }: {
   log: TimeLogRow | null;
   open: boolean;
   onClose: () => void;
+  scope?: TrackingScope;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [clients, setClients] = useState<ClientOpt[]>([]);
@@ -39,16 +44,18 @@ export function EditLogSlideOver({
 
   useEffect(() => {
     if (!open) return;
-    getClientsForSelect().then(setClients);
-  }, [open]);
+    const load = scope === "org" ? getOrgClientsForSelect : getClientsForSelect;
+    load().then(setClients);
+  }, [open, scope]);
 
   useEffect(() => {
     if (!clientId) {
       setProjects([]);
       return;
     }
-    getProjectsByClient(clientId).then(setProjects);
-  }, [clientId]);
+    const load = scope === "org" ? getOrgProjectsByClient : getProjectsByClient;
+    load(clientId).then(setProjects);
+  }, [clientId, scope]);
 
   useEffect(() => {
     if (log && open) {

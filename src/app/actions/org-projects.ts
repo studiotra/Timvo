@@ -450,6 +450,64 @@ export async function getOrgProfitabilityReport(): Promise<ProfitabilityRow[]> {
     byLabel[key].revenue += hours * billRate;
   }
 
+  // Org staff time on org-owned projects (no timesheet approval required)
+  const { data: orgClients } = await admin
+    .from("clients")
+    .select("id, name")
+    .eq("organization_id", ctx.org.id);
+  const orgClientIds = (orgClients ?? []).map((c) => c.id);
+  const orgClientName = new Map((orgClients ?? []).map((c) => [c.id, c.name]));
+
+  if (orgClientIds.length) {
+    const { data: orgProjects } = await admin
+      .from("projects")
+      .select("id, name, client_id, bill_rate, hourly_rate")
+      .in("client_id", orgClientIds);
+    const orgProjectIds = (orgProjects ?? []).map((p) => p.id);
+    const orgProjectMeta = new Map(
+      (orgProjects ?? []).map((p) => [
+        p.id,
+        {
+          label: `${orgClientName.get(p.client_id) ?? "Client"} · ${p.name}`,
+          billRate:
+            p.bill_rate != null
+              ? Number(p.bill_rate)
+              : p.hourly_rate != null
+                ? Number(p.hourly_rate)
+                : 0,
+        },
+      ])
+    );
+
+    if (orgProjectIds.length) {
+      const { data: members } = await admin
+        .from("organization_members")
+        .select("user_id")
+        .eq("organization_id", ctx.org.id);
+      const memberIds = (members ?? []).map((m) => m.user_id);
+
+      const { data: staffLogs } =
+        memberIds.length > 0
+          ? await admin
+              .from("time_logs")
+              .select("duration_minutes, project_id")
+              .in("project_id", orgProjectIds)
+              .in("user_id", memberIds)
+              .not("ended_at", "is", null)
+          : { data: [] as { duration_minutes: number | null; project_id: string }[] };
+
+      for (const log of staffLogs ?? []) {
+        const meta = orgProjectMeta.get(log.project_id);
+        if (!meta) continue;
+        const hours = (log.duration_minutes ?? 0) / 60;
+        if (!byLabel[meta.label]) byLabel[meta.label] = { hours: 0, cost: 0, revenue: 0 };
+        byLabel[meta.label].hours += hours;
+        byLabel[meta.label].revenue += hours * meta.billRate;
+        // Internal staff cost defaults to 0 (no contractor cost rate)
+      }
+    }
+  }
+
   return Object.entries(byLabel)
     .map(([label, v]) => ({
       label,

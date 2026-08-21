@@ -18,8 +18,19 @@ import {
   type TaskOpt,
   type ActiveTimer,
 } from "@/app/actions/timer";
+import {
+  getOrgClientsForTimer,
+  getOrgProjectsForTimer,
+  getOrgServicesForTimer,
+  getOrgTasksForTimer,
+  createOrgTask,
+} from "@/app/actions/org-tracking";
 
-const TIMER_SELECTION_KEY = "timvo-timer-selection";
+type TimerScope = "contractor" | "org";
+
+function selectionKey(scope: TimerScope) {
+  return scope === "org" ? "timvo-org-timer-selection" : "timvo-timer-selection";
+}
 
 type SavedSelection = {
   clientId: string;
@@ -28,19 +39,19 @@ type SavedSelection = {
   taskId: string;
 };
 
-function readSavedSelection(): SavedSelection | null {
+function readSavedSelection(scope: TimerScope): SavedSelection | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = sessionStorage.getItem(TIMER_SELECTION_KEY);
+    const raw = sessionStorage.getItem(selectionKey(scope));
     return raw ? (JSON.parse(raw) as SavedSelection) : null;
   } catch {
     return null;
   }
 }
 
-function writeSavedSelection(value: SavedSelection) {
+function writeSavedSelection(scope: TimerScope, value: SavedSelection) {
   if (typeof window === "undefined") return;
-  sessionStorage.setItem(TIMER_SELECTION_KEY, JSON.stringify(value));
+  sessionStorage.setItem(selectionKey(scope), JSON.stringify(value));
 }
 
 function formatTime(secs: number) {
@@ -50,7 +61,7 @@ function formatTime(secs: number) {
   return `${h}:${m}:${s}`;
 }
 
-export function SidebarTimerWidget() {
+export function SidebarTimerWidget({ scope = "contractor" }: { scope?: TimerScope }) {
   const router = useRouter();
   const [clients, setClients] = useState<ClientOption[]>([]);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
@@ -68,9 +79,11 @@ export function SidebarTimerWidget() {
   const restoredRef = useRef(false);
 
   const load = useCallback(async () => {
+    const loadClients = scope === "org" ? getOrgClientsForTimer : getClientsForTimer;
+    const loadServices = scope === "org" ? getOrgServicesForTimer : getServicesForTimer;
     const [clientsList, servicesList, active] = await Promise.all([
-      getClientsForTimer(),
-      getServicesForTimer(),
+      loadClients(),
+      loadServices(),
       getActiveTimer(),
     ]);
     setClients(clientsList);
@@ -80,7 +93,7 @@ export function SidebarTimerWidget() {
 
     if (!restoredRef.current) {
       restoredRef.current = true;
-      const saved = readSavedSelection();
+      const saved = readSavedSelection(scope);
       if (saved?.clientId && clientsList.some((c) => c.id === saved.clientId)) {
         setClientId(saved.clientId);
         setSelectedProjectId(saved.projectId);
@@ -88,20 +101,20 @@ export function SidebarTimerWidget() {
         setTaskId(saved.taskId);
       }
     }
-  }, []);
+  }, [scope]);
 
   useEffect(() => {
     load();
   }, [load]);
 
   useEffect(() => {
-    writeSavedSelection({
+    writeSavedSelection(scope, {
       clientId,
       projectId: selectedProjectId,
       serviceId,
       taskId,
     });
-  }, [clientId, selectedProjectId, serviceId, taskId]);
+  }, [scope, clientId, selectedProjectId, serviceId, taskId]);
 
   useEffect(() => {
     if (!clientId) {
@@ -112,12 +125,12 @@ export function SidebarTimerWidget() {
       return;
     }
     let cancelled = false;
-    getProjectsForTimer(clientId).then((projs) => {
+    (scope === "org" ? getOrgProjectsForTimer : getProjectsForTimer)(clientId).then((projs) => {
       if (cancelled) return;
       setProjects(projs);
       setSelectedProjectId((prev) => {
         if (prev && projs.some((p) => p.id === prev)) return prev;
-        const saved = readSavedSelection();
+        const saved = readSavedSelection(scope);
         if (saved?.projectId && projs.some((p) => p.id === saved.projectId)) {
           return saved.projectId;
         }
@@ -127,7 +140,7 @@ export function SidebarTimerWidget() {
     return () => {
       cancelled = true;
     };
-  }, [clientId]);
+  }, [clientId, scope]);
 
   useEffect(() => {
     if (!selectedProjectId) {
@@ -136,7 +149,7 @@ export function SidebarTimerWidget() {
       return;
     }
     let cancelled = false;
-    getTasksForTimer(selectedProjectId, serviceId || undefined).then((list) => {
+    (scope === "org" ? getOrgTasksForTimer : getTasksForTimer)(selectedProjectId, serviceId || undefined).then((list) => {
       if (cancelled) return;
       setTasks(list);
       setTaskId((prev) => (list.some((t) => t.id === prev) ? prev : ""));
@@ -144,11 +157,11 @@ export function SidebarTimerWidget() {
     return () => {
       cancelled = true;
     };
-  }, [selectedProjectId, serviceId]);
+  }, [selectedProjectId, serviceId, scope]);
 
   async function handleAddTask() {
     if (!newTaskName.trim() || !selectedProjectId || !serviceId) return;
-    const r = await createTask(selectedProjectId, serviceId, newTaskName.trim());
+    const r = await (scope === "org" ? createOrgTask : createTask)(selectedProjectId, serviceId, newTaskName.trim());
     if (r?.error) {
       toast.error(r.error);
       return;

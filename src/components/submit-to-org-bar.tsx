@@ -31,7 +31,7 @@ export function SubmitToOrgBar({
     setBusy(false);
     if (result.error) toast.error(result.error);
     else {
-      toast.success(`Submitted ${result.submitted} log(s) to organization`);
+      toast.success(`Submitted ${result.submitted} log(s) for agency review`);
       onClearSelection?.();
       router.refresh();
     }
@@ -66,7 +66,7 @@ export function SubmitToOrgBar({
             : "Select logs below"}
       </button>
       <span className="text-xs text-[var(--text-muted)]">
-        Submit any of your project logs — they&apos;ll appear in the agency inbox automatically
+        Selected logs go to the agency Timesheets page for review
       </span>
     </div>
   );
