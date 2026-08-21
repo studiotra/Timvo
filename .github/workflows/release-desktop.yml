@@ -58,31 +58,9 @@ jobs:
             NODE
           fi
 
-      - name: Import Apple certificate
-        if: runner.os == 'macOS'
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
-        run: |
-          if [ -z "$APPLE_CERTIFICATE" ]; then
-            echo "No APPLE_CERTIFICATE secret — building unsigned macOS artifact"
-            exit 0
-          fi
-          CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
-          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
-          echo -n "$APPLE_CERTIFICATE" | base64 --decode -o "$CERTIFICATE_PATH"
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security import "$CERTIFICATE_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
-          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security list-keychain -d user -s "$KEYCHAIN_PATH"
-
-      # Do not pass empty APPLE_* env vars — tauri treats "" as “sign” and fails codesign.
-      - name: Build unsigned (no Apple certificate)
-        if: ${{ secrets.APPLE_CERTIFICATE == '' }}
-        uses: tauri-apps/tauri-action@v0
+      # Intentionally omit APPLE_* env vars. Empty strings make Tauri attempt
+      # codesign and fail. Add them here only after real Apple secrets exist.
+      - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -101,32 +79,6 @@ jobs:
 
             Notarized builds require Apple signing secrets on the repo.
             Auto-update artifacts require `TAURI_SIGNING_PRIVATE_KEY`.
-          releaseDraft: true
-          prerelease: true
-          args: ${{ matrix.args }}
-
-      - name: Build signed + notarized
-        if: ${{ secrets.APPLE_CERTIFICATE != '' }}
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        with:
-          projectPath: apps/desktop
-          tagName: ${{ github.ref_type == 'tag' && github.ref_name || format('desktop-v{0}', '0.1.0') }}
-          releaseName: Timvo Desktop ${{ github.ref_type == 'tag' && github.ref_name || '0.1.0' }}
-          releaseBody: |
-            Timvo menu-bar / tray timer (same clock as web + Slack).
-
-            ### Install (macOS)
-            - Open the `.dmg`, drag Timvo to Applications
           releaseDraft: true
           prerelease: true
           args: ${{ matrix.args }}
