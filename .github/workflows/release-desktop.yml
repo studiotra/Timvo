@@ -49,13 +49,7 @@ jobs:
         run: |
           if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
             echo "No TAURI_SIGNING_PRIVATE_KEY — disabling updater artifacts"
-            node <<'NODE'
-            const fs = require("fs");
-            const p = "src-tauri/tauri.conf.json";
-            const j = JSON.parse(fs.readFileSync(p, "utf8"));
-            j.bundle.createUpdaterArtifacts = false;
-            fs.writeFileSync(p, JSON.stringify(j, null, 2) + "\n");
-            NODE
+            node -e 'const fs=require("fs");const p="src-tauri/tauri.conf.json";const j=JSON.parse(fs.readFileSync(p,"utf8"));j.bundle.createUpdaterArtifacts=false;fs.writeFileSync(p,JSON.stringify(j,null,2)+"\n");'
           fi
 
       # Intentionally omit APPLE_* env vars. Empty strings make Tauri attempt
