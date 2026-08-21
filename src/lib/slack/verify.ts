@@ -71,15 +71,22 @@ function stateSecret() {
   return process.env.SLACK_SIGNING_SECRET || process.env.SLACK_CLIENT_SECRET || "";
 }
 
-export async function signOAuthState(userId: string): Promise<string> {
+export async function signOAuthState(userId: string, next?: string): Promise<string> {
   const payload = base64UrlEncodeText(
-    JSON.stringify({ uid: userId, exp: Date.now() + 10 * 60 * 1000 })
+    JSON.stringify({
+      uid: userId,
+      exp: Date.now() + 10 * 60 * 1000,
+      next: next === "/org/settings" ? "/org/settings" : "/settings",
+    })
   );
   const sig = await hmacSha256Base64Url(stateSecret(), payload);
   return `${payload}.${sig}`;
 }
 
-export async function readOAuthState(state: string | null): Promise<string | null> {
+export async function readOAuthState(state: string | null): Promise<{
+  userId: string;
+  next: string;
+} | null> {
   if (!state) return null;
   const [payload, sig] = state.split(".");
   if (!payload || !sig) return null;
@@ -89,9 +96,13 @@ export async function readOAuthState(state: string | null): Promise<string | nul
     const data = JSON.parse(base64UrlDecodeText(payload)) as {
       uid?: string;
       exp?: number;
+      next?: string;
     };
     if (!data.uid || !data.exp || Date.now() > data.exp) return null;
-    return data.uid;
+    return {
+      userId: data.uid,
+      next: data.next === "/org/settings" ? "/org/settings" : "/settings",
+    };
   } catch {
     return null;
   }

@@ -102,7 +102,9 @@ export function LoginForm({
     <div className="min-h-screen flex items-center justify-center bg-charcoal px-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-white">Timvo</h1>
+          <a href="/welcome" className="inline-block text-2xl font-bold text-white hover:opacity-90">
+            Timvo
+          </a>
           <p className="text-gray-400 text-sm mt-1">See what your time is really worth — not just how long you worked.</p>
           <p className="text-gray-500 text-sm mt-2">
             Sign in as a contractor, or{" "}

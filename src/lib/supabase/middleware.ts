@@ -51,15 +51,23 @@ export async function updateSession(request: NextRequest) {
     path.startsWith("/accept-invite") ||
     path.startsWith("/reset-password") ||
     path.startsWith("/client-preview");
+  const isMarketingPage = path === "/welcome";
+  const isPublicPage = path.startsWith("/invoice");
   const isApiRoute = path.startsWith("/api");
 
-  if (!data.user && !isAuthPage && !isApiRoute) {
+  if (!data.user && path === "/") {
     const url = request.nextUrl.clone();
-    url.pathname = "/login";
+    url.pathname = "/welcome";
     return NextResponse.redirect(url);
   }
 
-  if (data.user && path === "/login") {
+  if (!data.user && !isAuthPage && !isApiRoute && !isMarketingPage && !isPublicPage) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/welcome";
+    return NextResponse.redirect(url);
+  }
+
+  if (data.user && (path === "/login" || path === "/welcome")) {
     const url = request.nextUrl.clone();
     const next = safeNextPath(request.nextUrl.searchParams.get("next"));
     if (next) {

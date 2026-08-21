@@ -10,6 +10,8 @@ export function isContractorAppRoute(path: string): boolean {
     path.startsWith("/accept-invite") ||
     path.startsWith("/reset-password") ||
     path.startsWith("/client-preview") ||
+    path.startsWith("/welcome") ||
+    path.startsWith("/invoice") ||
     path.startsWith("/api")
   );
 }

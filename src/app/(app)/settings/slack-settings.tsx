@@ -12,10 +12,12 @@ export function SlackSettings({
   connection,
   configured,
   flash,
+  returnPath = "/settings",
 }: {
   connection: Connection | null;
   configured: boolean;
   flash?: string | null;
+  returnPath?: string;
 }) {
   const status = flash ?? null;
   const [busy, setBusy] = useState(false);
@@ -27,8 +29,13 @@ export function SlackSettings({
     const result = await disconnectSlack();
     setBusy(false);
     if (result?.error) setError(result.error);
-    else window.location.href = "/settings";
+    else window.location.href = returnPath;
   }
+
+  const oauthHref =
+    returnPath === "/org/settings"
+      ? "/api/slack/oauth?next=/org/settings"
+      : "/api/slack/oauth";
 
   return (
     <section>
@@ -78,7 +85,7 @@ export function SlackSettings({
           </>
         ) : configured ? (
           <a
-            href="/api/slack/oauth"
+            href={oauthHref}
             className="inline-flex rounded-lg bg-accent px-4 py-2 text-[13px] font-semibold text-white hover:bg-accent-hover"
           >
             Connect Slack

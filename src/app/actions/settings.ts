@@ -63,5 +63,34 @@ export async function updateProfile(formData: FormData) {
   if (error) return { error: error.message };
   revalidatePath("/", "layout");
   revalidatePath("/settings");
+  revalidatePath("/org/settings");
+  return { success: true };
+}
+
+/** Lightweight prefs for org users (avoids wiping contractor invoice fields). */
+export async function updateOrgPersonalPreferences(formData: FormData) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Unauthorized" };
+
+  const fullName = (formData.get("full_name") as string)?.trim() || null;
+  const locale = parseLocale((formData.get("locale") as string)?.trim());
+  const timezone = (formData.get("timezone") as string)?.trim() || "America/New_York";
+
+  const { error } = await supabase
+    .from("profiles")
+    .update({
+      full_name: fullName,
+      locale,
+      timezone,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", user.id);
+
+  if (error) return { error: error.message };
+  revalidatePath("/org", "layout");
+  revalidatePath("/org/settings");
   return { success: true };
 }

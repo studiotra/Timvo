@@ -5,8 +5,9 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "sonner";
 
 export const metadata: Metadata = {
-  title: "Timvo",
-  description: "See what your time is really worth — not just how long you worked.",
+  title: "Timvo — Time tracking for freelancers and agencies",
+  description:
+    "Track yourself, submit to agencies, and approve contractor time against end-client work.",
 };
 
 export const viewport: Viewport = {

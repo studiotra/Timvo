@@ -632,3 +632,233 @@ export async function getOrgDashboardStats() {
     pendingTimesheets: pending ?? 0,
   };
 }
+
+export async function updateOrganizationProfile(input: {
+  name: string;
+  slug?: string;
+}): Promise<{ error?: string }> {
+  const ctx = await getOrgContext();
+  if (!ctx) return { error: "Not in an organization" };
+  if (!["owner", "admin", "manager"].includes(ctx.role)) {
+    return { error: "Permission denied" };
+  }
+
+  const name = input.name.trim();
+  if (!name) return { error: "Organization name is required" };
+
+  let slug = (input.slug ?? "").trim().toLowerCase();
+  if (slug) {
+    slug = slug
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 48);
+    if (!slug) return { error: "Invalid slug" };
+  }
+
+  const supabase = await createClient();
+  const patch: { name: string; slug?: string; updated_at: string } = {
+    name,
+    updated_at: new Date().toISOString(),
+  };
+  if (slug) patch.slug = slug;
+
+  if (slug && slug !== ctx.org.slug) {
+    const { data: taken } = await supabase
+      .from("organizations")
+      .select("id")
+      .eq("slug", slug)
+      .neq("id", ctx.org.id)
+      .maybeSingle();
+    if (taken) return { error: "That slug is already taken" };
+  }
+
+  const { error } = await supabase
+    .from("organizations")
+    .update(patch)
+    .eq("id", ctx.org.id);
+
+  if (error) return { error: error.message };
+  revalidatePath("/org", "layout");
+  revalidatePath("/org/settings");
+  return {};
+}
+
+export type OrgMemberRow = {
+  id: string;
+  userId: string;
+  email: string;
+  role: string;
+  createdAt: string;
+};
+
+export async function listOrgMembers(): Promise<OrgMemberRow[]> {
+  const ctx = await getOrgContext();
+  if (!ctx) return [];
+
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("organization_members")
+    .select("id, user_id, role, created_at")
+    .eq("organization_id", ctx.org.id)
+    .order("created_at", { ascending: true });
+
+  if (!data?.length) return [];
+
+  const admin = createAdminClient();
+  const { data: usersData } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+  const emailById = new Map(
+    (usersData?.users ?? []).map((u) => [u.id, u.email ?? "Unknown"])
+  );
+
+  return data.map((row) => ({
+    id: row.id,
+    userId: row.user_id,
+    email: emailById.get(row.user_id) ?? "Unknown",
+    role: row.role,
+    createdAt: row.created_at,
+  }));
+}
+
+const INVITEABLE_ROLES = ["admin", "manager", "viewer"] as const;
+
+export async function inviteOrgMember(
+  email: string,
+  role: string
+): Promise<{ error?: string }> {
+  const ctx = await getOrgContext();
+  if (!ctx) return { error: "Not in an organization" };
+  if (!["owner", "admin"].includes(ctx.role)) {
+    return { error: "Only owners and admins can invite team members" };
+  }
+
+  const trimmed = email.trim().toLowerCase();
+  if (!trimmed) return { error: "Email is required" };
+  if (!INVITEABLE_ROLES.includes(role as (typeof INVITEABLE_ROLES)[number])) {
+    return { error: "Invalid role" };
+  }
+
+  const admin = createAdminClient();
+  const { data: listData } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+  const user = listData?.users?.find((u) => u.email?.toLowerCase() === trimmed);
+  if (!user) {
+    return {
+      error:
+        "No Timvo account found for that email. They should sign up first, then you can add them.",
+    };
+  }
+
+  const { data: existing } = await admin
+    .from("organization_members")
+    .select("id")
+    .eq("organization_id", ctx.org.id)
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (existing) return { error: "That user is already a member" };
+
+  const { error } = await admin.from("organization_members").insert({
+    organization_id: ctx.org.id,
+    user_id: user.id,
+    role,
+  });
+
+  if (error) return { error: error.message };
+
+  await admin
+    .from("profiles")
+    .update({
+      account_type: "organization",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", user.id)
+    .neq("account_type", "organization");
+
+  revalidatePath("/org/settings");
+  return {};
+}
+
+export async function updateOrgMemberRole(
+  memberId: string,
+  role: string
+): Promise<{ error?: string }> {
+  const ctx = await getOrgContext();
+  if (!ctx) return { error: "Not in an organization" };
+  if (!["owner", "admin"].includes(ctx.role)) {
+    return { error: "Only owners and admins can change roles" };
+  }
+
+  const allowed = ["owner", "admin", "manager", "viewer"];
+  if (!allowed.includes(role)) return { error: "Invalid role" };
+  if (role === "owner" && ctx.role !== "owner") {
+    return { error: "Only owners can assign the owner role" };
+  }
+
+  const admin = createAdminClient();
+  const { data: member } = await admin
+    .from("organization_members")
+    .select("id, user_id, role")
+    .eq("id", memberId)
+    .eq("organization_id", ctx.org.id)
+    .maybeSingle();
+  if (!member) return { error: "Member not found" };
+
+  if (member.role === "owner" && role !== "owner") {
+    const { count } = await admin
+      .from("organization_members")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", ctx.org.id)
+      .eq("role", "owner");
+    if ((count ?? 0) <= 1) return { error: "Keep at least one owner" };
+  }
+
+  const { error } = await admin
+    .from("organization_members")
+    .update({ role })
+    .eq("id", memberId)
+    .eq("organization_id", ctx.org.id);
+
+  if (error) return { error: error.message };
+  revalidatePath("/org/settings");
+  revalidatePath("/org", "layout");
+  return {};
+}
+
+export async function removeOrgMember(memberId: string): Promise<{ error?: string }> {
+  const ctx = await getOrgContext();
+  if (!ctx) return { error: "Not in an organization" };
+  if (!["owner", "admin"].includes(ctx.role)) {
+    return { error: "Only owners and admins can remove members" };
+  }
+
+  const admin = createAdminClient();
+  const { data: member } = await admin
+    .from("organization_members")
+    .select("id, user_id, role")
+    .eq("id", memberId)
+    .eq("organization_id", ctx.org.id)
+    .maybeSingle();
+  if (!member) return { error: "Member not found" };
+
+  if (member.user_id === ctx.userId) {
+    return { error: "You can't remove yourself. Ask another owner." };
+  }
+
+  if (member.role === "owner") {
+    if (ctx.role !== "owner") return { error: "Only owners can remove other owners" };
+    const { count } = await admin
+      .from("organization_members")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", ctx.org.id)
+      .eq("role", "owner");
+    if ((count ?? 0) <= 1) return { error: "Keep at least one owner" };
+  }
+
+  const { error } = await admin
+    .from("organization_members")
+    .delete()
+    .eq("id", memberId)
+    .eq("organization_id", ctx.org.id);
+
+  if (error) return { error: error.message };
+  revalidatePath("/org/settings");
+  return {};
+}

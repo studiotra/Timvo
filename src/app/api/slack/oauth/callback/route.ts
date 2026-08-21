@@ -8,16 +8,19 @@ export async function GET(req: NextRequest) {
   const base = appBaseUrl();
   const code = req.nextUrl.searchParams.get("code");
   const state = req.nextUrl.searchParams.get("state");
-  const userId = await readOAuthState(state);
+  const parsed = await readOAuthState(state);
+  const next = parsed?.next ?? "/settings";
 
-  if (!code || !userId) {
-    return NextResponse.redirect(`${base}/settings?slack=error`);
+  if (!code || !parsed?.userId) {
+    return NextResponse.redirect(`${base}${next}?slack=error`);
   }
+
+  const userId = parsed.userId;
 
   const clientId = process.env.SLACK_CLIENT_ID;
   const clientSecret = process.env.SLACK_CLIENT_SECRET;
   if (!clientId || !clientSecret) {
-    return NextResponse.redirect(`${base}/settings?slack=not_configured`);
+    return NextResponse.redirect(`${base}${next}?slack=not_configured`);
   }
 
   const body = new URLSearchParams({
@@ -41,7 +44,7 @@ export async function GET(req: NextRequest) {
   };
 
   if (!token.ok || !token.access_token || !token.team?.id || !token.authed_user?.id) {
-    return NextResponse.redirect(`${base}/settings?slack=error`);
+    return NextResponse.redirect(`${base}${next}?slack=error`);
   }
 
   const supabase = createAdminClient();
@@ -58,11 +61,11 @@ export async function GET(req: NextRequest) {
   );
 
   if (error) {
-    return NextResponse.redirect(`${base}/settings?slack=error`);
+    return NextResponse.redirect(`${base}${next}?slack=error`);
   }
 
   const active = await getActiveTimerForUser(supabase, userId);
   await sendWelcomeDm(token.access_token, token.authed_user.id, active);
 
-  return NextResponse.redirect(`${base}/settings?slack=connected`);
+  return NextResponse.redirect(`${base}${next}?slack=connected`);
 }

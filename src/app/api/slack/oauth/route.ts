@@ -1,11 +1,17 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { appBaseUrl, signOAuthState } from "@/lib/slack/verify";
 
-export async function GET() {
+function safeNext(path: string | null): string {
+  if (path === "/org/settings" || path === "/settings") return path;
+  return "/settings";
+}
+
+export async function GET(req: NextRequest) {
+  const next = safeNext(req.nextUrl.searchParams.get("next"));
   const clientId = process.env.SLACK_CLIENT_ID;
   if (!clientId) {
-    return NextResponse.redirect(`${appBaseUrl()}/settings?slack=not_configured`);
+    return NextResponse.redirect(`${appBaseUrl()}${next}?slack=not_configured`);
   }
 
   const supabase = await createClient();
@@ -21,7 +27,7 @@ export async function GET() {
   url.searchParams.set("client_id", clientId);
   url.searchParams.set("scope", "commands,chat:write,im:write");
   url.searchParams.set("redirect_uri", redirectUri);
-  url.searchParams.set("state", await signOAuthState(user.id));
+  url.searchParams.set("state", await signOAuthState(user.id, next));
 
   return NextResponse.redirect(url.toString());
 }
