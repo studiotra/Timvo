@@ -47,6 +47,15 @@ On macOS, enable **System Settings → Privacy & Security → Accessibility → 
 
 Org staff see Team clients first; dual-role users get **All / Team / Solo** filters. Assigned contractor projects appear as `Org · Client`.
 
+## Private downloads (web)
+
+Unlisted page: `/download` (not in nav). Gate with `DESKTOP_DOWNLOAD_ACCESS_CODE`.
+
+Share: `https://www.timvo.work/download` + code, or one-click  
+`https://www.timvo.work/download?code=YOUR_CODE`
+
+Set on Vercel: `DESKTOP_DOWNLOAD_ACCESS_CODE`, optional `DESKTOP_DOWNLOAD_MAC_URL` / `DESKTOP_DOWNLOAD_WIN_URL`.
+
 ## Releases (Phase 3)
 
 Workflow: `.github/workflows/release-desktop.yml`  

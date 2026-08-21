@@ -12,6 +12,7 @@ export function isContractorAppRoute(path: string): boolean {
     path.startsWith("/client-preview") ||
     path.startsWith("/welcome") ||
     path.startsWith("/pricing") ||
+    path.startsWith("/download") ||
     path.startsWith("/invoice") ||
     path.startsWith("/api")
   );
