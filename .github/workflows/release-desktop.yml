@@ -21,9 +21,6 @@ jobs:
           - platform: macos-latest
             args: --target x86_64-apple-darwin
             rust_target: x86_64-apple-darwin
-          - platform: windows-latest
-            args: ""
-            rust_target: ""
 
     runs-on: ${{ matrix.platform }}
     defaults:
@@ -46,6 +43,21 @@ jobs:
       - name: Install frontend deps
         run: npm ci
 
+      - name: Disable updater artifacts without signing key
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "No TAURI_SIGNING_PRIVATE_KEY — disabling updater artifacts"
+            node <<'NODE'
+            const fs = require("fs");
+            const p = "src-tauri/tauri.conf.json";
+            const j = JSON.parse(fs.readFileSync(p, "utf8"));
+            j.bundle.createUpdaterArtifacts = false;
+            fs.writeFileSync(p, JSON.stringify(j, null, 2) + "\n");
+            NODE
+          fi
+
       - name: Import Apple certificate
         if: runner.os == 'macOS'
         env:
@@ -67,7 +79,35 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security list-keychain -d user -s "$KEYCHAIN_PATH"
 
-      - uses: tauri-apps/tauri-action@v0
+      # Do not pass empty APPLE_* env vars — tauri treats "" as “sign” and fails codesign.
+      - name: Build unsigned (no Apple certificate)
+        if: ${{ secrets.APPLE_CERTIFICATE == '' }}
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: apps/desktop
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || format('desktop-v{0}', '0.1.0') }}
+          releaseName: Timvo Desktop ${{ github.ref_type == 'tag' && github.ref_name || '0.1.0' }}
+          releaseBody: |
+            Timvo menu-bar / tray timer (same clock as web + Slack).
+
+            ### Install (macOS)
+            - Open the `.dmg` for your chip (Apple Silicon = `aarch64`, Intel = `x86_64`)
+            - Drag Timvo to Applications
+            - First launch: right-click → Open if Gatekeeper warns (unsigned beta)
+
+            Notarized builds require Apple signing secrets on the repo.
+            Auto-update artifacts require `TAURI_SIGNING_PRIVATE_KEY`.
+          releaseDraft: true
+          prerelease: true
+          args: ${{ matrix.args }}
+
+      - name: Build signed + notarized
+        if: ${{ secrets.APPLE_CERTIFICATE != '' }}
+        uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -85,11 +125,8 @@ jobs:
           releaseBody: |
             Timvo menu-bar / tray timer (same clock as web + Slack).
 
-            ### Install
-            - **macOS:** open the `.dmg`, drag Timvo to Applications
-            - **Windows:** run the NSIS installer
-
-            Notarized builds require Apple signing secrets on the repo.
+            ### Install (macOS)
+            - Open the `.dmg`, drag Timvo to Applications
           releaseDraft: true
           prerelease: true
           args: ${{ matrix.args }}
