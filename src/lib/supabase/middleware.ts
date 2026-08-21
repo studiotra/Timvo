@@ -44,6 +44,9 @@ export async function updateSession(request: NextRequest) {
 
   const { data } = await supabase.auth.getUser();
   const path = request.nextUrl.pathname;
+  const isDesktopShell =
+    request.cookies.get("timvo_desktop")?.value === "1" ||
+    request.nextUrl.searchParams.get("desktop") === "1";
   const isAuthPage =
     path.startsWith("/login") ||
     path.startsWith("/signup") ||
@@ -55,6 +58,33 @@ export async function updateSession(request: NextRequest) {
     path === "/welcome" || path === "/pricing" || path === "/download";
   const isPublicPage = path.startsWith("/invoice");
   const isApiRoute = path.startsWith("/api");
+
+  // Desktop hybrid shell: skip marketing; send signed-in users into the app.
+  if (isDesktopShell && isMarketingPage) {
+    const url = request.nextUrl.clone();
+    if (data.user) {
+      url.pathname = await resolveHomePath(supabase, data.user.id);
+      url.search = "";
+    } else {
+      url.pathname = "/login";
+      url.search = "desktop=1";
+    }
+    const redirect = NextResponse.redirect(url);
+    redirect.cookies.set("timvo_desktop", "1", {
+      path: "/",
+      maxAge: 60 * 60 * 24 * 365,
+      sameSite: "lax",
+    });
+    return redirect;
+  }
+
+  if (isDesktopShell && !request.cookies.get("timvo_desktop")) {
+    supabaseResponse.cookies.set("timvo_desktop", "1", {
+      path: "/",
+      maxAge: 60 * 60 * 24 * 365,
+      sameSite: "lax",
+    });
+  }
 
   if (!data.user && path === "/") {
     const url = request.nextUrl.clone();

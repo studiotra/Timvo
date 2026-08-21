@@ -2,13 +2,15 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
 const host = process.env.TAURI_DEV_HOST;
+// Dev webview loads http://localhost:1420 — absolute `/` base.
+// Production Tauri custom protocol needs relative `./` assets.
+const isTauriDebug = process.env.TAURI_ENV_DEBUG === "true";
 
 // https://v2.tauri.app/start/frontend/vite/
 export default defineConfig(async () => ({
   plugins: [react()],
-  // Relative asset paths required for Tauri custom protocol (avoids blank window).
   clearScreen: false,
-  base: "./",
+  base: isTauriDebug ? "/" : "./",
   server: {
     port: 1420,
     strictPort: true,
@@ -25,4 +27,9 @@ export default defineConfig(async () => ({
     },
   },
   envPrefix: ["VITE_", "TAURI_ENV_*"],
+  build: {
+    target: process.env.TAURI_ENV_PLATFORM === "windows" ? "chrome105" : "safari13",
+    minify: !isTauriDebug ? "esbuild" : false,
+    sourcemap: isTauriDebug,
+  },
 }));

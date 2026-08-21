@@ -27,6 +27,41 @@ From the **repo root**:
 npm run desktop:dev
 ```
 
+## Hybrid shell (Phase 1–2)
+
+Desktop keeps a **native timer + tray**. Tray / **Open Timvo workspace** loads the full web app in a second window (`workspace`), with session handoff via `/auth/desktop`.
+
+| Window | Role |
+|--------|------|
+| `main` | Timer UI (this Vite app) |
+| `workspace` | Full Timvo web (`VITE_APP_URL`) |
+
+### Tray menu
+Show Timer · Dashboard · Logs · Clients · Invoices · Settings · Quit
+
+Org users get `/org/…` routes (Invoices → Timesheets).
+
+### Deep links (`timvo://`)
+Works after install (scheme registered). Examples:
+
+| Link | Opens |
+|------|--------|
+| `timvo://dashboard` | Home (`/` or `/org`) |
+| `timvo://logs` | Logs |
+| `timvo://clients` | Clients |
+| `timvo://invoices` | Invoices / org timesheets |
+| `timvo://settings` | Settings |
+| `timvo://timer` | Native timer window |
+| `timvo://open?path=/reports` | Safe absolute path |
+
+Set `VITE_APP_URL` (defaults to `VITE_API_BASE_URL`) to local `:3000` or `https://www.timvo.work`.
+
+### Phase 3 — polish
+- **OS notifications** on start/stop, idle (30m), long-running (every 2h), offline queue sync
+- **Menubar elapsed** via tray title (macOS) + live tooltip
+- **Offline queue** for start/stop — replays when back online
+- Apple notarization / Windows code signing still require developer certs (not in this phase)
+
 ## Hotkeys
 
 | Action | macOS | Windows / Linux |

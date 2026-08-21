@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { ThemeToggle } from "./theme-toggle";
 import { SidebarTimerWidget } from "./sidebar-timer-widget";
 import { Menu, X } from "lucide-react";
+import { isDesktopShell } from "@/lib/desktop/shell";
 
 const navItems = [
   { href: "/org", label: "Dashboard", icon: "🏠" },
@@ -32,6 +33,11 @@ export function OrgShell({ children, orgName, hasContractorDashboard }: OrgShell
   const router = useRouter();
   const supabase = createClient();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [desktopShell, setDesktopShell] = useState(false);
+
+  useEffect(() => {
+    setDesktopShell(isDesktopShell());
+  }, []);
 
   useEffect(() => {
     setSidebarOpen(false);
@@ -66,7 +72,7 @@ export function OrgShell({ children, orgName, hasContractorDashboard }: OrgShell
             <div>
               <div className="text-[15px] font-bold text-[var(--text-primary)]">Timvo</div>
               <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-                Organization
+                {desktopShell ? "Desktop · Org" : "Organization"}
               </div>
             </div>
           </Link>
@@ -84,7 +90,7 @@ export function OrgShell({ children, orgName, hasContractorDashboard }: OrgShell
           {orgName}
         </p>
 
-        <SidebarTimerWidget scope="org" />
+        {!desktopShell && <SidebarTimerWidget scope="org" />}
 
         <nav className="flex-1 space-y-0.5 overflow-y-auto px-3 py-2">
           {navItems.map((item) => {

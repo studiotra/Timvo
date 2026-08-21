@@ -23,9 +23,26 @@ import {
   registerHotkeys,
 } from "./hotkeys";
 import { loadLastSelection, saveLastSelection } from "./prefs";
+import {
+  enqueueStart,
+  enqueueStop,
+  flushOfflineQueue,
+  isNetworkError,
+  queueLength,
+  watchOnline,
+} from "./offline-queue";
+import {
+  notifyIdleReminder,
+  notifyLongRunning,
+  notifyOfflineQueued,
+  notifyQueueFlushed,
+  notifyTimerStarted,
+  notifyTimerStopped,
+} from "./notifications";
 import { subscribeTimerSync } from "./sync";
 import { updateTrayTooltip } from "./tray";
 import { checkForAppUpdates } from "./updater";
+import { openLogs, openWorkspace, syncWorkspaceSession } from "./workspace";
 
 type WorkspaceFilter = "all" | "team" | "solo";
 
@@ -44,8 +61,10 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [userLabel, setUserLabel] = useState<string | null>(null);
   const [orgLabel, setOrgLabel] = useState<string | null>(null);
+  const [homePath, setHomePath] = useState("/");
   const [workspaceFilter, setWorkspaceFilter] = useState<WorkspaceFilter>("all");
   const [syncLabel, setSyncLabel] = useState("Connecting…");
+  const [toast, setToast] = useState<string | null>(null);
 
   const [clients, setClients] = useState<DesktopClient[]>([]);
   const [projects, setProjects] = useState<DesktopProject[]>([]);
@@ -72,6 +91,16 @@ export default function App() {
   useEffect(() => {
     void checkForAppUpdates();
   }, []);
+
+  useEffect(() => {
+    void syncWorkspaceSession({ session, homePath });
+  }, [session, homePath]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const id = window.setTimeout(() => setToast(null), 4500);
+    return () => window.clearTimeout(id);
+  }, [toast]);
 
   useEffect(() => {
     const last = loadLastSelection();
@@ -102,13 +131,63 @@ export default function App() {
   }, [timer]);
 
   useEffect(() => {
-    void updateTrayTooltip(timer);
+    void updateTrayTooltip(timer, now);
+  }, [timer, now]);
+
+  // Idle reminder: no timer for 30 minutes while signed in (once per idle stretch).
+  useEffect(() => {
+    if (!session || timer) return;
+    const started = Date.now();
+    const id = window.setInterval(() => {
+      if (Date.now() - started >= 30 * 60_000) {
+        void notifyIdleReminder();
+        window.clearInterval(id);
+      }
+    }, 60_000);
+    return () => window.clearInterval(id);
+  }, [session, timer]);
+
+  // Long-running reminder every 2 hours while a timer is active.
+  useEffect(() => {
     if (!timer) return;
     const id = window.setInterval(() => {
-      void updateTrayTooltip(timer);
-    }, 30_000);
+      void notifyLongRunning(formatElapsed(timer.startedAt));
+    }, 2 * 60 * 60_000);
     return () => window.clearInterval(id);
   }, [timer]);
+
+  // Flush offline queue when back online / on session.
+  useEffect(() => {
+    if (!session) return;
+    let cancelled = false;
+
+    async function flush() {
+      if (!session || cancelled) return;
+      if (queueLength() === 0) return;
+      if (!navigator.onLine) return;
+      try {
+        const { flushed, timer: next } = await flushOfflineQueue(session);
+        if (cancelled) return;
+        if (flushed > 0) {
+          setTimer(next);
+          setSyncLabel("Synced");
+          setToast(`Synced ${flushed} offline action${flushed === 1 ? "" : "s"}`);
+          void notifyQueueFlushed(flushed);
+        }
+      } catch {
+        /* still offline / errors */
+      }
+    }
+
+    void flush();
+    const unwatch = watchOnline(() => void flush());
+    const poll = window.setInterval(() => void flush(), 30_000);
+    return () => {
+      cancelled = true;
+      unwatch();
+      window.clearInterval(poll);
+    };
+  }, [session]);
 
   useEffect(() => {
     if (!session) return;
@@ -128,6 +207,7 @@ export default function App() {
             ? `${me.organization.name ?? "Organization"} · ${me.organization.role}`
             : null
         );
+        setHomePath(me.organization ? "/org" : "/");
         const hasTeam = clientsRes.clients.some((c) => c.isOrg);
         const hasSolo = clientsRes.clients.some((c) => !c.isOrg);
         if (hasTeam && !hasSolo) setWorkspaceFilter("team");
@@ -210,6 +290,12 @@ export default function App() {
     if (!s || busyRef.current) return;
     setBusy(true);
     setError(null);
+    const clientName =
+      clients.find((c) => c.id === (payload.clientId || selectionRef.current.clientId))?.name ?? "";
+    const projectName =
+      projects.find((p) => p.id === payload.projectId)?.name ?? "";
+    const label = [clientName, projectName].filter(Boolean).join(" · ");
+
     try {
       const res = await startTimer(s, {
         projectId: payload.projectId,
@@ -225,8 +311,41 @@ export default function App() {
         taskId: payload.taskId,
         description: payload.description,
       });
+      setToast("Timer started");
+      void notifyTimerStarted(label);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not start timer");
+      if (isNetworkError(e) || !navigator.onLine) {
+        enqueueStart({
+          projectId: payload.projectId,
+          serviceId: payload.serviceId,
+          taskId: payload.taskId,
+          description: payload.description,
+          clientId: payload.clientId || selectionRef.current.clientId,
+        });
+        // Optimistic local timer so the UI/menubar keep moving.
+        const optimistic: DesktopTimer = {
+          id: `offline-${Date.now()}`,
+          projectId: payload.projectId,
+          projectName: projectName || "Queued project",
+          clientName: clientName || "Offline",
+          serviceName: services.find((x) => x.id === payload.serviceId)?.name,
+          taskName: tasks.find((x) => x.id === payload.taskId)?.name,
+          startedAt: new Date().toISOString(),
+        };
+        setTimer(optimistic);
+        saveLastSelection({
+          clientId: payload.clientId || selectionRef.current.clientId,
+          projectId: payload.projectId,
+          serviceId: payload.serviceId,
+          taskId: payload.taskId,
+          description: payload.description,
+        });
+        setToast("Offline — start queued");
+        setSyncLabel("Offline queue");
+        void notifyOfflineQueued("start");
+      } else {
+        setError(e instanceof Error ? e.message : "Could not start timer");
+      }
     } finally {
       setBusy(false);
     }
@@ -238,11 +357,24 @@ export default function App() {
     if (!timerRef.current) return;
     setBusy(true);
     setError(null);
+    const label = [timerRef.current.clientName, timerRef.current.projectName]
+      .filter(Boolean)
+      .join(" · ");
     try {
       await stopTimer(s);
       setTimer(null);
+      setToast("Timer stopped — view it in Logs");
+      void notifyTimerStopped(label);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Could not stop timer");
+      if (isNetworkError(e) || !navigator.onLine) {
+        enqueueStop();
+        setTimer(null);
+        setToast("Offline — stop queued");
+        setSyncLabel("Offline queue");
+        void notifyOfflineQueued("stop");
+      } else {
+        setError(e instanceof Error ? e.message : "Could not stop timer");
+      }
     } finally {
       setBusy(false);
     }
@@ -311,6 +443,7 @@ export default function App() {
     setTimer(null);
     setUserLabel(null);
     setOrgLabel(null);
+    setHomePath("/");
     void updateTrayTooltip(null);
   }
 
@@ -395,7 +528,33 @@ export default function App() {
           {userLabel}
           {orgLabel ? ` · ${orgLabel}` : ""} · {syncLabel}
         </p>
+        <button
+          type="button"
+          className="btn btn-secondary"
+          style={{ width: "100%", marginTop: 10 }}
+          onClick={() => void openWorkspace(homePath)}
+        >
+          Open Timvo workspace
+        </button>
       </div>
+
+      {toast && (
+        <div className="panel" style={{ padding: "10px 12px" }}>
+          <p className="sub" style={{ margin: 0 }}>
+            {toast}
+          </p>
+          {(toast.includes("Logs") || toast.includes("stopped")) && (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{ width: "100%", marginTop: 8 }}
+              onClick={() => void openLogs(homePath.startsWith("/org"))}
+            >
+              View in Logs
+            </button>
+          )}
+        </div>
+      )}
 
       <div className="panel timer-card">
         {timer ? (
@@ -412,6 +571,13 @@ export default function App() {
               </button>
               <button className="btn btn-secondary" onClick={() => void onRefresh()} disabled={busy}>
                 Sync
+              </button>
+              <button
+                className="btn btn-secondary"
+                onClick={() => void openLogs(homePath.startsWith("/org"))}
+                disabled={busy}
+              >
+                Logs
               </button>
             </div>
           </>

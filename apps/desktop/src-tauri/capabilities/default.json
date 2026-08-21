@@ -1,13 +1,16 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the main window",
-  "windows": ["main"],
+  "description": "Capability for timer and workspace windows",
+  "windows": ["main", "workspace"],
   "permissions": [
     "core:default",
     "core:window:allow-show",
     "core:window:allow-hide",
     "core:window:allow-set-focus",
+    "core:window:allow-close",
+    "core:window:allow-set-title",
+    "core:webview:allow-set-webview-zoom",
     "core:tray:default",
     "opener:default",
     "global-shortcut:allow-is-registered",
@@ -15,6 +18,8 @@
     "global-shortcut:allow-unregister",
     "global-shortcut:allow-unregister-all",
     "updater:default",
-    "process:default"
+    "process:default",
+    "deep-link:default",
+    "notification:default"
   ]
 }

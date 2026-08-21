@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import { useTranslations } from "@/contexts/locale-context";
 import { SidebarTimerWidget } from "./sidebar-timer-widget";
 import { ThemeToggle } from "./theme-toggle";
+import { isDesktopShell } from "@/lib/desktop/shell";
 import { Menu, X } from "lucide-react";
 
 const navItems = [
@@ -34,6 +35,11 @@ export function AppShell({ children, logoUrl, displayName = "?" }: AppShellProps
   const supabase = createClient();
   const t = useTranslations();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [desktopShell, setDesktopShell] = useState(false);
+
+  useEffect(() => {
+    setDesktopShell(isDesktopShell());
+  }, []);
 
   useEffect(() => {
     setSidebarOpen(false);
@@ -79,7 +85,7 @@ export function AppShell({ children, logoUrl, displayName = "?" }: AppShellProps
                 Timvo
               </div>
               <div className="text-[10px] font-medium uppercase tracking-widest text-[var(--text-muted)]">
-                Freelance OS
+                {desktopShell ? "Desktop" : "Freelance OS"}
               </div>
             </div>
           </Link>
@@ -92,7 +98,7 @@ export function AppShell({ children, logoUrl, displayName = "?" }: AppShellProps
           </button>
         </div>
 
-        <SidebarTimerWidget />
+        {!desktopShell && <SidebarTimerWidget />}
 
         <nav className="flex-1 px-3 pb-4 pt-2">
           <div className="px-2 pb-1.5 pt-3 text-[9px] font-bold uppercase tracking-[0.2em] text-[var(--text-muted)]">
