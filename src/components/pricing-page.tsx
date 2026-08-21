@@ -53,14 +53,25 @@ function MarketingNav({ active }: { active?: "pricing" | "welcome" }) {
 
 type Billing = "monthly" | "annual";
 
+const TEAM_INCLUDED_SEATS = 3;
+
 const solo = {
   monthly: { per: 4.99, note: null as string | null },
   annual: { per: 3.99, note: "Billed $47.88 yearly" },
 };
 
+/** Team = base (includes 3 org seats, owner counts) + per extra seat */
 const team = {
-  monthly: { per: 12.99, note: null as string | null },
-  annual: { per: 9.99, note: "Billed $119.88 yearly per user" },
+  monthly: {
+    base: 19.99,
+    extraSeat: 7,
+    note: null as string | null,
+  },
+  annual: {
+    base: 15.99,
+    extraSeat: 4,
+    note: "Billed $191.88 yearly for base (3 seats)",
+  },
 };
 
 const comparison: {
@@ -85,7 +96,11 @@ const comparison: {
       { feature: "Submit logs to organization", solo: true, team: true },
       { feature: "Timesheet approve / reject", solo: false, team: true },
       { feature: "Map shares to end-client projects", solo: false, team: true },
-      { feature: "Org roles & team seats", solo: false, team: true },
+      {
+        feature: "Org seats (staff in the agency)",
+        solo: false,
+        team: `${TEAM_INCLUDED_SEATS} included · then +$/seat`,
+      },
     ],
   },
   {
@@ -109,6 +124,10 @@ const faqs = [
     a: "Solo is the freelancer workspace (track, invoice, optionally submit to agencies). Team is the organization workspace: approve contractor timesheets, map work to end clients, manage staff seats, and run margin reports.",
   },
   {
+    q: "How do Team seats work?",
+    a: `Team includes ${TEAM_INCLUDED_SEATS} organization seats (the owner counts as one). Need more staff? Add seats at the extra-seat rate. Linked freelancers (contractors) are not org seats—they keep their own Solo or Free account and submit time to you.`,
+  },
+  {
     q: "What if I start Solo and later work with contractors?",
     a: "Create or join an Organization (Team) when you’re ready. Your contractor account can stay linked so you still track on Solo while the agency reviews submissions.",
   },
@@ -118,7 +137,7 @@ const faqs = [
   },
   {
     q: "Is there a limit on clients or projects?",
-    a: "No. Solo and Team both include unlimited clients and active projects.",
+    a: "No. Solo and Team both include unlimited clients and active projects. Team’s limit is on org seats (staff), not clients.",
   },
   {
     q: "Is there a mobile app?",
@@ -191,7 +210,7 @@ export function PricingPageContent() {
             }`}
           >
             Annually{" "}
-            <span className="ml-1 text-[11px] font-medium opacity-90">Save up to 23%</span>
+            <span className="ml-1 text-[11px] font-medium opacity-90">Save ~20%</span>
           </button>
         </div>
       </section>
@@ -248,16 +267,20 @@ export function PricingPageContent() {
           <p className="mt-1 text-sm text-white/45">Agencies & studios</p>
           <div className="mt-5 flex items-baseline gap-1">
             <span className="text-4xl font-bold tracking-tight text-white">
-              ${teamPrice.per.toFixed(2)}
+              ${teamPrice.base.toFixed(2)}
             </span>
-            <span className="text-sm text-white/45">/ user / month</span>
+            <span className="text-sm text-white/45">/ month</span>
           </div>
-          {teamPrice.note && (
-            <p className="mt-1 text-xs text-white/40">{teamPrice.note}</p>
-          )}
+          <p className="mt-1 text-xs text-white/40">
+            Includes {TEAM_INCLUDED_SEATS} seats (owner counts as one)
+            {teamPrice.note ? ` · ${teamPrice.note}` : ""}
+          </p>
+          <p className="mt-2 text-sm font-medium text-emerald-100/90">
+            + ${teamPrice.extraSeat.toFixed(2)} / extra seat / month
+          </p>
           <p className="mt-4 text-sm leading-relaxed text-white/55">
             Built for agencies that need contractor approvals, end-client mapping, and margin
-            tracking—plus staff time on org projects.
+            tracking—plus staff time on org projects. Linked freelancers are not seats.
           </p>
           <Link
             href="/signup/organization"
@@ -267,12 +290,12 @@ export function PricingPageContent() {
           </Link>
           <ul className="mt-6 space-y-2.5 text-sm text-white/70">
             {[
-              "Everything in Solo, plus:",
+              `Base includes ${TEAM_INCLUDED_SEATS} seats (owner + staff)`,
+              "Add seats anytime at the extra-seat rate",
               "Timesheet approve / reject queue",
-              "Organization roles & members",
               "Project mapping & profitability",
               "Staff timer on org clients",
-              "Retainer alerts & team reports",
+              "Unlimited linked contractors (not seats)",
             ].map((f) => (
               <li key={f} className="flex gap-2">
                 <span className="text-emerald-300">✓</span>
@@ -313,7 +336,7 @@ export function PricingPageContent() {
                   Solo (${solo.annual.per}/mo)
                 </th>
                 <th className="px-4 py-3 font-semibold">
-                  Team (${team.annual.per}/user)
+                  Team (${team.annual.base.toFixed(2)}/mo · {TEAM_INCLUDED_SEATS} seats)
                 </th>
               </tr>
             </thead>
