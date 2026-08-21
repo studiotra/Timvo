@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { MarketingProductDemo } from "@/components/marketing-product-demo";
 
 const steps = [
   {
@@ -103,43 +104,25 @@ export function MarketingLanding() {
             >
               Sign up as contractor
             </Link>
-            <Link
-              href="/signup/organization"
+            <a
+              href="#demo"
               className="inline-flex items-center justify-center rounded-xl border border-white/15 bg-white/5 px-5 py-3 text-sm font-semibold text-white transition hover:border-white/25 hover:bg-white/10"
             >
-              Sign up as organization
-            </Link>
+              Try interactive demo
+            </a>
           </div>
+          <p className="mt-3 text-xs text-white/35">
+            Or{" "}
+            <Link href="/signup/organization" className="underline decoration-white/25 underline-offset-2 hover:text-white/55">
+              sign up as organization
+            </Link>
+          </p>
         </div>
 
         <div
           className={`relative transition duration-1000 delay-150 ${mounted ? "translate-y-0 opacity-100" : "translate-y-6 opacity-0"}`}
-          aria-hidden
         >
-          <div className="marketing-flow relative overflow-hidden rounded-2xl border border-white/10 bg-[#0d1424]/80 p-5 shadow-2xl shadow-black/40 backdrop-blur-xl md:p-6">
-            <div className="mb-4 flex items-center justify-between text-[10px] font-bold uppercase tracking-[0.2em] text-white/35">
-              <span>Contractor</span>
-              <span className="text-indigo-300/70">→</span>
-              <span>Agency</span>
-            </div>
-            <div className="space-y-3">
-              <div className="marketing-pulse rounded-xl border border-white/10 bg-white/[0.04] p-3">
-                <p className="text-[11px] font-medium text-white/45">Logs</p>
-                <p className="mt-1 font-mono text-sm text-indigo-200">2h 40m · Launch</p>
-                <p className="mt-0.5 text-[11px] text-white/35">Submit to organization</p>
-              </div>
-              <div className="flex justify-center">
-                <span className="h-6 w-px bg-gradient-to-b from-indigo-400/60 to-emerald-400/40" />
-              </div>
-              <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3">
-                <p className="text-[11px] font-medium text-emerald-300/70">Timesheets</p>
-                <p className="mt-1 text-sm text-white/90">Pending review · Approve</p>
-                <p className="mt-0.5 text-[11px] text-white/35">Map → End client project</p>
-              </div>
-            </div>
-            <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-indigo-500/20 blur-3xl" />
-            <div className="pointer-events-none absolute -bottom-10 -left-6 h-28 w-28 rounded-full bg-emerald-500/10 blur-3xl" />
-          </div>
+          <MarketingProductDemo />
         </div>
       </section>
 
@@ -331,9 +314,6 @@ export function MarketingLanding() {
       </footer>
 
       <style jsx>{`
-        .marketing-pulse {
-          animation: marketing-glow 4.5s ease-in-out infinite;
-        }
         .marketing-cta {
           background: radial-gradient(
               ellipse 80% 80% at 50% 0%,
@@ -341,15 +321,6 @@ export function MarketingLanding() {
               transparent 55%
             ),
             rgba(255, 255, 255, 0.03);
-        }
-        @keyframes marketing-glow {
-          0%,
-          100% {
-            box-shadow: 0 0 0 0 rgba(99, 102, 241, 0);
-          }
-          50% {
-            box-shadow: 0 0 32px 0 rgba(99, 102, 241, 0.12);
-          }
         }
       `}</style>
     </div>
