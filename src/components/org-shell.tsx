@@ -19,6 +19,7 @@ const navItems = [
   { href: "/org/assignments", label: "Assignments", icon: "🧩" },
   { href: "/org/contractors", label: "Contractors", icon: "👥" },
   { href: "/org/reports", label: "Reports", icon: "📊" },
+  { href: "/org/guide", label: "Guide", icon: "📖" },
   { href: "/org/settings", label: "Settings", icon: "⚙️" },
 ] as const;
 

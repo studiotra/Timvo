@@ -21,6 +21,7 @@ const enKoTranslations: Record<"en" | "ko", {
       invoices: string;
       services: string;
       reports: string;
+      guide: string;
       settings: string;
       main: string;
     };
@@ -153,6 +154,7 @@ const enKoTranslations: Record<"en" | "ko", {
       invoices: "Invoices",
       services: "Services",
       reports: "Reports",
+      guide: "Guide",
       settings: "Settings",
       main: "Main",
     },
@@ -278,6 +280,7 @@ const enKoTranslations: Record<"en" | "ko", {
       invoices: "인보이스",
       services: "서비스",
       reports: "보고서",
+      guide: "가이드",
       settings: "설정",
       main: "메인",
     },
@@ -406,6 +409,7 @@ const zh = {
     invoices: "发票",
     services: "服务",
     reports: "报表",
+    guide: "指南",
     settings: "设置",
     main: "主菜单",
   },
@@ -468,6 +472,7 @@ const ja = {
     invoices: "請求書",
     services: "サービス",
     reports: "レポート",
+    guide: "ガイド",
     settings: "設定",
     main: "メイン",
   },
@@ -530,6 +535,7 @@ const fr = {
     invoices: "Factures",
     services: "Services",
     reports: "Rapports",
+    guide: "Guide",
     settings: "Paramètres",
     main: "Principal",
   },
@@ -592,6 +598,7 @@ const es = {
     invoices: "Facturas",
     services: "Servicios",
     reports: "Informes",
+    guide: "Guía",
     settings: "Ajustes",
     main: "Principal",
   },

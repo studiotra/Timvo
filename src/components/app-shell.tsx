@@ -20,6 +20,7 @@ const navItems = [
   { href: "/invoices", labelKey: "nav.invoices", icon: "🧾", id: "invoices" },
   { href: "/services", labelKey: "nav.services", icon: "📋", id: "services" },
   { href: "/reports", labelKey: "nav.reports", icon: "📊", id: "reports" },
+  { href: "/guide", labelKey: "nav.guide", icon: "📖", id: "guide" },
   { href: "/settings", labelKey: "nav.settings", icon: "⚙️", id: "settings" },
 ] as const;
 
@@ -159,6 +160,7 @@ export function AppShell({ children, logoUrl, displayName = "?" }: AppShellProps
             {pathname.startsWith("/invoices") && t("nav.invoices")}
             {pathname.startsWith("/services") && t("nav.services")}
             {pathname.startsWith("/reports") && t("nav.reports")}
+            {pathname.startsWith("/guide") && t("nav.guide")}
             {pathname.startsWith("/settings") && t("nav.settings")}
             </h1>
           </div>
