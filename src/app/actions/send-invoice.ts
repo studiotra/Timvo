@@ -40,6 +40,8 @@ type InvoiceBundle = {
     stripe_account_id: string | null;
     stripe_connect_charges_enabled: boolean | null;
     subscription_tier: string | null;
+    default_invoice_footer: string | null;
+    default_invoice_terms: string | null;
   } | null;
 };
 
