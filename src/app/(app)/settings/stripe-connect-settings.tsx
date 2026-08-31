@@ -67,6 +67,19 @@ export function StripeConnectSettings({
         {flash === "not_configured" && (
           <p className="text-sm text-red-400">Add STRIPE_SECRET_KEY to enable Stripe Connect.</p>
         )}
+        {flash === "connect_not_enabled" && (
+          <p className="text-sm text-red-400">
+            Enable Stripe Connect on your platform Stripe account (Dashboard → Connect → Get started),
+            then try again.
+          </p>
+        )}
+        {flash === "schema" && (
+          <p className="text-sm text-red-400">
+            Database migration missing — run{" "}
+            <code className="text-[12px]">20250831110000_stripe_connect.sql</code> in Supabase, then
+            retry.
+          </p>
+        )}
         {!canAcceptPayments && (
           <p className="rounded-lg bg-indigo-500/10 px-3 py-2 text-[12px] text-indigo-200/90">
             Online payments require a Solo or Team plan. You can still send invoices by email without

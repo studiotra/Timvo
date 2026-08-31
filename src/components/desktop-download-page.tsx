@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
+import { MarketingNav } from "@/components/marketing-nav";
 import {
   lockDesktopDownload,
   unlockDesktopDownload,
@@ -61,25 +62,7 @@ export function DesktopDownloadPage({
         }}
       />
 
-      <header className="relative z-20 flex items-center justify-between px-5 py-5 md:px-10">
-        <Link href="/welcome" className="flex items-center gap-2.5">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-400 to-indigo-600 text-sm font-bold text-white shadow-lg shadow-indigo-500/30">
-            T
-          </span>
-          <span
-            className="text-xl font-semibold tracking-tight"
-            style={{ fontFamily: "var(--font-serif)" }}
-          >
-            Timvo
-          </span>
-        </Link>
-        <Link
-          href="/welcome"
-          className="text-sm font-medium text-white/55 transition hover:text-white"
-        >
-          Back
-        </Link>
-      </header>
+      <MarketingNav active="download" />
 
       <main className="relative z-10 mx-auto max-w-lg px-5 pb-24 pt-10 md:px-10">
         <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-indigo-300/70">

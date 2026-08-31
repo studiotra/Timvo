@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { MarketingNav } from "@/components/marketing-nav";
 import { MarketingProductDemo } from "@/components/marketing-product-demo";
 
 const steps = [
@@ -45,51 +46,7 @@ export function MarketingLanding() {
         }}
       />
 
-      <header className="relative z-20 flex items-center justify-between px-5 py-5 md:px-10">
-        <Link href="/welcome" className="flex items-center gap-2.5">
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-400 to-indigo-600 text-sm font-bold text-white shadow-lg shadow-indigo-500/30">
-            T
-          </span>
-          <span
-            className="text-xl font-semibold tracking-tight"
-            style={{ fontFamily: "var(--font-serif)" }}
-          >
-            Timvo
-          </span>
-        </Link>
-        <div className="flex items-center gap-3 md:gap-5">
-          <Link
-            href="/guide"
-            className="hidden text-sm font-medium text-white/55 transition hover:text-white sm:inline"
-          >
-            Guide
-          </Link>
-          <Link
-            href="/pricing"
-            className="hidden text-sm font-medium text-white/55 transition hover:text-white sm:inline"
-          >
-            Pricing
-          </Link>
-          <Link
-            href="/download"
-            className="hidden text-sm font-medium text-white/55 transition hover:text-white sm:inline"
-          >
-            Desktop app
-          </Link>
-          <Link
-            href="/login"
-            className="hidden text-sm font-medium text-white/60 transition hover:text-white sm:inline"
-          >
-            Sign in
-          </Link>
-          <Link
-            href="/login"
-            className="rounded-lg bg-white/10 px-3.5 py-2 text-sm font-semibold text-white backdrop-blur transition hover:bg-white/15"
-          >
-            Get started
-          </Link>
-        </div>
-      </header>
+      <MarketingNav active="product" />
 
       {/* Hero — brand first, one headline, one support, CTA group, dominant visual plane */}
       <section className="relative z-10 mx-auto grid min-h-[calc(100vh-5rem)] max-w-6xl items-center gap-12 px-5 pb-16 pt-6 md:grid-cols-[1.05fr_0.95fr] md:gap-10 md:px-10 md:pb-20 md:pt-4">

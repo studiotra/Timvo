@@ -117,6 +117,8 @@ The webhook is how Stripe tells your app when a payment is completed.
 | Invoice not marked paid after payment | Check webhook deliveries in Stripe. Ensure `STRIPE_WEBHOOK_SECRET` matches the endpoint and you redeployed. |
 | Webhook returns 400 | Signature verification failed. Confirm the signing secret and that the request body is not modified (raw body). |
 | Webhook returns 500 | Check Vercel logs for errors. Ensure `SUPABASE_SERVICE_ROLE_KEY` is set so the webhook can update invoices. |
+| Connect Stripe returns 500 | Check Vercel logs. Common causes: Stripe Connect not enabled on your platform account, missing `STRIPE_SECRET_KEY`, or Supabase migration `20250831110000_stripe_connect.sql` not applied. |
+| Connect Stripe — "signed up for Connect" | In Stripe Dashboard go to **Connect** → **Get started** and complete platform setup before creating Express accounts. |
 | No payment link in email | Stripe keys may be missing. Add `STRIPE_SECRET_KEY` and redeploy. The app will still send the invoice, but without a payment link. |
 
 ---

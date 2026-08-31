@@ -2,7 +2,6 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { stripeClient, syncConnectAccountStatus } from "@/lib/stripe/connect";
 
 export async function disconnectStripeConnect() {
@@ -27,8 +26,7 @@ export async function disconnectStripeConnect() {
     }
   }
 
-  const admin = createAdminClient();
-  const { error } = await admin
+  const { error } = await supabase
     .from("profiles")
     .update({
       stripe_account_id: null,
@@ -66,8 +64,7 @@ export async function refreshStripeConnectStatus() {
     profile.stripe_account_id
   );
 
-  const admin = createAdminClient();
-  await admin
+  const { error } = await supabase
     .from("profiles")
     .update({
       stripe_connect_charges_enabled: chargesEnabled,
@@ -76,6 +73,7 @@ export async function refreshStripeConnectStatus() {
     })
     .eq("id", user.id);
 
+  if (error) return { error: error.message };
   revalidatePath("/settings");
   return { success: true, chargesEnabled, onboardingComplete };
 }

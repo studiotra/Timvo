@@ -2,66 +2,7 @@
 
 import Link from "next/link";
 import { Fragment, useState } from "react";
-
-function MarketingNav({ active }: { active?: "pricing" | "welcome" }) {
-  return (
-    <header className="relative z-20 flex items-center justify-between px-5 py-5 md:px-10">
-      <Link href="/welcome" className="flex items-center gap-2.5">
-        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-400 to-indigo-600 text-sm font-bold text-white shadow-lg shadow-indigo-500/30">
-          T
-        </span>
-        <span
-          className="text-xl font-semibold tracking-tight"
-          style={{ fontFamily: "var(--font-serif)" }}
-        >
-          Timvo
-        </span>
-      </Link>
-      <nav className="flex items-center gap-4 md:gap-6">
-        <Link
-          href="/welcome"
-          className={`hidden text-sm font-medium transition sm:inline ${
-            active === "welcome" ? "text-white" : "text-white/55 hover:text-white"
-          }`}
-        >
-          Product
-        </Link>
-        <Link
-          href="/guide"
-          className="hidden text-sm font-medium text-white/55 transition hover:text-white sm:inline"
-        >
-          Guide
-        </Link>
-        <Link
-          href="/pricing"
-          className={`text-sm font-medium transition ${
-            active === "pricing" ? "text-white" : "text-white/55 hover:text-white"
-          }`}
-        >
-          Pricing
-        </Link>
-        <Link
-          href="/download"
-          className="hidden text-sm font-medium text-white/55 transition hover:text-white sm:inline"
-        >
-          Desktop app
-        </Link>
-        <Link
-          href="/login"
-          className="hidden text-sm font-medium text-white/60 transition hover:text-white sm:inline"
-        >
-          Sign in
-        </Link>
-        <Link
-          href="/login"
-          className="rounded-lg bg-white/10 px-3.5 py-2 text-sm font-semibold text-white backdrop-blur transition hover:bg-white/15"
-        >
-          Get started
-        </Link>
-      </nav>
-    </header>
-  );
-}
+import { MarketingNav } from "@/components/marketing-nav";
 
 type Billing = "monthly" | "annual";
 
