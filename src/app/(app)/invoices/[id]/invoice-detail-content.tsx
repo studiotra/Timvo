@@ -23,6 +23,8 @@ type InvoiceData = {
   issued_at: string;
   due_at: string;
   stripe_payment_url: string | null;
+  stripe_session_id?: string | null;
+  paid_at?: string | null;
   footer: string;
   terms_and_conditions: string;
 };
@@ -164,6 +166,9 @@ export function InvoiceDetailContent({
         <div className="flex justify-end gap-8 mb-8 text-sm text-[var(--text-secondary)]">
           <span>Issued: {invoice.issued_at || "—"}</span>
           <span>Due: {invoice.due_at || "—"}</span>
+          {invoice.paid_at && (
+            <span>Paid: {new Date(invoice.paid_at).toLocaleDateString()}</span>
+          )}
           {project?.name && <span>Project: {project.name}</span>}
         </div>
 

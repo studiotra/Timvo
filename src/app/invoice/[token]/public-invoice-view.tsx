@@ -86,6 +86,8 @@ export function PublicInvoiceView({
                 className={`mt-1 inline-block rounded px-2 py-0.5 text-xs font-semibold uppercase ${
                   invoice.status === "paid"
                     ? "bg-emerald-500/20 text-emerald-400"
+                    : invoice.status === "overdue"
+                      ? "bg-red-500/20 text-red-400"
                     : invoice.status === "sent"
                       ? "bg-amber-500/20 text-amber-400"
                       : "bg-[var(--border)] text-[var(--text-muted)]"

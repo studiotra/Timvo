@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { PublicInvoiceView } from "./public-invoice-view";
+import { resolveInvoiceDisplayStatus } from "@/lib/invoices/status";
 
 export const dynamic = "force-dynamic";
 
@@ -100,13 +101,18 @@ export default async function PublicInvoicePage({
   const taxAmount = taxRate != null ? Math.round(subtotal * (taxRate / 100) * 100) / 100 : 0;
   const totalAmount = subtotal + taxAmount;
 
+  const displayStatus = resolveInvoiceDisplayStatus({
+    status: inv.status ?? "sent",
+    due_at: inv.due_at,
+  });
+
   return (
     <div className="min-h-screen bg-[var(--bg-app)] text-[var(--text-primary)]">
       <PublicInvoiceView
         businessInfo={businessInfo}
         invoice={{
           id: inv.id,
-          status: inv.status ?? "sent",
+          status: displayStatus,
           total_amount: totalAmount,
           subtotal,
           tax_rate: taxRate,

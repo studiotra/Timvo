@@ -2,25 +2,62 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
-import { Resend } from "resend";
-import Stripe from "stripe";
 import { randomBytes } from "crypto";
 import { generateInvoicePdf } from "@/lib/generate-invoice-pdf";
+import { syncInvoiceToQuickBooks } from "@/lib/quickbooks/sync";
+import { sendInvoiceEmail } from "@/lib/invoices/email";
+import { publicInvoiceUrl } from "@/lib/app-url";
+import {
+  canAcceptOnlinePayments,
+  canUseInvoicePayments,
+  createInvoiceCheckoutSession,
+  stripeClient,
+} from "@/lib/stripe/connect";
 
-export async function sendInvoice(invoiceId: string) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { error: "Unauthorized" };
+type InvoiceBundle = {
+  inv: {
+    id: string;
+    status: string;
+    total_amount: number | null;
+    currency: string | null;
+    issued_at: string | null;
+    due_at: string | null;
+    footer: string | null;
+    terms_and_conditions: string | null;
+    client_id: string;
+    project_id: string | null;
+    view_token: string | null;
+    clients: { name?: string; email?: string } | null;
+    projects: { name?: string; tax_rate?: number | null; billing_type?: string } | null;
+  };
+  items: Array<{ description: string; quantity: number; unit_rate: number; amount: number }>;
+  profile: {
+    business_name: string | null;
+    full_name: string | null;
+    phone_number: string | null;
+    address: string | null;
+    tax_rate: number | null;
+    stripe_account_id: string | null;
+    stripe_connect_charges_enabled: boolean | null;
+    subscription_tier: string | null;
+  } | null;
+};
 
+async function loadInvoiceBundle(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  invoiceId: string,
+  userId: string
+): Promise<InvoiceBundle | { error: string }> {
   const { data: inv } = await supabase
     .from("invoices")
-    .select("id, status, total_amount, currency, issued_at, due_at, footer, terms_and_conditions, client_id, project_id, clients(name, email), projects(name, tax_rate, billing_type)")
+    .select(
+      "id, status, total_amount, currency, issued_at, due_at, footer, terms_and_conditions, client_id, project_id, view_token, clients(name, email), projects(name, tax_rate, billing_type)"
+    )
     .eq("id", invoiceId)
-    .eq("user_id", user.id)
+    .eq("user_id", userId)
     .single();
 
   if (!inv) return { error: "Invoice not found" };
-  if (inv.status !== "draft") return { error: "Invoice already sent" };
 
   const { data: items } = await supabase
     .from("invoice_items")
@@ -28,101 +65,111 @@ export async function sendInvoice(invoiceId: string) {
     .eq("invoice_id", invoiceId)
     .order("sort_order");
 
-  const client = inv.clients as unknown as { name?: string; email?: string } | null;
-  const clientEmail = client?.email;
-
   const { data: profile } = await supabase
     .from("profiles")
-    .select("business_name, full_name, phone_number, address, tax_rate")
-    .eq("id", user.id)
+    .select(
+      "business_name, full_name, phone_number, address, tax_rate, stripe_account_id, stripe_connect_charges_enabled, subscription_tier"
+    )
+    .eq("id", userId)
     .single();
 
-  const project = inv?.projects as unknown as { name?: string; tax_rate?: number | null } | null;
-  const projectTaxRate = project?.tax_rate != null && project.tax_rate > 0 ? Number(project.tax_rate) : null;
-  const profileTaxRate = profile?.tax_rate != null && profile.tax_rate > 0 ? Number(profile.tax_rate) : null;
+  return {
+    inv: inv as InvoiceBundle["inv"],
+    items: (items ?? []).map((i) => ({
+      description: i.description ?? "",
+      quantity: Number(i.quantity) ?? 0,
+      unit_rate: Number(i.unit_rate) ?? 0,
+      amount: Number(i.amount) ?? 0,
+    })),
+    profile,
+  };
+}
+
+async function dispatchInvoice(params: {
+  supabase: Awaited<ReturnType<typeof createClient>>;
+  userId: string;
+  bundle: InvoiceBundle;
+  regenerateToken: boolean;
+  markSent: boolean;
+}) {
+  const { inv, items, profile } = params.bundle;
+  const client = inv.clients;
+  const clientEmail = client?.email?.trim();
+  if (!clientEmail) return { error: "Client has no email" };
+
+  const project = inv.projects;
+  const projectTaxRate =
+    project?.tax_rate != null && project.tax_rate > 0 ? Number(project.tax_rate) : null;
+  const profileTaxRate =
+    profile?.tax_rate != null && profile.tax_rate > 0 ? Number(profile.tax_rate) : null;
   const taxRate = projectTaxRate ?? profileTaxRate;
-  const subtotal = (items ?? []).reduce((s, i) => s + Number(i.amount || 0), 0);
+  const subtotal = items.reduce((s, i) => s + Number(i.amount || 0), 0);
   const taxAmount = taxRate != null ? Math.round(subtotal * (taxRate / 100) * 100) / 100 : 0;
   const totalWithTax = subtotal + taxAmount;
-  const isFixedProject = (project as { billing_type?: string })?.billing_type === "fixed";
-  const businessName = profile?.business_name?.trim() || profile?.full_name?.trim() || "Your Business";
-  const business = {
-    name: businessName,
-    phone: profile?.phone_number ?? null,
-    address: profile?.address ?? null,
-  };
-  if (!clientEmail?.trim()) return { error: "Client has no email" };
+  const isFixedProject = project?.billing_type === "fixed";
+  const businessName =
+    profile?.business_name?.trim() || profile?.full_name?.trim() || "Your Business";
 
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-
-  const viewToken = randomBytes(24).toString("hex");
-  const publicInvoiceUrl = `${baseUrl}/invoice/${viewToken}`;
+  const viewToken =
+    params.regenerateToken || !inv.view_token
+      ? randomBytes(24).toString("hex")
+      : inv.view_token;
 
   let paymentUrl: string | null = null;
-  const stripeKey = process.env.STRIPE_SECRET_KEY;
-  if (stripeKey?.trim()) {
+  let stripeSessionId: string | null = null;
+
+  const stripe = stripeClient();
+  const profileForConnect = profile
+    ? {
+        stripe_account_id: profile.stripe_account_id,
+        stripe_connect_charges_enabled: profile.stripe_connect_charges_enabled,
+        stripe_connect_onboarding_complete: null,
+        subscription_tier: profile.subscription_tier,
+      }
+    : null;
+
+  if (
+    stripe &&
+    canUseInvoicePayments(profileForConnect) &&
+    canAcceptOnlinePayments(profileForConnect)
+  ) {
     try {
-      const stripe = new Stripe(stripeKey);
-      const currency = (inv.currency ?? "USD").toLowerCase();
-      // Stripe uses smallest unit (cents for USD)
-      const toCents = (n: number) => Math.round(n * 100);
-
-      const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] =
-        (items ?? []).length > 0
-          ? [
-              ...(items ?? []).map((i) => ({
-                price_data: {
-                  currency,
-                  unit_amount: toCents(Number(i.amount) || 0),
-                  product_data: {
-                    name: i.description ?? "Line item",
-                  },
-                },
-                quantity: 1,
-              })),
-              ...(taxAmount > 0
-                ? [
-                    {
-                      price_data: {
-                        currency,
-                        unit_amount: toCents(taxAmount),
-                        product_data: {
-                          name: `Tax (${taxRate}%)`,
-                        },
-                      },
-                      quantity: 1,
-                    },
-                  ]
-                : []),
-            ]
-          : [
-              {
-                price_data: {
-                  currency,
-                  unit_amount: toCents(totalWithTax),
-                  product_data: {
-                    name: `Invoice #${invoiceId.slice(0, 8)} — ${client?.name ?? "Invoice"}`,
-                  },
-                },
-                quantity: 1,
-              },
-            ];
-
-      const session = await stripe.checkout.sessions.create({
-        mode: "payment",
-        line_items: lineItems,
-        metadata: { invoice_id: invoiceId },
-        success_url: `${publicInvoiceUrl}?paid=1`,
-        cancel_url: publicInvoiceUrl,
-        customer_email: clientEmail,
+      const session = await createInvoiceCheckoutSession({
+        stripe,
+        connectedAccountId: profile!.stripe_account_id,
+        invoiceId: inv.id,
+        currency: inv.currency ?? "USD",
+        lineItems: items.map((i) => ({ description: i.description, amount: Number(i.amount) })),
+        taxAmount,
+        taxLabel: taxRate != null ? `Tax (${taxRate}%)` : undefined,
+        totalWithTax,
+        clientEmail,
+        clientName: client?.name,
+        publicInvoiceUrl: publicInvoiceUrl(viewToken),
       });
       paymentUrl = session.url;
+      stripeSessionId = session.id;
     } catch (e) {
       console.error("Stripe checkout error:", e);
     }
   }
 
-  // Generate PDF attachment
+  // Persist view token BEFORE email so the link works immediately
+  const { error: prepError } = await params.supabase
+    .from("invoices")
+    .update({
+      view_token: viewToken,
+      stripe_payment_url: paymentUrl,
+      stripe_session_id: stripeSessionId,
+      total_amount: totalWithTax,
+      ...(params.markSent ? { status: "sent" } : {}),
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", inv.id)
+    .eq("user_id", params.userId);
+
+  if (prepError) return { error: prepError.message };
+
   let pdfBuffer: Buffer | null = null;
   try {
     pdfBuffer = await generateInvoicePdf({
@@ -136,67 +183,105 @@ export async function sendInvoice(invoiceId: string) {
       issued_at: inv.issued_at,
       due_at: inv.due_at,
       clientName: client?.name ?? "Client",
-      clientEmail: client?.email ?? undefined,
+      clientEmail,
       projectName: project?.name ?? undefined,
       footer: inv.footer,
       terms_and_conditions: inv.terms_and_conditions,
-      business,
-      items: (items ?? []).map((i) => ({
-        description: i.description ?? "",
-        quantity: Number(i.quantity) ?? 0,
-        unit_rate: Number(i.unit_rate) ?? 0,
-        amount: Number(i.amount) ?? 0,
-      })),
+      business: {
+        name: businessName,
+        phone: profile?.phone_number ?? null,
+        address: profile?.address ?? null,
+      },
+      items,
     });
   } catch (e) {
     console.error("PDF generation error:", e);
   }
 
-  // Send email via Resend
-  const resendKey = process.env.RESEND_API_KEY;
-  const fromEmail = process.env.EMAIL_FROM ?? "onboarding@resend.dev";
+  const emailResult = await sendInvoiceEmail({
+    to: clientEmail,
+    invoiceId: inv.id,
+    businessName,
+    clientName: client?.name,
+    currency: inv.currency ?? "USD",
+    totalWithTax,
+    viewToken,
+    paymentUrl,
+    pdfBuffer,
+  });
 
-  if (!resendKey?.trim()) {
-    return { error: "Email not configured. Add RESEND_API_KEY and EMAIL_FROM to .env.local." };
+  if (emailResult.error) {
+    if (params.markSent) {
+      await params.supabase
+        .from("invoices")
+        .update({ status: "draft", updated_at: new Date().toISOString() })
+        .eq("id", inv.id)
+        .eq("user_id", params.userId);
+    }
+    return { error: emailResult.error };
   }
 
-  try {
-    const resend = new Resend(resendKey);
-    await resend.emails.send({
-      from: fromEmail,
-      to: clientEmail,
-      subject: `Invoice #${invoiceId.slice(0, 8)} from ${businessName}`,
-      ...(pdfBuffer && {
-        attachments: [
-          {
-            filename: `invoice-${invoiceId.slice(0, 8)}.pdf`,
-            content: pdfBuffer,
-          },
-        ],
-      }),
-      html: `
-        <p>Hi ${client?.name ?? "there"},</p>
-        <p>Please find your invoice attached below.</p>
-        <p><strong>Amount:</strong> ${inv.currency ?? "USD"} $${totalWithTax.toFixed(2)}</strong></p>
-        <p>
-          <a href="${publicInvoiceUrl}" style="display:inline-block;padding:12px 24px;background:#6366f1;color:white;text-decoration:none;border-radius:8px;font-weight:600;">View Invoice</a>
-        </p>
-        ${paymentUrl ? `<p><a href="${paymentUrl}" style="display:inline-block;padding:12px 24px;background:#10b981;color:white;text-decoration:none;border-radius:8px;font-weight:600;">Pay Online</a></p>` : ""}
-        <p>— ${businessName}</p>
-      `,
-    });
-  } catch (e) {
-    console.error("Resend error:", e);
-    return { error: "Failed to send email. Check RESEND_API_KEY." };
+  if (!params.markSent) {
+    await params.supabase
+      .from("invoices")
+      .update({ status: "sent", updated_at: new Date().toISOString() })
+      .eq("id", inv.id)
+      .eq("user_id", params.userId);
   }
 
-  await supabase
-    .from("invoices")
-    .update({ status: "sent", stripe_payment_url: paymentUrl, view_token: viewToken, total_amount: totalWithTax })
-    .eq("id", invoiceId)
-    .eq("user_id", user.id);
+  void syncInvoiceToQuickBooks(params.supabase, inv.id).then((result) => {
+    if (!result.ok) console.error("QuickBooks invoice sync:", result.error);
+  });
 
   revalidatePath("/invoices");
-  revalidatePath(`/invoices/${invoiceId}`);
-  return { success: true };
+  revalidatePath(`/invoices/${inv.id}`);
+
+  return { success: true as const, viewToken };
+}
+
+export async function sendInvoice(invoiceId: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Unauthorized" };
+
+  const bundle = await loadInvoiceBundle(supabase, invoiceId, user.id);
+  if ("error" in bundle) return bundle;
+
+  if (bundle.inv.status !== "draft") {
+    return { error: "Invoice already sent. Use Resend to email again." };
+  }
+
+  return dispatchInvoice({
+    supabase,
+    userId: user.id,
+    bundle,
+    regenerateToken: true,
+    markSent: false,
+  });
+}
+
+export async function resendInvoice(invoiceId: string) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { error: "Unauthorized" };
+
+  const bundle = await loadInvoiceBundle(supabase, invoiceId, user.id);
+  if ("error" in bundle) return bundle;
+
+  const status = bundle.inv.status;
+  if (status !== "sent" && status !== "overdue") {
+    return { error: "Only sent or overdue invoices can be resent." };
+  }
+
+  return dispatchInvoice({
+    supabase,
+    userId: user.id,
+    bundle,
+    regenerateToken: false,
+    markSent: true,
+  });
 }

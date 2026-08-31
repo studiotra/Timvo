@@ -2,6 +2,8 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { InvoiceDetailContent } from "./invoice-detail-content";
+import { markOverdueInvoices, resolveInvoiceDisplayStatus } from "@/lib/invoices/status";
+import { publicInvoiceUrl } from "@/lib/app-url";
 
 export const dynamic = "force-dynamic";
 
@@ -16,10 +18,12 @@ export default async function InvoiceDetailPage({
 
   if (!user) redirect("/login");
 
+  await markOverdueInvoices(supabase, user.id);
+
   // Select only columns that exist in base schema (+ stripe); footer/terms need 20250219000000_invoice_extras migration
   const { data: inv, error: invError } = await supabase
     .from("invoices")
-    .select("id, status, total_amount, currency, issued_at, due_at, client_id, project_id")
+    .select("id, status, total_amount, currency, issued_at, due_at, client_id, project_id, view_token, paid_at")
     .eq("id", id)
     .eq("user_id", user.id)
     .single();
@@ -30,13 +34,15 @@ export default async function InvoiceDetailPage({
   let footer = "";
   let terms = "";
   let stripePaymentUrl: string | null = null;
+  let stripeSessionId: string | null = null;
   const { data: invExtras, error: _extrasErr } = await supabase
     .from("invoices")
-    .select("stripe_payment_url, footer, terms_and_conditions")
+    .select("stripe_payment_url, stripe_session_id, footer, terms_and_conditions")
     .eq("id", id)
     .single();
   if (!_extrasErr && invExtras) {
     stripePaymentUrl = (invExtras as { stripe_payment_url?: string }).stripe_payment_url ?? null;
+    stripeSessionId = (invExtras as { stripe_session_id?: string }).stripe_session_id ?? null;
     footer = (invExtras as { footer?: string }).footer ?? "";
     terms = (invExtras as { terms_and_conditions?: string }).terms_and_conditions ?? "";
   }
@@ -94,17 +100,15 @@ export default async function InvoiceDetailPage({
     address: profile?.address ?? null,
   };
 
-  const baseStatus = inv.status ?? "draft";
-  const displayStatus =
-    baseStatus === "sent" && inv.due_at
-      ? (() => {
-          const due = new Date(inv.due_at);
-          due.setHours(0, 0, 0, 0);
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
-          return due < today ? "overdue" : "sent";
-        })()
-      : baseStatus;
+  const displayStatus = resolveInvoiceDisplayStatus({
+    status: inv.status ?? "draft",
+    due_at: inv.due_at,
+  });
+
+  const clientViewUrl =
+    inv.view_token && (displayStatus === "sent" || displayStatus === "overdue" || displayStatus === "paid")
+      ? publicInvoiceUrl(inv.view_token)
+      : null;
 
   return (
     <div className="max-w-3xl">
@@ -114,6 +118,15 @@ export default async function InvoiceDetailPage({
       >
         ← Back to Invoices
       </Link>
+
+      {clientViewUrl && (
+        <p className="mb-4 text-[12px] text-[var(--text-muted)]">
+          Client link:{" "}
+          <a href={clientViewUrl} target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:underline">
+            {clientViewUrl}
+          </a>
+        </p>
+      )}
 
       <InvoiceDetailContent
         businessInfo={businessInfo}
@@ -128,6 +141,8 @@ export default async function InvoiceDetailPage({
           issued_at: inv.issued_at ?? "",
           due_at: inv.due_at ?? "",
           stripe_payment_url: stripePaymentUrl,
+          stripe_session_id: stripeSessionId,
+          paid_at: (inv as { paid_at?: string | null }).paid_at ?? null,
           footer,
           terms_and_conditions: terms,
         }}

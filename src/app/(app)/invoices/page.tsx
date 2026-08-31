@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { InvoicesContent } from "./invoices-content";
+import { markOverdueInvoices } from "@/lib/invoices/status";
 
 export default async function InvoicesPage() {
   const supabase = await createClient();
@@ -9,6 +10,8 @@ export default async function InvoicesPage() {
   if (!user) {
     redirect("/login");
   }
+
+  await markOverdueInvoices(supabase, user.id);
 
   const { data: invoices } = await supabase
     .from("invoices")

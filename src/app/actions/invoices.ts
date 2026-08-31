@@ -309,11 +309,18 @@ export async function updateInvoiceStatus(invoiceId: string, status: string) {
   if (!user) return { error: "Unauthorized" };
   const valid = ["draft", "sent", "paid", "overdue"].includes(status);
   if (!valid) return { error: "Invalid status" };
-  const dbStatus = status === "overdue" ? "sent" : status;
+  const dbStatus = status === "overdue" ? "overdue" : status;
+  const updates: Record<string, string> = {
+    status: dbStatus,
+    updated_at: new Date().toISOString(),
+  };
+  if (status === "paid") {
+    updates.paid_at = new Date().toISOString();
+  }
 
   const { error } = await supabase
     .from("invoices")
-    .update({ status: dbStatus, updated_at: new Date().toISOString() })
+    .update(updates)
     .eq("id", invoiceId)
     .eq("user_id", user.id);
 

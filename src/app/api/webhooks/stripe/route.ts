@@ -1,6 +1,8 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
+import { syncStripePaymentToQuickBooks } from "@/lib/quickbooks/sync";
+import { syncConnectAccountStatus } from "@/lib/stripe/connect";
 
 const stripeKey = process.env.STRIPE_SECRET_KEY;
 
@@ -31,10 +33,52 @@ export async function POST(req: Request) {
     const invoiceId = session.metadata?.invoice_id;
     if (invoiceId) {
       const supabase = createAdminClient();
-      await supabase
+      const paidAt = new Date().toISOString();
+      const amount =
+        session.amount_total != null ? session.amount_total / 100 : undefined;
+
+      const { error } = await supabase
         .from("invoices")
-        .update({ status: "paid" })
+        .update({
+          status: "paid",
+          paid_at: paidAt,
+          stripe_session_id: session.id,
+          updated_at: paidAt,
+        })
         .eq("id", invoiceId);
+
+      if (error) {
+        console.error("Stripe webhook invoice update failed:", error.message);
+        return NextResponse.json({ error: "Database update failed" }, { status: 500 });
+      }
+
+      const qbo = await syncStripePaymentToQuickBooks(supabase, invoiceId, {
+        amount,
+        paidAt,
+        stripeSessionId: session.id,
+      });
+      if (!qbo.ok) {
+        console.error("QuickBooks payment sync failed:", qbo.error);
+      }
+    }
+  }
+
+  if (event.type === "account.updated") {
+    const account = event.data.object as Stripe.Account;
+    if (account.id) {
+      const supabase = createAdminClient();
+      const { chargesEnabled, onboardingComplete } = await syncConnectAccountStatus(
+        stripe,
+        account.id
+      );
+      await supabase
+        .from("profiles")
+        .update({
+          stripe_connect_charges_enabled: chargesEnabled,
+          stripe_connect_onboarding_complete: onboardingComplete,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("stripe_account_id", account.id);
     }
   }
 

@@ -6,9 +6,9 @@ This guide walks you through setting up Stripe so your invoices can be paid onli
 
 ## What Stripe does in Timvo
 
-1. **Send invoice** – When you send an invoice, a Stripe Checkout payment link is created and included in the email.
-2. **Customer pays** – The client clicks the link, pays via Stripe Checkout (card, Apple Pay, etc.).
-3. **Invoice marked paid** – When payment succeeds, a webhook updates the invoice status to "Paid" in your app.
+1. **Connect Stripe** (Settings) — link your Express account to receive client payments directly.
+2. **Send invoice** — creates a Stripe Checkout link on your connected account (Solo/Team plan).
+3. **Customer pays** — client pays via Stripe Checkout; webhook marks invoice **Paid** and syncs to QuickBooks if connected.
 
 ---
 
@@ -54,9 +54,8 @@ The webhook is how Stripe tells your app when a payment is completed.
    (Use your production domain: `https://www.timvo.work/api/webhooks/stripe` if that’s your main URL.)
 
 3. **Events to listen for**:
-   - Click **Select events**
-   - Choose: `checkout.session.completed`
-   - Click **Add events**
+   - `checkout.session.completed`
+   - `account.updated` (Stripe Connect status sync)
 
 4. Click **Add endpoint**.
 

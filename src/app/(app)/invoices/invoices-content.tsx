@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import Link from "next/link";
 import { CreateInvoiceSlideOver } from "@/components/create-invoice-slide-over";
+import { resolveInvoiceDisplayStatus } from "@/lib/invoices/status";
 
 type InvoiceRow = {
   id: string;
@@ -24,14 +25,7 @@ type ProjectOpt = { id: string; name: string; client_id: string };
 const TABS = ["All statuses", "Draft", "Sent", "Paid", "Overdue"] as const;
 
 function getDisplayStatus(inv: InvoiceRow): string {
-  if (inv.status === "sent" && inv.due_at) {
-    const due = new Date(inv.due_at);
-    due.setHours(0, 0, 0, 0);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    if (due < today) return "overdue";
-  }
-  return inv.status;
+  return resolveInvoiceDisplayStatus({ status: inv.status, due_at: inv.due_at });
 }
 
 export function InvoicesContent({
@@ -59,7 +53,8 @@ export function InvoicesContent({
       if (activeTab === "Overdue") {
         list = list.filter((i) => getDisplayStatus(i) === "overdue");
       } else {
-        list = list.filter((i) => i.status.toLowerCase() === activeTab.toLowerCase());
+        const tab = activeTab.toLowerCase();
+        list = list.filter((i) => getDisplayStatus(i) === tab);
       }
     }
     if (clientFilter) {
