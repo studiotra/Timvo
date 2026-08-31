@@ -64,6 +64,12 @@ export function quickbooksConfigured() {
   );
 }
 
+/** Team plan required for QuickBooks sync. */
+export function canUseQuickBooks(profile: { subscription_tier: string | null } | null): boolean {
+  const tier = profile?.subscription_tier ?? "free";
+  return tier === "team";
+}
+
 export async function signOAuthState(userId: string, next?: string): Promise<string> {
   const payload = base64UrlEncodeText(
     JSON.stringify({

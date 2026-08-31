@@ -73,6 +73,7 @@ export default async function SettingsPage({
         connection={qbConn}
         configured={Boolean(process.env.QUICKBOOKS_CLIENT_ID)}
         flash={params.quickbooks ?? null}
+        subscriptionTier={profile?.subscription_tier ?? null}
       />
 
       <StripeConnectSettings

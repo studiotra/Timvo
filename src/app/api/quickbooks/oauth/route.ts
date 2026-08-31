@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import {
   appBaseUrl,
   buildAuthorizeUrl,
+  canUseQuickBooks,
   quickbooksConfigured,
   signOAuthState,
 } from "@/lib/quickbooks/oauth";
@@ -24,6 +25,16 @@ export async function GET(req: NextRequest) {
   } = await supabase.auth.getUser();
   if (!user) {
     return NextResponse.redirect(`${appBaseUrl()}/login`);
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("subscription_tier")
+    .eq("id", user.id)
+    .single();
+
+  if (!canUseQuickBooks(profile)) {
+    return NextResponse.redirect(`${appBaseUrl()}${next}?quickbooks=upgrade`);
   }
 
   const state = await signOAuthState(user.id, next);

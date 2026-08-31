@@ -12,16 +12,19 @@ export function QuickBooksSettings({
   connection,
   configured,
   flash,
+  subscriptionTier,
   returnPath = "/settings",
 }: {
   connection: Connection | null;
   configured: boolean;
   flash?: string | null;
+  subscriptionTier?: string | null;
   returnPath?: string;
 }) {
   const status = flash ?? null;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const canConnect = (subscriptionTier ?? "free") === "team";
 
   async function handleDisconnect() {
     setBusy(true);
@@ -60,6 +63,17 @@ export function QuickBooksSettings({
             QuickBooks env vars are missing. Add QUICKBOOKS_CLIENT_ID and QUICKBOOKS_CLIENT_SECRET.
           </p>
         )}
+        {status === "upgrade" && (
+          <p className="text-sm text-red-400">
+            QuickBooks sync requires a Team plan. Upgrade to connect QuickBooks Online.
+          </p>
+        )}
+        {!canConnect && !connection && (
+          <p className="rounded-lg bg-indigo-500/10 px-3 py-2 text-[12px] text-indigo-200/90">
+            QuickBooks Online sync is available on the Team plan—for agencies syncing invoices and
+            Stripe payments to their books.
+          </p>
+        )}
         {connection ? (
           <>
             <p className="text-[13px] text-[var(--text-primary)]">
@@ -79,9 +93,9 @@ export function QuickBooksSettings({
           </>
         ) : (
           <a
-            href={oauthHref}
+            href={canConnect ? oauthHref : undefined}
             className={`inline-flex rounded-lg px-4 py-2 text-[13px] font-semibold text-white ${
-              configured
+              configured && canConnect
                 ? "bg-[#2ca01c] hover:bg-[#248517]"
                 : "pointer-events-none bg-gray-500 opacity-50"
             }`}

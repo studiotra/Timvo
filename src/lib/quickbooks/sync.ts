@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
+  canUseQuickBooks,
   quickbooksApiBase,
   quickbooksEnvironment,
   refreshAccessToken,
@@ -160,6 +161,13 @@ export async function syncInvoiceToQuickBooks(
   if (!inv) return { ok: false, error: "Invoice not found" };
   if (inv.quickbooks_invoice_id) return { ok: true };
 
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("subscription_tier")
+    .eq("id", inv.user_id)
+    .single();
+  if (!canUseQuickBooks(profile)) return { ok: true };
+
   const conn = await getValidConnection(inv.user_id);
   if (!conn) return { ok: true };
 
@@ -262,6 +270,13 @@ export async function syncStripePaymentToQuickBooks(
 
   if (!inv) return { ok: false, error: "Invoice not found" };
   if (inv.quickbooks_payment_id) return { ok: true };
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("subscription_tier")
+    .eq("id", inv.user_id)
+    .single();
+  if (!canUseQuickBooks(profile)) return { ok: true };
 
   const conn = await getValidConnection(inv.user_id);
   if (!conn) return { ok: true };

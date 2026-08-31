@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { MarketingNav } from "@/components/marketing-nav";
 import { MarketingProductDemo } from "@/components/marketing-product-demo";
+import { MarketingIntegrationsSection } from "@/components/marketing-integrations";
 
 const steps = [
   {
@@ -159,7 +160,7 @@ export function MarketingLanding() {
             </Link>
           </div>
           <ul className="space-y-3 text-sm text-white/70">
-            {["Sidebar timer + manual logs", "Invoices from tracked time", "Slack start / stop", "Optional agency submit"].map(
+            {["Sidebar timer + manual logs", "Invoices with Stripe pay links", "Slack start / stop", "Optional agency submit"].map(
               (item) => (
                 <li
                   key={item}
@@ -182,6 +183,7 @@ export function MarketingLanding() {
               "Contractor timesheet approval",
               "Map shares to end-client projects",
               "Staff timer on org clients",
+              "QuickBooks invoice & payment sync",
               "Profitability & retainer alerts",
             ].map((item) => (
               <li
@@ -216,6 +218,8 @@ export function MarketingLanding() {
           </div>
         </div>
       </section>
+
+      <MarketingIntegrationsSection />
 
       {/* Contrast */}
       <section className="relative z-10 px-5 py-20 md:px-10">

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Fragment, useState } from "react";
 import { MarketingNav } from "@/components/marketing-nav";
+import { MarketingIntegrationsSection, marketingIntegrationComparisonRows } from "@/components/marketing-integrations";
 
 type Billing = "monthly" | "annual";
 
@@ -67,14 +68,13 @@ const comparison: {
         team: "Beta",
       },
       { feature: "Services & tasks", free: true, solo: true, team: true },
-      { feature: "Slack timer commands", free: false, solo: true, team: true },
     ],
   },
   {
     section: "Freelance ↔ agency workflow",
     rows: [
       {
-        feature: "Invoice clients & Stripe pay links",
+        feature: "Send invoices from tracked time",
         free: false,
         solo: true,
         team: true,
@@ -95,6 +95,10 @@ const comparison: {
         team: `${TEAM_INCLUDED_SEATS} included · then +$/seat`,
       },
     ],
+  },
+  {
+    section: "Integrations",
+    rows: [...marketingIntegrationComparisonRows],
   },
   {
     section: "Reporting & clients",
@@ -142,6 +146,14 @@ const faqs = [
   {
     q: "What if I start Free and later need invoices?",
     a: "Upgrade to Solo anytime. Your logs and agency links stay; you unlock unlimited clients, invoicing, and the rest of the freelancer toolkit.",
+  },
+  {
+    q: "Which integrations are included?",
+    a: "Slack and Stripe Connect (invoice pay links) are on Solo and Team. QuickBooks Online sync is Team only. Connect each in Settings after you sign up. Free includes web tracking and agency submit—no integrations.",
+  },
+  {
+    q: "Does QuickBooks sync automatically?",
+    a: "Yes on Team. Connect QuickBooks in Settings. When you send an invoice, it syncs to QuickBooks Online. When a client pays via Stripe, the payment is recorded against that invoice in QBO.",
   },
   {
     q: "Is there a desktop app?",
@@ -289,8 +301,7 @@ export function PricingPageContent() {
           <ul className="mt-6 space-y-2.5 text-sm text-white/70">
             {[
               "Unlimited clients & projects",
-              "Automated invoice generation",
-              "Client invoice / share links",
+              "Stripe pay links on invoices",
               "Slack & desktop timer",
               "Basic reporting",
               "Submit time to linked agencies",
@@ -339,6 +350,8 @@ export function PricingPageContent() {
               `Base includes ${TEAM_INCLUDED_SEATS} seats (owner + staff)`,
               "Add seats anytime at the extra-seat rate",
               "Timesheet approve / reject queue",
+              "QuickBooks invoice & payment sync",
+              "Stripe & Slack integrations",
               "Project mapping & profitability",
               "Staff timer on org clients",
               "Unlimited linked contractors (not seats)",
@@ -364,6 +377,8 @@ export function PricingPageContent() {
           </p>
         </div>
       </section>
+
+      <MarketingIntegrationsSection compact />
 
       {/* Comparison */}
       <section className="relative z-10 mx-auto mt-16 max-w-5xl px-5 pb-8 md:px-10">
