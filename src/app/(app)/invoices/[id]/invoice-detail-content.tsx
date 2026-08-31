@@ -93,6 +93,8 @@ export function InvoiceDetailContent({
     overdue: { backgroundColor: "var(--status-overdue-bg)", color: "var(--status-overdue-text)" },
   };
   const statusStyle = statusStyles[status] ?? statusStyles.draft;
+  const footerText = invoice.footer?.trim() ?? "";
+  const termsText = invoice.terms_and_conditions?.trim() ?? "";
 
   return (
     <>
@@ -125,7 +127,7 @@ export function InvoiceDetailContent({
               value={status}
               onChange={(e) => handleStatusChange(e.target.value)}
               disabled={statusUpdating}
-              className="mt-1 block rounded px-2 py-0.5 text-xs font-semibold uppercase border-0 cursor-pointer focus:ring-2 focus:ring-accent/50 focus:outline-none"
+              className="no-print mt-1 block rounded px-2 py-0.5 text-xs font-semibold uppercase border-0 cursor-pointer focus:ring-2 focus:ring-accent/50 focus:outline-none"
               style={{
                 backgroundColor: statusStyle.backgroundColor,
                 color: statusStyle.color,
@@ -239,29 +241,29 @@ export function InvoiceDetailContent({
           </p>
         </div>
 
-        {(invoice.footer || invoice.terms_and_conditions) && (
-          <div className="mt-8 pt-6 border-t border-[var(--border-strong)] text-sm text-[var(--text-secondary)] space-y-2">
-            {invoice.terms_and_conditions && (
+        {(termsText || footerText) && (
+          <div className="mt-8 pt-6 border-t border-[var(--border-strong)] text-sm text-[var(--text-secondary)] space-y-4">
+            {termsText && (
               <div>
                 <p className="font-semibold text-[var(--text-primary)] text-xs uppercase mb-1">
                   Terms & Conditions
                 </p>
-                <p className="whitespace-pre-wrap text-[var(--text-secondary)]">{invoice.terms_and_conditions}</p>
+                <p className="whitespace-pre-wrap text-[var(--text-secondary)]">{termsText}</p>
               </div>
             )}
-            {invoice.footer && (
+            {footerText && (
               <div>
                 <p className="font-semibold text-[var(--text-primary)] text-xs uppercase mb-1">
                   Footer
                 </p>
-                <p className="whitespace-pre-wrap text-[var(--text-secondary)]">{invoice.footer}</p>
+                <p className="whitespace-pre-wrap text-[var(--text-secondary)]">{footerText}</p>
               </div>
             )}
           </div>
         )}
       </div>
 
-      <div className="mt-6 flex flex-wrap gap-3 items-center">
+      <div className="no-print mt-6 flex flex-wrap gap-3 items-center">
         <PrintInvoiceButton />
         <SendInvoiceButton
           invoiceId={invoice.id}

@@ -63,7 +63,7 @@ export default async function InvoiceDetailPage({
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("business_name, logo_url, full_name, phone_number, address, tax_rate")
+    .select("business_name, logo_url, full_name, phone_number, address, tax_rate, default_invoice_footer, default_invoice_terms")
     .eq("id", user.id)
     .single();
 
@@ -101,13 +101,13 @@ export default async function InvoiceDetailPage({
     <div className="max-w-3xl">
       <Link
         href="/invoices"
-        className="mb-6 inline-block text-sm text-[var(--text-secondary)] hover:text-accent"
+        className="no-print mb-6 inline-block text-sm text-[var(--text-secondary)] hover:text-accent"
       >
         ← Back to Invoices
       </Link>
 
       {clientViewUrl && (
-        <p className="mb-4 text-[12px] text-[var(--text-muted)]">
+        <p className="no-print mb-4 text-[12px] text-[var(--text-muted)]">
           Client link:{" "}
           <a href={clientViewUrl} target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:underline">
             {clientViewUrl}
@@ -130,8 +130,8 @@ export default async function InvoiceDetailPage({
           stripe_payment_url: extras.stripePaymentUrl,
           stripe_session_id: extras.stripeSessionId,
           paid_at: extras.paidAt,
-          footer: extras.footer,
-          terms_and_conditions: extras.terms,
+          footer: extras.footer.trim() || profile?.default_invoice_footer?.trim() || "",
+          terms_and_conditions: extras.terms.trim() || profile?.default_invoice_terms?.trim() || "",
         }}
         client={client}
         project={project}

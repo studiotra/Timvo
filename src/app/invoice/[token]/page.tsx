@@ -67,10 +67,12 @@ export default async function PublicInvoicePage({
     phone: null as string | null,
     address: null as string | null,
   };
+  let defaultFooter = "";
+  let defaultTerms = "";
   if (userId) {
     const { data: prof } = await supabase
       .from("profiles")
-      .select("business_name, logo_url, full_name, phone_number, address")
+      .select("business_name, logo_url, full_name, phone_number, address, default_invoice_footer, default_invoice_terms")
       .eq("id", userId)
       .single();
     businessInfo = {
@@ -79,6 +81,8 @@ export default async function PublicInvoicePage({
       phone: prof?.phone_number ?? null,
       address: prof?.address ?? null,
     };
+    defaultFooter = prof?.default_invoice_footer?.trim() ?? "";
+    defaultTerms = prof?.default_invoice_terms?.trim() ?? "";
   }
 
   let profileTaxRate: number | null = null;
@@ -121,8 +125,10 @@ export default async function PublicInvoicePage({
           issued_at: inv.issued_at ?? "",
           due_at: inv.due_at ?? "",
           stripe_payment_url: (inv as { stripe_payment_url?: string | null }).stripe_payment_url ?? null,
-          footer: (inv as { footer?: string }).footer ?? "",
-          terms_and_conditions: (inv as { terms_and_conditions?: string }).terms_and_conditions ?? "",
+          footer: ((inv as { footer?: string }).footer ?? "").trim() || defaultFooter,
+          terms_and_conditions:
+            ((inv as { terms_and_conditions?: string }).terms_and_conditions ?? "").trim() ||
+            defaultTerms,
         }}
         client={client}
         project={project}

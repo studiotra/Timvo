@@ -68,7 +68,7 @@ async function loadInvoiceBundle(
   const { data: profile } = await supabase
     .from("profiles")
     .select(
-      "business_name, full_name, phone_number, address, tax_rate, stripe_account_id, stripe_connect_charges_enabled, subscription_tier"
+      "business_name, full_name, phone_number, address, tax_rate, stripe_account_id, stripe_connect_charges_enabled, subscription_tier, default_invoice_footer, default_invoice_terms"
     )
     .eq("id", userId)
     .single();
@@ -185,8 +185,9 @@ async function dispatchInvoice(params: {
       clientName: client?.name ?? "Client",
       clientEmail,
       projectName: project?.name ?? undefined,
-      footer: inv.footer,
-      terms_and_conditions: inv.terms_and_conditions,
+      footer: inv.footer?.trim() || profile?.default_invoice_footer?.trim() || null,
+      terms_and_conditions:
+        inv.terms_and_conditions?.trim() || profile?.default_invoice_terms?.trim() || null,
       business: {
         name: businessName,
         phone: profile?.phone_number ?? null,

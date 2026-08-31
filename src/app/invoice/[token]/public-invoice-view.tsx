@@ -50,6 +50,9 @@ export function PublicInvoiceView({
   paidSuccess?: boolean;
   isFixedProject?: boolean;
 }) {
+  const footerText = invoice.footer?.trim() ?? "";
+  const termsText = invoice.terms_and_conditions?.trim() ?? "";
+
   return (
     <div className="min-h-screen py-12 px-4">
       <div className="max-w-2xl mx-auto">
@@ -187,24 +190,24 @@ export function PublicInvoiceView({
             </p>
           </div>
 
-          {(invoice.footer || invoice.terms_and_conditions) && (
-            <div className="mt-8 pt-6 border-t border-[var(--border-strong)] text-sm text-[var(--text-secondary)] space-y-2">
-              {invoice.terms_and_conditions && (
+          {(termsText || footerText) && (
+            <div className="mt-8 pt-6 border-t border-[var(--border-strong)] text-sm text-[var(--text-secondary)] space-y-4">
+              {termsText && (
                 <div>
                   <p className="font-semibold text-[var(--text-primary)] text-xs uppercase mb-1">
                     Terms & Conditions
                   </p>
                   <p className="whitespace-pre-wrap text-[var(--text-secondary)]">
-                    {invoice.terms_and_conditions}
+                    {termsText}
                   </p>
                 </div>
               )}
-              {invoice.footer && (
+              {footerText && (
                 <div>
                   <p className="font-semibold text-[var(--text-primary)] text-xs uppercase mb-1">
                     Footer
                   </p>
-                  <p className="whitespace-pre-wrap text-[var(--text-secondary)]">{invoice.footer}</p>
+                  <p className="whitespace-pre-wrap text-[var(--text-secondary)]">{footerText}</p>
                 </div>
               )}
             </div>

@@ -204,11 +204,14 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
   y -= 36;
 
   if (data.terms_and_conditions?.trim()) {
-    const lines = data.terms_and_conditions.split("\n").filter(Boolean);
+    y -= 8;
+    page.drawText("Terms & Conditions", { x: MARGIN, y, size: 9, font: fontBold, color: rgb(0.35, 0.35, 0.35) });
+    y -= 14;
+    const lines = data.terms_and_conditions.trim().split("\n");
     for (const line of lines) {
       if (y < 80) break;
-      const truncated = wrapText(line, 100);
-      for (const t of truncated.slice(0, 2)) {
+      const wrapped = wrapText(line, 90);
+      for (const t of wrapped) {
         if (y < 80) break;
         page.drawText(t.slice(0, 95), { x: MARGIN, y, size: 8, font, color: rgb(0.4, 0.4, 0.4) });
         y -= 11;
@@ -216,12 +219,18 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
     }
   }
   if (data.footer?.trim()) {
-    y -= 6;
-    const footerLines = wrapText(data.footer, 100);
-    for (const line of footerLines.slice(0, 2)) {
+    y -= 8;
+    page.drawText("Footer", { x: MARGIN, y, size: 9, font: fontBold, color: rgb(0.35, 0.35, 0.35) });
+    y -= 14;
+    const footerLines = data.footer.trim().split("\n");
+    for (const line of footerLines) {
       if (y < 80) break;
-      page.drawText(line.slice(0, 95), { x: MARGIN, y, size: 8, font, color: rgb(0.4, 0.4, 0.4) });
-      y -= 11;
+      const wrapped = wrapText(line, 90);
+      for (const t of wrapped) {
+        if (y < 80) break;
+        page.drawText(t.slice(0, 95), { x: MARGIN, y, size: 8, font, color: rgb(0.4, 0.4, 0.4) });
+        y -= 11;
+      }
     }
   }
   if (y > 60) {
