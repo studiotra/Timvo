@@ -19,7 +19,7 @@ const navItems = [
   { href: "/org/assignments", label: "Assignments", icon: "🧩" },
   { href: "/org/contractors", label: "Contractors", icon: "👥" },
   { href: "/org/reports", label: "Reports", icon: "📊" },
-  { href: "/org/guide", label: "Guide", icon: "📖" },
+  { href: "/guide?tab=agency", label: "Guide", icon: "📖" },
   { href: "/org/settings", label: "Settings", icon: "⚙️" },
 ] as const;
 
@@ -98,7 +98,9 @@ export function OrgShell({ children, orgName, hasContractorDashboard }: OrgShell
             const active =
               item.href === "/org"
                 ? pathname === "/org"
-                : pathname.startsWith(item.href);
+                : item.href.startsWith("/guide")
+                  ? pathname === "/guide"
+                  : pathname.startsWith(item.href.split("?")[0]);
             return (
               <Link
                 key={item.href}

@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 
 const ERROR_MESSAGES: Record<string, string> = {
   invalid_invite: "Invalid invite link.",
@@ -14,14 +15,16 @@ const ERROR_MESSAGES: Record<string, string> = {
 export function LoginForm({
   error,
   next,
+  signupContractor = false,
 }: {
   error: string | null;
   next?: string | null;
+  signupContractor?: boolean;
 }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [isSignUp, setIsSignUp] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(signupContractor);
   const [loginMode, setLoginMode] = useState<"password" | "magic">("password");
   const [showForgotPw, setShowForgotPw] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -106,14 +109,33 @@ export function LoginForm({
             Timvo
           </a>
           <p className="text-gray-400 text-sm mt-1">See what your time is really worth — not just how long you worked.</p>
-          <p className="text-gray-500 text-sm mt-2">
-            Sign in as a contractor, or{" "}
-            <a href="/signup/organization" className="text-accent hover:underline">
-              create an organization account
-            </a>
-            .
-          </p>
         </div>
+
+        <div className="mb-6 grid grid-cols-2 gap-3">
+          <Link
+            href="/login?signup=contractor"
+            className={`rounded-xl border px-4 py-4 text-center transition ${
+              isSignUp
+                ? "border-indigo-500/60 bg-indigo-500/15 shadow-lg shadow-indigo-500/10"
+                : "border-[var(--border)] bg-[var(--bg-card)]/50 hover:border-indigo-500/40"
+            }`}
+          >
+            <p className="text-[15px] font-semibold text-white">Contractor</p>
+            <p className="mt-1 text-[11px] leading-snug text-gray-400">
+              Freelancer or solo business — track time &amp; invoice clients
+            </p>
+          </Link>
+          <Link
+            href="/signup/organization"
+            className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)]/50 px-4 py-4 text-center transition hover:border-violet-500/40 hover:bg-violet-500/10"
+          >
+            <p className="text-[15px] font-semibold text-white">Agency</p>
+            <p className="mt-1 text-[11px] leading-snug text-gray-400">
+              Team workspace — staff, contractors &amp; timesheets
+            </p>
+          </Link>
+        </div>
+
         <div className="bg-[var(--bg-card)] backdrop-blur-xl border border-[var(--border)] rounded-xl p-6 shadow-xl">
           {(errorMsg || message) && (
             <p
@@ -199,7 +221,7 @@ export function LoginForm({
           ) : (
             <>
               <h2 className="text-lg font-semibold text-white mb-4">
-                {isSignUp ? "Create account" : "Sign in"}
+                {isSignUp ? "Sign up as Contractor" : "Sign in"}
               </h2>
               <form onSubmit={handlePasswordSubmit} className="space-y-4">
                 <div>
@@ -245,7 +267,7 @@ export function LoginForm({
                   disabled={loading}
                   className="w-full py-2.5 px-4 bg-accent hover:bg-accent-hover text-white font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {loading ? "Please wait..." : isSignUp ? "Sign up" : "Sign in"}
+                  {loading ? "Please wait..." : isSignUp ? "Create contractor account" : "Sign in"}
                 </button>
                 <button
                   type="button"
@@ -262,12 +284,17 @@ export function LoginForm({
                   onClick={() => setIsSignUp(!isSignUp)}
                   className="text-accent hover:underline font-medium"
                 >
-                  {isSignUp ? "Sign in" : "Sign up"}
+                  {isSignUp ? "Sign in" : "Sign up as contractor"}
                 </button>
               </p>
             </>
           )}
         </div>
+        <p className="mt-4 text-center text-sm text-gray-500">
+          <Link href="/guide" className="text-indigo-400 hover:underline">
+            Help center &amp; setup guide
+          </Link>
+        </p>
       </div>
     </div>
   );

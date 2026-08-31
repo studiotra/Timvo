@@ -18,7 +18,7 @@ type Tab = "contractor" | "agency";
 type Props = {
   defaultTab: Tab;
   showTabs?: boolean;
-  basePath: string;
+  showRestartTour?: boolean;
 };
 
 function SectionCard({ section }: { section: GuideSection }) {
@@ -53,7 +53,11 @@ function SectionCard({ section }: { section: GuideSection }) {
   );
 }
 
-export function GuidePageClient({ defaultTab, showTabs = true, basePath }: Props) {
+export function GuidePageClient({
+  defaultTab,
+  showTabs = true,
+  showRestartTour = true,
+}: Props) {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>(defaultTab);
   const [restarting, setRestarting] = useState(false);
@@ -81,33 +85,37 @@ export function GuidePageClient({ defaultTab, showTabs = true, basePath }: Props
           Step-by-step instructions for freelancers and agencies. Bookmark this page — it covers
           every major feature.
         </p>
-        <button
-          type="button"
-          onClick={() => void handleRestartTour()}
-          disabled={restarting}
-          className="mt-4 rounded-lg border border-[var(--border)] bg-[var(--row-hover)] px-4 py-2 text-[13px] font-semibold text-[var(--text-primary)] hover:bg-indigo-500/10 disabled:opacity-50"
-        >
-          {restarting ? "Starting tour…" : "Restart setup tour"}
-        </button>
+        {showRestartTour ? (
+          <button
+            type="button"
+            onClick={() => void handleRestartTour()}
+            disabled={restarting}
+            className="mt-4 rounded-lg border border-[var(--border)] bg-[var(--row-hover)] px-4 py-2 text-[13px] font-semibold text-[var(--text-primary)] hover:bg-indigo-500/10 disabled:opacity-50"
+          >
+            {restarting ? "Starting tour…" : "Restart setup tour"}
+          </button>
+        ) : (
+          <p className="mt-4 text-[13px] text-[var(--text-secondary)]">
+            <Link href="/login" className="font-semibold text-indigo-400 hover:underline">
+              Sign in
+            </Link>{" "}
+            to run the interactive setup tour inside the app.
+          </p>
+        )}
       </div>
 
       {showTabs && (
         <div className="mb-8 flex gap-2 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-1">
           {(
             [
-              ["contractor", "For contractors", "/guide"],
-              ["agency", "For agencies", "/org/guide"],
+              ["contractor", "For contractors"],
+              ["agency", "For agencies"],
             ] as const
-          ).map(([id, label, href]) => (
-            <Link
+          ).map(([id, label]) => (
+            <button
               key={id}
-              href={href}
-              onClick={(e) => {
-                if (href === basePath) {
-                  e.preventDefault();
-                  setTab(id);
-                }
-              }}
+              type="button"
+              onClick={() => setTab(id)}
               className={cn(
                 "flex-1 rounded-lg px-4 py-2.5 text-center text-[13px] font-semibold transition-colors",
                 tab === id
@@ -116,7 +124,7 @@ export function GuidePageClient({ defaultTab, showTabs = true, basePath }: Props
               )}
             >
               {label}
-            </Link>
+            </button>
           ))}
         </div>
       )}

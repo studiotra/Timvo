@@ -23,7 +23,6 @@ export async function completeOnboarding() {
   revalidatePath("/", "layout");
   revalidatePath("/org", "layout");
   revalidatePath("/guide", "layout");
-  revalidatePath("/org/guide", "layout");
   return { success: true };
 }
 
@@ -47,6 +46,5 @@ export async function resetOnboarding() {
   revalidatePath("/", "layout");
   revalidatePath("/org", "layout");
   revalidatePath("/guide", "layout");
-  revalidatePath("/org/guide", "layout");
   return { success: true };
 }

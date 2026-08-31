@@ -57,12 +57,29 @@ export function OrganizationSignupForm({
     <div className="min-h-screen flex items-center justify-center bg-charcoal px-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-white">Timvo for Organizations</h1>
+          <Link href="/welcome" className="inline-block text-2xl font-bold text-white hover:opacity-90">
+            Timvo
+          </Link>
+          <h1 className="mt-4 text-xl font-bold text-white">Sign up as Agency</h1>
           <p className="text-gray-400 text-sm mt-2">
             {contractorName
               ? `${contractorName} invited you to manage clients, contractors, and timesheets.`
-              : "Manage clients, contractors, and timesheet approvals in one place."}
+              : "Team workspace for clients, contractors, and timesheet approvals."}
           </p>
+        </div>
+
+        <div className="mb-6 grid grid-cols-2 gap-3">
+          <Link
+            href="/login?signup=contractor"
+            className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)]/50 px-3 py-3 text-center transition hover:border-indigo-500/40"
+          >
+            <p className="text-[14px] font-semibold text-white">Contractor</p>
+            <p className="mt-0.5 text-[10px] text-gray-500">Solo / freelancer</p>
+          </Link>
+          <div className="rounded-xl border border-violet-500/50 bg-violet-500/15 px-3 py-3 text-center">
+            <p className="text-[14px] font-semibold text-white">Agency</p>
+            <p className="mt-0.5 text-[10px] text-violet-300">You&apos;re here</p>
+          </div>
         </div>
         <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-xl p-6 shadow-xl">
           {inviteInvalid && (
@@ -117,16 +134,21 @@ export function OrganizationSignupForm({
               disabled={loading}
               className="w-full py-2.5 bg-accent hover:bg-accent-hover text-white font-semibold rounded-lg disabled:opacity-50"
             >
-              {loading ? "Creating…" : "Create organization account"}
+              {loading ? "Creating…" : "Create agency account"}
             </button>
           </form>
           <p className="mt-4 text-center text-sm text-gray-400">
             Freelancer or solo contractor?{" "}
-            <Link href="/login" className="text-accent hover:underline">
-              Sign up as contractor
+            <Link href="/login?signup=contractor" className="text-accent hover:underline font-medium">
+              Sign up as Contractor
             </Link>
           </p>
         </div>
+        <p className="mt-4 text-center text-sm text-gray-500">
+          <Link href="/guide?tab=agency" className="text-indigo-400 hover:underline">
+            Agency setup guide
+          </Link>
+        </p>
       </div>
     </div>
   );

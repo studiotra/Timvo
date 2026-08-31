@@ -144,7 +144,7 @@ export const ORG_ONBOARDING: OnboardingStep[] = [
     title: "You’re set",
     icon: "🎉",
     body: "Your team can start logging time. Keep the agency guide handy for onboarding new staff.",
-    cta: { label: "Open agency guide", href: "/org/guide" },
+    cta: { label: "Open agency guide", href: "/guide?tab=agency" },
   },
 ];
 

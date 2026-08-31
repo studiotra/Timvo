@@ -45,11 +45,13 @@ export async function markOverdueInvoices(
   if (error || !data?.length) return 0;
 
   const ids = data.map((r) => r.id);
-  await supabase
+  const { error: updateError } = await supabase
     .from("invoices")
     .update({ status: "overdue", updated_at: new Date().toISOString() })
     .in("id", ids)
     .eq("user_id", userId);
+
+  if (updateError) return 0;
 
   return ids.length;
 }

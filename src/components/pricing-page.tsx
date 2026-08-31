@@ -27,12 +27,24 @@ function MarketingNav({ active }: { active?: "pricing" | "welcome" }) {
           Product
         </Link>
         <Link
+          href="/guide"
+          className="hidden text-sm font-medium text-white/55 transition hover:text-white sm:inline"
+        >
+          Guide
+        </Link>
+        <Link
           href="/pricing"
           className={`text-sm font-medium transition ${
             active === "pricing" ? "text-white" : "text-white/55 hover:text-white"
           }`}
         >
           Pricing
+        </Link>
+        <Link
+          href="/download"
+          className="hidden text-sm font-medium text-white/55 transition hover:text-white sm:inline"
+        >
+          Desktop app
         </Link>
         <Link
           href="/login"

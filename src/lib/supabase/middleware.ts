@@ -55,7 +55,7 @@ export async function updateSession(request: NextRequest) {
     path.startsWith("/reset-password") ||
     path.startsWith("/client-preview");
   const isMarketingPage =
-    path === "/welcome" || path === "/pricing" || path === "/download";
+    path === "/welcome" || path === "/pricing" || path === "/download" || path === "/guide";
   const isPublicPage = path.startsWith("/invoice");
   const isApiRoute = path.startsWith("/api");
 

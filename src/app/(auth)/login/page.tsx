@@ -4,7 +4,7 @@ import { LoginForm } from "./login-form";
 export default function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; next?: string }>;
+  searchParams: Promise<{ error?: string; next?: string; signup?: string }>;
 }) {
   return (
     <Suspense fallback={<LoginForm error={null} />}>
@@ -16,8 +16,14 @@ export default function LoginPage({
 async function LoginFormWrapper({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; next?: string }>;
+  searchParams: Promise<{ error?: string; next?: string; signup?: string }>;
 }) {
-  const { error, next } = await searchParams;
-  return <LoginForm error={error ?? null} next={next ?? null} />;
+  const { error, next, signup } = await searchParams;
+  return (
+    <LoginForm
+      error={error ?? null}
+      next={next ?? null}
+      signupContractor={signup === "contractor"}
+    />
+  );
 }

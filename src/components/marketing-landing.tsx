@@ -59,10 +59,22 @@ export function MarketingLanding() {
         </Link>
         <div className="flex items-center gap-3 md:gap-5">
           <Link
+            href="/guide"
+            className="hidden text-sm font-medium text-white/55 transition hover:text-white sm:inline"
+          >
+            Guide
+          </Link>
+          <Link
             href="/pricing"
             className="hidden text-sm font-medium text-white/55 transition hover:text-white sm:inline"
           >
             Pricing
+          </Link>
+          <Link
+            href="/download"
+            className="hidden text-sm font-medium text-white/55 transition hover:text-white sm:inline"
+          >
+            Desktop app
           </Link>
           <Link
             href="/login"
