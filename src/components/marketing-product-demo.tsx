@@ -317,7 +317,7 @@ export function MarketingProductDemo() {
                     Mapped → <span className="font-semibold text-emerald-50">Acme · Website</span>
                   </>
                 ) : (
-                  <>Awaiting approve · will map to end-client project</>
+                  <>Awaiting approval · will map to end-client project</>
                 )}
               </div>
             </div>
