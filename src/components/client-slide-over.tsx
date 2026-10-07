@@ -53,8 +53,8 @@ export function ClientSlideOver({ open, onClose, onSuccess, client }: ClientSlid
       onClose={onClose}
       title={client ? "Edit Client" : "Add Client"}
     >
-      <form action={handleSubmit} className="flex flex-col h-full">
-        <div className="p-5 space-y-4 flex-1">
+      <form action={handleSubmit} className="flex h-full min-h-0 flex-col">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
           <div>
             <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
               Name *
@@ -187,7 +187,7 @@ export function ClientSlideOver({ open, onClose, onSuccess, client }: ClientSlid
             <p className="text-sm text-red-400">{error}</p>
           )}
         </div>
-        <div className="p-5 border-t border-[var(--border)] flex gap-3 justify-end">
+        <div className="flex shrink-0 justify-end gap-3 border-t border-[var(--border)] p-5">
           <button
             type="button"
             onClick={onClose}

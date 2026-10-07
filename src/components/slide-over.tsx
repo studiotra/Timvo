@@ -57,7 +57,7 @@ export function SlideOver({ open, onClose, title, children, className }: SlideOv
             ✕
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto">{children}</div>
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{children}</div>
       </div>
     </>
   );

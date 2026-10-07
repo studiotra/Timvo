@@ -102,8 +102,8 @@ export function AddTaskSlideOver({
 
   return (
     <SlideOver open={open} onClose={onClose} title="Add Task">
-      <form onSubmit={handleSubmit} className="flex flex-col h-full">
-        <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-5">
+      <form onSubmit={handleSubmit} className="flex h-full min-h-0 flex-col">
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-5">
           <div>
             <label className="mb-1.5 block text-sm font-medium text-[var(--text-secondary)]">
               Task name *
@@ -216,7 +216,7 @@ export function AddTaskSlideOver({
 
           {error && <p className="text-sm text-red-400">{error}</p>}
         </div>
-        <div className="flex justify-end gap-3 border-t border-[var(--border)] p-5">
+        <div className="flex shrink-0 justify-end gap-3 border-t border-[var(--border)] p-5">
           <button
             type="button"
             onClick={onClose}

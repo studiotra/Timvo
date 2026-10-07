@@ -5,7 +5,13 @@ import { toast } from "sonner";
 import { useFormStatus } from "react-dom";
 import { SlideOver } from "./slide-over";
 import { addManualLog } from "@/app/actions/time-logs";
-import { getClientsForSelect, getProjectsByClient, getTasksByProjectAndService, createTask, type TaskOpt } from "@/app/actions/clients-projects";
+import {
+  getClientsForSelect,
+  getProjectsByClient,
+  getTasksByProjectAndService,
+  createTask,
+  type TaskOpt,
+} from "@/app/actions/clients-projects";
 import {
   getOrgClientsForSelect,
   getOrgProjectsByClient,
@@ -13,7 +19,7 @@ import {
 } from "@/app/actions/org-tracking";
 import { getServicesForSelect } from "@/app/actions/services";
 import { useTimezone } from "@/contexts/timezone-context";
-import { localToday } from "@/lib/dates";
+import { formatProjectOptionLabel, localToday, timeStringToMinutes } from "@/lib/dates";
 
 type TrackingScope = "contractor" | "org";
 
@@ -27,7 +33,7 @@ function SubmitButton() {
     <button
       type="submit"
       disabled={pending}
-      className="px-4 py-2 bg-accent hover:bg-accent-hover text-white font-semibold rounded-lg disabled:opacity-50"
+      className="px-4 py-2 bg-accent hover:bg-accent-hover text-white font-semibold rounded-lg disabled:opacity-50 disabled:pointer-events-none"
     >
       {pending ? "Saving..." : "Save"}
     </button>
@@ -57,49 +63,95 @@ export function ManualLogSlideOver({
   const [projectId, setProjectId] = useState("");
   const [serviceId, setServiceId] = useState("");
   const [taskId, setTaskId] = useState("");
+  const [date, setDate] = useState("");
+  const [startTime, setStartTime] = useState("09:00");
+  const [endTime, setEndTime] = useState("17:00");
+  const [description, setDescription] = useState("");
+  const [isBillable, setIsBillable] = useState(true);
   const [addingTask, setAddingTask] = useState(false);
   const [newTaskName, setNewTaskName] = useState("");
   const [services, setServices] = useState<ServiceOpt[]>([]);
   const initializingRef = useRef(false);
   const restoringFromStorageRef = useRef(false);
+  const skipClientEffectRef = useRef(false);
+
+  const selectedClientName = clients.find((c) => c.id === clientId)?.name ?? "";
+  const today = localToday(timezone);
+  const futureWarning = date && date > today ? "This log is dated in the future." : null;
+  const startMins = timeStringToMinutes(startTime);
+  const endMins = timeStringToMinutes(endTime);
+  const overnightHint =
+    startMins != null && endMins != null && endMins < startMins
+      ? "Ends the next day (overnight)."
+      : null;
 
   useEffect(() => {
     if (!open) return;
     const load = scope === "org" ? getOrgClientsForSelect : getClientsForSelect;
     load().then(setClients);
+    getServicesForSelect().then((s) => setServices(s.map((x) => ({ id: x.id, name: x.name }))));
   }, [open, scope]);
 
   useEffect(() => {
     if (!open) return;
+    setError(null);
+    setDate(localToday(timezone));
+    setStartTime("09:00");
+    setEndTime("17:00");
+    setDescription("");
+    setIsBillable(true);
+    setAddingTask(false);
+    setNewTaskName("");
+
     if (initialClientId && initialProjectId) {
       initializingRef.current = true;
+      skipClientEffectRef.current = true;
       setClientId(initialClientId);
       setProjectId(initialProjectId);
-      (scope === "org" ? getOrgProjectsByClient : getProjectsByClient)(initialClientId).then((projs) => {
-        setProjects(projs);
-        initializingRef.current = false;
-      });
+      setServiceId("");
+      setTaskId("");
+      (scope === "org" ? getOrgProjectsByClient : getProjectsByClient)(initialClientId).then(
+        (projs) => {
+          setProjects(projs);
+          initializingRef.current = false;
+        }
+      );
       return;
     }
     try {
-      const savedClient = typeof window !== "undefined" ? localStorage.getItem(storagePrefix + "_lastClient") : null;
-      const savedProject = typeof window !== "undefined" ? localStorage.getItem(storagePrefix + "_lastProject") : null;
+      const savedClient =
+        typeof window !== "undefined"
+          ? localStorage.getItem(storagePrefix + "_lastClient")
+          : null;
+      const savedProject =
+        typeof window !== "undefined"
+          ? localStorage.getItem(storagePrefix + "_lastProject")
+          : null;
       if (savedClient && savedProject) {
         restoringFromStorageRef.current = true;
+        skipClientEffectRef.current = true;
         setClientId(savedClient);
         setProjectId(savedProject);
-        (scope === "org" ? getOrgProjectsByClient : getProjectsByClient)(savedClient).then((projs) => {
-          setProjects(projs);
-          restoringFromStorageRef.current = false;
-        });
+        setServiceId("");
+        setTaskId("");
+        (scope === "org" ? getOrgProjectsByClient : getProjectsByClient)(savedClient).then(
+          (projs) => {
+            setProjects(projs);
+            restoringFromStorageRef.current = false;
+          }
+        );
         return;
       }
-    } catch (_) {}
+    } catch {
+      /* ignore storage errors */
+    }
     setClientId("");
     setProjectId("");
     setServiceId("");
     setTaskId("");
-  }, [open, initialClientId, initialProjectId, scope]);
+    setProjects([]);
+    setTasks([]);
+  }, [open, initialClientId, initialProjectId, scope, storagePrefix, timezone]);
 
   useEffect(() => {
     if (!clientId) {
@@ -108,6 +160,10 @@ export function ManualLogSlideOver({
       setServiceId("");
       setTasks([]);
       setTaskId("");
+      return;
+    }
+    if (skipClientEffectRef.current) {
+      skipClientEffectRef.current = false;
       return;
     }
     if (initializingRef.current || restoringFromStorageRef.current) return;
@@ -119,18 +175,6 @@ export function ManualLogSlideOver({
   }, [clientId, scope]);
 
   useEffect(() => {
-    if (!projectId) {
-      setServiceId("");
-      setTasks([]);
-      setTaskId("");
-      return;
-    }
-    setServiceId("");
-    setTasks([]);
-    setTaskId("");
-  }, [projectId]);
-
-  useEffect(() => {
     if (!projectId || !serviceId) {
       setTasks([]);
       setTaskId("");
@@ -140,15 +184,13 @@ export function ManualLogSlideOver({
     setTaskId("");
   }, [projectId, serviceId]);
 
-  useEffect(() => {
-    if (!open) return;
-    getServicesForSelect().then((s) => setServices(s.map((x) => ({ id: x.id, name: x.name }))));
-  }, [open]);
-
-
   async function handleAddTask() {
     if (!newTaskName.trim() || !projectId || !serviceId) return;
-    const r = await (scope === "org" ? createOrgTask : createTask)(projectId, serviceId, newTaskName.trim());
+    const r = await (scope === "org" ? createOrgTask : createTask)(
+      projectId,
+      serviceId,
+      newTaskName.trim()
+    );
     if (r?.error) {
       setError(r.error);
       return;
@@ -161,14 +203,25 @@ export function ManualLogSlideOver({
     }
   }
 
-  const servicesForDatalist = services;
-
-  async function handleSubmit(formData: FormData) {
-    const projectId = formData.get("project_id") as string;
+  async function handleSubmit() {
     if (!projectId) {
       setError("Select client and project.");
       return;
     }
+    if (!date || !startTime || !endTime) {
+      setError("Date and time are required.");
+      return;
+    }
+
+    const formData = new FormData();
+    formData.set("project_id", projectId);
+    if (taskId) formData.set("task_id", taskId);
+    formData.set("date", date);
+    formData.set("start_time", startTime);
+    formData.set("end_time", endTime);
+    formData.set("description", description);
+    formData.set("is_billable", isBillable ? "true" : "false");
+
     setError(null);
     const result = await addManualLog(formData);
     if (result.error) {
@@ -179,18 +232,18 @@ export function ManualLogSlideOver({
       try {
         localStorage.setItem(storagePrefix + "_lastClient", clientId);
         localStorage.setItem(storagePrefix + "_lastProject", projectId);
-      } catch (_) {}
+      } catch {
+        /* ignore storage errors */
+      }
     }
     toast.success("Time log added");
     onClose();
   }
 
-  const today = localToday(timezone);
-
   return (
     <SlideOver open={open} onClose={onClose} title="Add Manual Log">
-      <form action={handleSubmit} className="flex flex-col h-full">
-        <div className="p-5 space-y-4 flex-1">
+      <form action={handleSubmit} className="flex h-full min-h-0 flex-col">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
           <div>
             <label className="mb-1.5 block text-sm font-medium text-[var(--text-secondary)]">
               Client *
@@ -224,7 +277,7 @@ export function ManualLogSlideOver({
               <option value="">Select project</option>
               {projects.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.name}
+                  {formatProjectOptionLabel(p.name, selectedClientName)}
                 </option>
               ))}
             </select>
@@ -268,7 +321,7 @@ export function ManualLogSlideOver({
               </select>
               {projectId && serviceId && (
                 addingTask ? (
-                  <span className="flex gap-1 flex-1">
+                  <span className="flex flex-1 gap-1">
                     <input
                       type="text"
                       value={newTaskName}
@@ -279,13 +332,16 @@ export function ManualLogSlideOver({
                     <button
                       type="button"
                       onClick={handleAddTask}
-                      className="rounded bg-accent px-2 py-1 text-white text-sm"
+                      className="rounded bg-accent px-2 py-1 text-sm text-white"
                     >
                       Add
                     </button>
                     <button
                       type="button"
-                      onClick={() => { setAddingTask(false); setNewTaskName(""); }}
+                      onClick={() => {
+                        setAddingTask(false);
+                        setNewTaskName("");
+                      }}
                       className="text-[var(--text-muted)] hover:text-[var(--text-primary)]"
                     >
                       ✕
@@ -295,7 +351,7 @@ export function ManualLogSlideOver({
                   <button
                     type="button"
                     onClick={() => setAddingTask(true)}
-                    className="text-sm text-accent hover:underline whitespace-nowrap"
+                    className="whitespace-nowrap text-sm text-accent hover:underline"
                   >
                     + New task
                   </button>
@@ -311,9 +367,13 @@ export function ManualLogSlideOver({
               name="date"
               type="date"
               required
-              defaultValue={today}
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
               className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-[var(--text-primary)] focus:ring-2 focus:ring-accent"
             />
+            {futureWarning && (
+              <p className="mt-1.5 text-sm text-amber-400">{futureWarning}</p>
+            )}
           </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium text-[var(--text-secondary)]">
@@ -324,7 +384,8 @@ export function ManualLogSlideOver({
                 name="start_time"
                 type="time"
                 required
-                defaultValue="09:00"
+                value={startTime}
+                onChange={(e) => setStartTime(e.target.value)}
                 className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 font-mono text-[var(--text-primary)] focus:ring-2 focus:ring-accent"
               />
               <span className="text-[var(--text-muted)]">–</span>
@@ -332,10 +393,14 @@ export function ManualLogSlideOver({
                 name="end_time"
                 type="time"
                 required
-                defaultValue="17:00"
+                value={endTime}
+                onChange={(e) => setEndTime(e.target.value)}
                 className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 font-mono text-[var(--text-primary)] focus:ring-2 focus:ring-accent"
               />
             </div>
+            {overnightHint && (
+              <p className="mt-1.5 text-sm text-[var(--text-muted)]">{overnightHint}</p>
+            )}
           </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium text-[var(--text-secondary)]">
@@ -344,12 +409,14 @@ export function ManualLogSlideOver({
             <input
               name="description"
               list="services-list"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
               placeholder="e.g. Logo concepts"
               className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-[var(--text-primary)] focus:ring-2 focus:ring-accent"
             />
-            {servicesForDatalist.length > 0 && (
+            {services.length > 0 && (
               <datalist id="services-list">
-                {servicesForDatalist.map((s) => (
+                {services.map((s) => (
                   <option key={s.id} value={s.name} />
                 ))}
               </datalist>
@@ -361,7 +428,8 @@ export function ManualLogSlideOver({
                 type="radio"
                 name="is_billable"
                 value="true"
-                defaultChecked
+                checked={isBillable}
+                onChange={() => setIsBillable(true)}
                 className="accent-accent"
               />
               <span className="text-sm">Billable</span>
@@ -371,14 +439,20 @@ export function ManualLogSlideOver({
                 type="radio"
                 name="is_billable"
                 value="false"
+                checked={!isBillable}
+                onChange={() => setIsBillable(false)}
                 className="accent-accent"
               />
               <span className="text-sm">Non-billable</span>
             </label>
           </div>
-          {error && <p className="text-sm text-red-400">{error}</p>}
+          {error && (
+            <p className="text-sm text-red-400" role="alert">
+              {error}
+            </p>
+          )}
         </div>
-        <div className="flex justify-end gap-3 border-t border-[var(--border)] p-5">
+        <div className="flex shrink-0 justify-end gap-3 border-t border-[var(--border)] bg-[var(--bg-sidebar)] p-5">
           <button
             type="button"
             onClick={onClose}

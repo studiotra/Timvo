@@ -173,8 +173,8 @@ export function EditInvoiceSlideOver({
 
   return (
     <SlideOver open={open} onClose={onClose} title="Edit Invoice">
-      <form onSubmit={handleSubmit} noValidate className="flex flex-col h-full">
-        <div className="p-5 space-y-4 flex-1 overflow-y-auto">
+      <form onSubmit={handleSubmit} noValidate className="flex h-full min-h-0 flex-col">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
           {error && (
             <p
               className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-400"
@@ -355,7 +355,7 @@ export function EditInvoiceSlideOver({
             </p>
           </div>
         </div>
-        <div className="p-5 border-t border-[var(--border)] flex flex-col gap-2">
+        <div className="flex shrink-0 flex-col gap-2 border-t border-[var(--border)] p-5">
           {error && (
             <p className="text-sm text-red-400 text-right" role="alert">
               {error}

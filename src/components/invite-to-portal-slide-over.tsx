@@ -53,8 +53,8 @@ export function InviteToPortalSlideOver({
 
   return (
     <SlideOver open={open} onClose={onClose} title="Invite to portal">
-      <form action={handleSubmit} className="flex flex-col h-full">
-        <div className="p-5 space-y-4 flex-1">
+      <form action={handleSubmit} className="flex h-full min-h-0 flex-col">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
           <p className="text-sm text-[var(--text-secondary)]">
             Send an invite to view time records for <strong>{clientName}</strong>.
             They&apos;ll receive an email to set up their account.
@@ -73,7 +73,7 @@ export function InviteToPortalSlideOver({
           </div>
           {error && <p className="text-sm text-red-400">{error}</p>}
         </div>
-        <div className="flex justify-end gap-3 border-t border-[var(--border)] p-5">
+        <div className="flex shrink-0 justify-end gap-3 border-t border-[var(--border)] p-5">
           <button
             type="button"
             onClick={onClose}

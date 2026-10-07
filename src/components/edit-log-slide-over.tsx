@@ -5,19 +5,29 @@ import { useFormStatus } from "react-dom";
 import { SlideOver } from "./slide-over";
 import { updateTimeLog } from "@/app/actions/time-logs";
 import { type TimeLogRow } from "@/app/actions/time-logs";
-import { getClientsForSelect, getProjectsByClient } from "@/app/actions/clients-projects";
-import { getOrgClientsForSelect, getOrgProjectsByClient } from "@/app/actions/org-tracking";
+import {
+  getClientsForSelect,
+  getProjectsByClient,
+  getTasksByProjectAndService,
+  createTask,
+  type TaskOpt,
+} from "@/app/actions/clients-projects";
+import { getOrgClientsForSelect, getOrgProjectsByClient, createOrgTask } from "@/app/actions/org-tracking";
+import { getServicesForSelect } from "@/app/actions/services";
 import { useTimezone } from "@/contexts/timezone-context";
 import {
   formatInstantAsLocalDate,
   formatInstantAsLocalTime,
+  formatProjectOptionLabel,
   localToday,
+  timeStringToMinutes,
 } from "@/lib/dates";
 
 type TrackingScope = "contractor" | "org";
 
 type ClientOpt = { id: string; name: string };
 type ProjectOpt = { id: string; name: string; client_id: string };
+type ServiceOpt = { id: string; name: string };
 
 function SubmitButton() {
   const { pending } = useFormStatus();
@@ -25,7 +35,7 @@ function SubmitButton() {
     <button
       type="submit"
       disabled={pending}
-      className="px-4 py-2 bg-accent hover:bg-accent-hover text-white font-semibold rounded-lg disabled:opacity-50"
+      className="px-4 py-2 bg-accent hover:bg-accent-hover text-white font-semibold rounded-lg disabled:opacity-50 disabled:pointer-events-none"
     >
       {pending ? "Saving..." : "Save"}
     </button>
@@ -47,14 +57,72 @@ export function EditLogSlideOver({
   const [error, setError] = useState<string | null>(null);
   const [clients, setClients] = useState<ClientOpt[]>([]);
   const [projects, setProjects] = useState<ProjectOpt[]>([]);
-  const [clientId, setClientId] = useState(log?.client_id ?? "");
-  const [projectId, setProjectId] = useState(log?.project_id ?? "");
+  const [services, setServices] = useState<ServiceOpt[]>([]);
+  const [tasks, setTasks] = useState<TaskOpt[]>([]);
+  const [clientId, setClientId] = useState("");
+  const [projectId, setProjectId] = useState("");
+  const [serviceId, setServiceId] = useState("");
+  const [taskId, setTaskId] = useState("");
+  const [date, setDate] = useState("");
+  const [startTime, setStartTime] = useState("09:00");
+  const [endTime, setEndTime] = useState("17:00");
+  const [description, setDescription] = useState("");
+  const [isBillable, setIsBillable] = useState(true);
+  const [addingTask, setAddingTask] = useState(false);
+  const [newTaskName, setNewTaskName] = useState("");
+  const [hydratedLogId, setHydratedLogId] = useState<string | null>(null);
+
+  const selectedClientName = clients.find((c) => c.id === clientId)?.name ?? "";
+  const today = localToday(timezone);
+  const futureWarning = date && date > today ? "This log is dated in the future." : null;
+  const startMins = timeStringToMinutes(startTime);
+  const endMins = timeStringToMinutes(endTime);
+  const overnightHint =
+    startMins != null && endMins != null && endMins < startMins
+      ? "Ends the next day (overnight)."
+      : null;
 
   useEffect(() => {
     if (!open) return;
     const load = scope === "org" ? getOrgClientsForSelect : getClientsForSelect;
     load().then(setClients);
+    getServicesForSelect().then((s) => setServices(s.map((x) => ({ id: x.id, name: x.name }))));
   }, [open, scope]);
+
+  useEffect(() => {
+    if (!log || !open) return;
+    if (hydratedLogId === log.id) return;
+    setHydratedLogId(log.id);
+    setClientId(log.client_id);
+    setProjectId(log.project_id);
+    setServiceId(log.service_id ?? "");
+    setTaskId(log.task_id ?? "");
+    setDate(
+      log.started_at ? formatInstantAsLocalDate(log.started_at, timezone) : localToday(timezone)
+    );
+    setStartTime(
+      log.started_at ? formatInstantAsLocalTime(log.started_at, timezone) : "09:00"
+    );
+    setEndTime(
+      log.ended_at
+        ? formatInstantAsLocalTime(log.ended_at, timezone)
+        : formatInstantAsLocalTime(
+            new Date(
+              new Date(log.started_at).getTime() + (log.duration_minutes ?? 0) * 60000
+            ).toISOString(),
+            timezone
+          )
+    );
+    setDescription(log.description ?? "");
+    setIsBillable(log.is_billable);
+    setError(null);
+    setAddingTask(false);
+    setNewTaskName("");
+  }, [log, open, timezone, hydratedLogId]);
+
+  useEffect(() => {
+    if (!open) setHydratedLogId(null);
+  }, [open]);
 
   useEffect(() => {
     if (!clientId) {
@@ -62,24 +130,41 @@ export function EditLogSlideOver({
       return;
     }
     const load = scope === "org" ? getOrgProjectsByClient : getProjectsByClient;
-    load(clientId).then(setProjects);
+    load(clientId).then((projs) => {
+      setProjects(projs);
+      setProjectId((prev) => (projs.some((p) => p.id === prev) ? prev : ""));
+    });
   }, [clientId, scope]);
 
   useEffect(() => {
-    if (log && open) {
-      setClientId(log.client_id);
-      setProjectId(log.project_id);
-      setError(null);
+    if (!projectId || !serviceId) {
+      setTasks([]);
+      return;
     }
-  }, [log, open]);
+    getTasksByProjectAndService(projectId, serviceId).then((list) => {
+      setTasks(list);
+      setTaskId((prev) => (list.some((t) => t.id === prev) ? prev : ""));
+    });
+  }, [projectId, serviceId]);
 
-  // Keep project selected once options load (controlled value)
-  useEffect(() => {
-    if (!log || !open) return;
-    if (projects.some((p) => p.id === log.project_id)) {
-      setProjectId(log.project_id);
+  async function handleAddTask() {
+    if (!newTaskName.trim() || !projectId || !serviceId) return;
+    const r = await (scope === "org" ? createOrgTask : createTask)(
+      projectId,
+      serviceId,
+      newTaskName.trim()
+    );
+    if (r?.error) {
+      setError(r.error);
+      return;
     }
-  }, [projects, log, open]);
+    if (r?.task) {
+      setTasks((prev) => [...prev, r.task].sort((a, b) => a.name.localeCompare(b.name)));
+      setTaskId(r.task.id);
+      setNewTaskName("");
+      setAddingTask(false);
+    }
+  }
 
   async function handleSubmit(formData: FormData) {
     if (!log) return;
@@ -88,24 +173,19 @@ export function EditLogSlideOver({
       setError("Select client and project.");
       return;
     }
-    setError(null);
-    const date = formData.get("date") as string;
-    const startTime = formData.get("start_time") as string;
-    const endTime = formData.get("end_time") as string;
-    const description = (formData.get("description") as string)?.trim() || null;
-    const isBillable = formData.get("is_billable") === "true";
-
     if (!date || !startTime || !endTime) {
       setError("Date and time are required.");
       return;
     }
 
+    setError(null);
     const result = await updateTimeLog(log.id, {
       project_id: selectedProjectId,
+      task_id: taskId || null,
       date,
       start_time: startTime,
       end_time: endTime,
-      description: description ?? undefined,
+      description: description.trim() || undefined,
       is_billable: isBillable,
     });
     if (result.error) {
@@ -117,25 +197,10 @@ export function EditLogSlideOver({
 
   if (!log) return null;
 
-  const dateStr = log.started_at
-    ? formatInstantAsLocalDate(log.started_at, timezone)
-    : localToday(timezone);
-  const startTimeStr = log.started_at
-    ? formatInstantAsLocalTime(log.started_at, timezone)
-    : "09:00";
-  const endTimeStr = log.ended_at
-    ? formatInstantAsLocalTime(log.ended_at, timezone)
-    : formatInstantAsLocalTime(
-        new Date(
-          new Date(log.started_at).getTime() + (log.duration_minutes ?? 0) * 60000
-        ).toISOString(),
-        timezone
-      );
-
   return (
     <SlideOver open={open} onClose={onClose} title="Edit Log">
-      <form action={handleSubmit} className="flex flex-col h-full">
-        <div className="p-5 space-y-4 flex-1">
+      <form action={handleSubmit} className="flex h-full min-h-0 flex-col">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
           <div>
             <label className="mb-1.5 block text-sm font-medium text-[var(--text-secondary)]">
               Client *
@@ -145,6 +210,8 @@ export function EditLogSlideOver({
               onChange={(e) => {
                 setClientId(e.target.value);
                 setProjectId("");
+                setServiceId("");
+                setTaskId("");
               }}
               required
               className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-[var(--text-primary)] focus:ring-2 focus:ring-accent"
@@ -166,16 +233,100 @@ export function EditLogSlideOver({
               required
               disabled={!clientId}
               value={projectId}
-              onChange={(e) => setProjectId(e.target.value)}
+              onChange={(e) => {
+                setProjectId(e.target.value);
+                setServiceId("");
+                setTaskId("");
+              }}
               className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-[var(--text-primary)] focus:ring-2 focus:ring-accent disabled:opacity-50"
             >
               <option value="">Select project</option>
               {projects.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.name}
+                  {formatProjectOptionLabel(p.name, selectedClientName)}
                 </option>
               ))}
             </select>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-[var(--text-secondary)]">
+              Service type (for tasks)
+            </label>
+            <select
+              value={serviceId}
+              onChange={(e) => {
+                setServiceId(e.target.value);
+                setTaskId("");
+              }}
+              disabled={!projectId}
+              className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-[var(--text-primary)] focus:ring-2 focus:ring-accent disabled:opacity-50"
+            >
+              <option value="">Select service</option>
+              {services.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-[var(--text-secondary)]">
+              Task (optional)
+            </label>
+            <div className="flex gap-2">
+              <select
+                name="task_id"
+                disabled={!projectId || !serviceId}
+                value={taskId}
+                onChange={(e) => setTaskId(e.target.value)}
+                className="flex-1 rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-[var(--text-primary)] focus:ring-2 focus:ring-accent disabled:opacity-50"
+              >
+                <option value="">No task</option>
+                {tasks.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+              {projectId && serviceId && (
+                addingTask ? (
+                  <span className="flex flex-1 gap-1">
+                    <input
+                      type="text"
+                      value={newTaskName}
+                      onChange={(e) => setNewTaskName(e.target.value)}
+                      placeholder="Task name"
+                      className="flex-1 rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-2 py-1.5 text-sm text-[var(--text-primary)]"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleAddTask}
+                      className="rounded bg-accent px-2 py-1 text-sm text-white"
+                    >
+                      Add
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAddingTask(false);
+                        setNewTaskName("");
+                      }}
+                      className="text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                    >
+                      ✕
+                    </button>
+                  </span>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setAddingTask(true)}
+                    className="whitespace-nowrap text-sm text-accent hover:underline"
+                  >
+                    + New task
+                  </button>
+                )
+              )}
+            </div>
           </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium text-[var(--text-secondary)]">
@@ -185,10 +336,13 @@ export function EditLogSlideOver({
               name="date"
               type="date"
               required
-              defaultValue={dateStr}
-              key={`date-${log.id}-${dateStr}`}
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
               className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-[var(--text-primary)] focus:ring-2 focus:ring-accent"
             />
+            {futureWarning && (
+              <p className="mt-1.5 text-sm text-amber-400">{futureWarning}</p>
+            )}
           </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium text-[var(--text-secondary)]">
@@ -199,8 +353,8 @@ export function EditLogSlideOver({
                 name="start_time"
                 type="time"
                 required
-                defaultValue={startTimeStr}
-                key={`start-${log.id}-${startTimeStr}`}
+                value={startTime}
+                onChange={(e) => setStartTime(e.target.value)}
                 className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 font-mono text-[var(--text-primary)] focus:ring-2 focus:ring-accent"
               />
               <span className="text-[var(--text-muted)]">–</span>
@@ -208,11 +362,14 @@ export function EditLogSlideOver({
                 name="end_time"
                 type="time"
                 required
-                defaultValue={endTimeStr}
-                key={`end-${log.id}-${endTimeStr}`}
+                value={endTime}
+                onChange={(e) => setEndTime(e.target.value)}
                 className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 font-mono text-[var(--text-primary)] focus:ring-2 focus:ring-accent"
               />
             </div>
+            {overnightHint && (
+              <p className="mt-1.5 text-sm text-[var(--text-muted)]">{overnightHint}</p>
+            )}
           </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium text-[var(--text-secondary)]">
@@ -220,7 +377,8 @@ export function EditLogSlideOver({
             </label>
             <input
               name="description"
-              defaultValue={log.description ?? ""}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
               placeholder="e.g. Logo concepts"
               className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-[var(--text-primary)] focus:ring-2 focus:ring-accent"
             />
@@ -231,7 +389,8 @@ export function EditLogSlideOver({
                 type="radio"
                 name="is_billable"
                 value="true"
-                defaultChecked={log.is_billable}
+                checked={isBillable}
+                onChange={() => setIsBillable(true)}
                 className="accent-accent"
               />
               <span className="text-sm">Billable</span>
@@ -241,15 +400,20 @@ export function EditLogSlideOver({
                 type="radio"
                 name="is_billable"
                 value="false"
-                defaultChecked={!log.is_billable}
+                checked={!isBillable}
+                onChange={() => setIsBillable(false)}
                 className="accent-accent"
               />
               <span className="text-sm">Non-billable</span>
             </label>
           </div>
-          {error && <p className="text-sm text-red-400">{error}</p>}
+          {error && (
+            <p className="text-sm text-red-400" role="alert">
+              {error}
+            </p>
+          )}
         </div>
-        <div className="flex justify-end gap-3 border-t border-[var(--border)] p-5">
+        <div className="flex shrink-0 justify-end gap-3 border-t border-[var(--border)] bg-[var(--bg-sidebar)] p-5">
           <button
             type="button"
             onClick={onClose}

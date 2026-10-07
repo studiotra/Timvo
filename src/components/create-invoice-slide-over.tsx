@@ -314,8 +314,8 @@ export function CreateInvoiceSlideOver({
 
   return (
     <SlideOver open={open} onClose={onClose} title="Create Invoice">
-      <div className="flex flex-col h-full">
-        <div className="p-5 space-y-4 flex-1">
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
           {error && (
             <p className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-400" role="alert">
               {error}
@@ -609,7 +609,7 @@ export function CreateInvoiceSlideOver({
             </span>
           </label>
         </div>
-        <div className="p-5 border-t border-[var(--border)] flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-4 border-t border-[var(--border)] p-5">
           {(selected.size > 0 || manualItems.length > 0) && (
             <p className="font-mono text-lg font-bold text-[var(--text-primary)]">
               Total: ${money.total.toFixed(2)}
