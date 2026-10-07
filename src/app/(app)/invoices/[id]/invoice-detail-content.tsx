@@ -72,7 +72,10 @@ export function InvoiceDetailContent({
     setStatusUpdating(true);
     const r = await updateInvoiceStatus(invoice.id, newStatus);
     setStatusUpdating(false);
-    if (r?.error) return;
+    if (r?.error) {
+      toast.error(r.error);
+      return;
+    }
     setStatus(newStatus);
     router.refresh();
   }
@@ -182,27 +185,27 @@ export function InvoiceDetailContent({
           {project?.name && <span>Project: {project.name}</span>}
         </div>
 
-        <table className="w-full text-sm">
+        <table className="w-full text-sm table-fixed">
           <thead>
             <tr className="border-b border-[var(--border-strong)]">
-              <th className="text-left py-3 font-semibold text-[var(--text-secondary)]">
+              <th className="text-left py-3 font-semibold text-[var(--text-secondary)] w-auto">
                 Description
               </th>
               {!isFixedProject && (
                 <>
-                  <th className="text-right py-3 font-semibold text-[var(--text-secondary)]">
+                  <th className="text-right py-3 font-semibold text-[var(--text-secondary)] w-16 whitespace-nowrap">
                     Qty
                   </th>
-                  <th className="text-right py-3 font-semibold text-[var(--text-secondary)]">
+                  <th className="text-right py-3 font-semibold text-[var(--text-secondary)] w-24 whitespace-nowrap">
                     Rate
                   </th>
-                  <th className="text-right py-3 font-semibold text-[var(--text-secondary)]">
+                  <th className="text-right py-3 font-semibold text-[var(--text-secondary)] w-28 whitespace-nowrap">
                     Amount
                   </th>
                 </>
               )}
               {isFixedProject && (
-                <th className="text-right py-3 font-semibold text-[var(--text-secondary)]">
+                <th className="text-right py-3 font-semibold text-[var(--text-secondary)] w-28 whitespace-nowrap">
                   Amount
                 </th>
               )}
@@ -211,20 +214,24 @@ export function InvoiceDetailContent({
           <tbody>
             {items.map((row) => (
               <tr key={row.id} className="border-b border-[var(--border)]">
-                <td className="py-3 text-[var(--text-primary)]">{row.description}</td>
+                <td className="py-3 text-[var(--text-primary)] break-words pr-3 align-top">
+                  {row.description}
+                </td>
                 {!isFixedProject && (
                   <>
-                    <td className="py-3 text-right font-mono text-[var(--text-primary)]">{row.quantity}</td>
-                    <td className="py-3 text-right font-mono text-[var(--text-primary)]">
+                    <td className="py-3 text-right font-mono text-[var(--text-primary)] whitespace-nowrap align-top">
+                      {row.quantity}
+                    </td>
+                    <td className="py-3 text-right font-mono text-[var(--text-primary)] whitespace-nowrap align-top">
                       {row.unit_rate != null ? `$${row.unit_rate.toFixed(2)}` : "—"}
                     </td>
-                    <td className="py-3 text-right font-mono text-[var(--text-primary)]">
+                    <td className="py-3 text-right font-mono text-[var(--text-primary)] whitespace-nowrap align-top">
                       ${row.amount.toFixed(2)}
                     </td>
                   </>
                 )}
                 {isFixedProject && (
-                  <td className="py-3 text-right font-mono text-[var(--text-primary)]">
+                  <td className="py-3 text-right font-mono text-[var(--text-primary)] whitespace-nowrap align-top">
                     {row.amount > 0 ? `$${row.amount.toFixed(2)}` : "—"}
                   </td>
                 )}
@@ -246,6 +253,11 @@ export function InvoiceDetailContent({
           )}
           <p className="text-xl font-bold font-serif text-[var(--text-primary)]">
             Total: {invoice.currency} ${invoice.total_amount.toFixed(2)}
+            {invoice.tax_rate != null && invoice.tax_rate > 0 && (
+              <span className="ml-2 text-xs font-sans font-normal text-[var(--text-muted)]">
+                incl. tax
+              </span>
+            )}
           </p>
         </div>
 

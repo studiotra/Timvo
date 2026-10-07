@@ -37,7 +37,10 @@ export function InvoicesContent({
 }) {
   const timezone = useTimezone();
   const getDisplayStatus = (inv: InvoiceRow): string =>
-    resolveInvoiceDisplayStatus({ status: inv.status, due_at: inv.due_at }, timezone);
+    resolveInvoiceDisplayStatus(
+      { status: inv.status, due_at: inv.due_at, total_amount: inv.total_amount },
+      timezone
+    );
   const [invoiceOpen, setInvoiceOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<typeof TABS[number]>("All statuses");
   const [clientFilter, setClientFilter] = useState("");
@@ -50,7 +53,10 @@ export function InvoicesContent({
 
   const filtered = useMemo(() => {
     const statusOf = (inv: InvoiceRow) =>
-      resolveInvoiceDisplayStatus({ status: inv.status, due_at: inv.due_at }, timezone);
+      resolveInvoiceDisplayStatus(
+        { status: inv.status, due_at: inv.due_at, total_amount: inv.total_amount },
+        timezone
+      );
     let list = invoices;
     if (activeTab !== "All statuses") {
       if (activeTab === "Overdue") {
@@ -152,7 +158,7 @@ export function InvoicesContent({
               <span className="hidden min-w-[60px] text-[10px] font-bold uppercase tracking-wider text-gray-500 sm:inline">
                 Date
               </span>
-              <span className="min-w-[70px] text-right text-[9px] font-bold uppercase tracking-wider text-gray-500 sm:min-w-[80px] sm:text-[10px]">
+              <span className="min-w-[70px] text-right text-[9px] font-bold uppercase tracking-wider text-gray-500 sm:min-w-[80px] sm:text-[10px]" title="Tax-inclusive total">
                 Amount
               </span>
               <span className="min-w-[60px] text-center text-[9px] font-bold uppercase tracking-wider text-gray-500 sm:min-w-[70px] sm:text-[10px]">

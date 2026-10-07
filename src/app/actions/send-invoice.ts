@@ -13,6 +13,7 @@ import {
   createInvoiceCheckoutSession,
   stripeClient,
 } from "@/lib/stripe/connect";
+import { computeInvoiceMoney, resolveTaxRate } from "@/lib/invoices/money";
 
 type InvoiceBundle = {
   inv: {
@@ -100,14 +101,11 @@ async function dispatchInvoice(params: {
   if (!clientEmail) return { error: "Client has no email" };
 
   const project = inv.projects;
-  const projectTaxRate =
-    project?.tax_rate != null && project.tax_rate > 0 ? Number(project.tax_rate) : null;
-  const profileTaxRate =
-    profile?.tax_rate != null && profile.tax_rate > 0 ? Number(profile.tax_rate) : null;
-  const taxRate = projectTaxRate ?? profileTaxRate;
-  const subtotal = items.reduce((s, i) => s + Number(i.amount || 0), 0);
-  const taxAmount = taxRate != null ? Math.round(subtotal * (taxRate / 100) * 100) / 100 : 0;
-  const totalWithTax = subtotal + taxAmount;
+  const taxRate = resolveTaxRate(project?.tax_rate, profile?.tax_rate);
+  const money = computeInvoiceMoney(items, taxRate);
+  const subtotal = money.subtotal;
+  const taxAmount = money.taxAmount;
+  const totalWithTax = money.total;
   const isFixedProject = project?.billing_type === "fixed";
   const businessName =
     profile?.business_name?.trim() || profile?.full_name?.trim() || "Your Business";

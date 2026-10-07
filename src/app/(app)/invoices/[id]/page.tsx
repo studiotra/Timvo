@@ -3,6 +3,7 @@ import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { InvoiceDetailContent } from "./invoice-detail-content";
 import { markOverdueInvoices, resolveInvoiceDisplayStatus } from "@/lib/invoices/status";
+import { resolveDisplayMoney, resolveTaxRate } from "@/lib/invoices/money";
 import { fetchInvoiceOptionalFields } from "@/lib/invoices/optional-fields";
 import { publicInvoiceUrl } from "@/lib/app-url";
 import { fetchUserTimezone } from "@/lib/user-timezone";
@@ -69,16 +70,15 @@ export default async function InvoiceDetailPage({
     .eq("id", user.id)
     .single();
 
-  const projectTaxRate = (project as { tax_rate?: number | null })?.tax_rate;
-  const profileTaxRate = profile?.tax_rate;
-  const taxRate = projectTaxRate != null && projectTaxRate > 0
-    ? Number(projectTaxRate)
-    : profileTaxRate != null && profileTaxRate > 0
-      ? Number(profileTaxRate)
-      : null;
-  const subtotal = (items ?? []).reduce((s, i) => s + Number(i.amount || 0), 0);
-  const taxAmount = taxRate != null ? Math.round(subtotal * (taxRate / 100) * 100) / 100 : 0;
-  const totalWithTax = inv.status === "draft" ? subtotal + taxAmount : Number(inv.total_amount) ?? subtotal;
+  const taxRate = resolveTaxRate(
+    (project as { tax_rate?: number | null })?.tax_rate,
+    profile?.tax_rate
+  );
+  const money = resolveDisplayMoney(
+    (items ?? []).map((i) => ({ amount: Number(i.amount) ?? 0 })),
+    inv.total_amount,
+    taxRate
+  );
 
   const businessName = profile?.business_name?.trim() || profile?.full_name?.trim() || "Your Business";
   const businessInfo = {
@@ -92,6 +92,7 @@ export default async function InvoiceDetailPage({
     {
       status: inv.status ?? "draft",
       due_at: inv.due_at,
+      total_amount: money.total,
     },
     timezone
   );
@@ -125,10 +126,10 @@ export default async function InvoiceDetailPage({
         invoice={{
           id: inv.id,
           status: displayStatus,
-          total_amount: totalWithTax,
-          subtotal: taxRate != null ? subtotal : undefined,
-          tax_rate: taxRate ?? undefined,
-          tax_amount: taxRate != null ? taxAmount : undefined,
+          total_amount: money.total,
+          subtotal: money.taxRate != null ? money.subtotal : undefined,
+          tax_rate: money.taxRate ?? undefined,
+          tax_amount: money.taxRate != null ? money.taxAmount : undefined,
           currency: inv.currency ?? "USD",
           issued_at: inv.issued_at ?? "",
           due_at: inv.due_at ?? "",

@@ -47,7 +47,7 @@ export default async function ReportsPage() {
             ${totalYTD.toLocaleString("en-US", { minimumFractionDigits: 0 })}
           </div>
           <div className="mt-1.5 text-[11px] font-medium text-emerald-400">
-            Paid invoices
+            Paid invoices (incl. tax)
           </div>
         </div>
         <div className="rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] p-5">
@@ -58,7 +58,7 @@ export default async function ReportsPage() {
             ${(byPeriod[0]?.amount ?? 0).toLocaleString("en-US", { minimumFractionDigits: 0 })}
           </div>
           <div className="mt-1.5 text-[11px] font-medium text-[var(--text-muted)]">
-            Current month
+            Current month (incl. tax)
           </div>
         </div>
         <div className="rounded-[14px] border border-[var(--border)] bg-[var(--bg-card)] p-5">
@@ -78,7 +78,7 @@ export default async function ReportsPage() {
       <div className="mb-7 grid gap-6 lg:grid-cols-2">
         <div className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] p-4">
           <h2 className="mb-1 font-semibold text-[var(--text-primary)]">Revenue by client</h2>
-          <p className="mb-4 text-xs text-[var(--text-muted)]">Top clients by paid revenue</p>
+          <p className="mb-4 text-xs text-[var(--text-muted)]">Top clients by paid revenue (incl. tax)</p>
           {byClient.length === 0 ? (
             <p className="py-12 text-center text-sm text-[var(--text-muted)]">No paid invoices yet</p>
           ) : (
@@ -87,7 +87,7 @@ export default async function ReportsPage() {
         </div>
         <div className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] p-4">
           <h2 className="mb-1 font-semibold text-[var(--text-primary)]">Revenue by period</h2>
-          <p className="mb-4 text-xs text-[var(--text-muted)]">This month, last month, YTD</p>
+          <p className="mb-4 text-xs text-[var(--text-muted)]">This month, last month, YTD (incl. tax)</p>
           {byPeriod.length === 0 ? (
             <p className="py-12 text-center text-sm text-[var(--text-muted)]">No paid invoices yet</p>
           ) : (

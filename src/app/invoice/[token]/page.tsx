@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { PublicInvoiceView } from "./public-invoice-view";
 import { resolveInvoiceDisplayStatus } from "@/lib/invoices/status";
+import { resolveDisplayMoney, resolveTaxRate } from "@/lib/invoices/money";
 import { resolveTimezone } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
@@ -91,21 +92,21 @@ export default async function PublicInvoicePage({
     ownerTimezone = resolveTimezone(prof?.timezone);
     profileTaxRate = prof?.tax_rate != null ? Number(prof.tax_rate) : null;
   }
-  const projectTaxRate = (project as { tax_rate?: number | null } | null)?.tax_rate;
-  const taxRate = projectTaxRate != null && projectTaxRate > 0
-    ? Number(projectTaxRate)
-    : profileTaxRate != null && profileTaxRate > 0
-      ? profileTaxRate
-      : null;
-
-  const subtotal = (items ?? []).reduce((s, i) => s + Number(i.amount || 0), 0);
-  const taxAmount = taxRate != null ? Math.round(subtotal * (taxRate / 100) * 100) / 100 : 0;
-  const totalAmount = subtotal + taxAmount;
+  const taxRate = resolveTaxRate(
+    (project as { tax_rate?: number | null } | null)?.tax_rate,
+    profileTaxRate
+  );
+  const money = resolveDisplayMoney(
+    (items ?? []).map((i) => ({ amount: Number(i.amount) ?? 0 })),
+    inv.total_amount,
+    taxRate
+  );
 
   const displayStatus = resolveInvoiceDisplayStatus(
     {
       status: inv.status ?? "sent",
       due_at: inv.due_at,
+      total_amount: money.total,
     },
     ownerTimezone
   );
@@ -117,10 +118,10 @@ export default async function PublicInvoicePage({
         invoice={{
           id: inv.id,
           status: displayStatus,
-          total_amount: totalAmount,
-          subtotal,
-          tax_rate: taxRate,
-          tax_amount: taxAmount,
+          total_amount: money.total,
+          subtotal: money.taxRate != null ? money.subtotal : undefined,
+          tax_rate: money.taxRate,
+          tax_amount: money.taxRate != null ? money.taxAmount : undefined,
           currency: inv.currency ?? "USD",
           issued_at: inv.issued_at ?? "",
           due_at: inv.due_at ?? "",
