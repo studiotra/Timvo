@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { toast } from "sonner";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight, Pencil, Plus, Trash2, List, Calendar, Map as MapIcon } from "lucide-react";
 import { type TimeLogRow, getTimeLogs, deleteTimeLog } from "@/app/actions/time-logs";
 import { DayLogsSlideOver } from "@/components/day-logs-slide-over";
@@ -26,10 +26,16 @@ import {
   MONTH_VISIBLE_LOGS,
   WEEK_VISIBLE_LOGS,
 } from "@/lib/logs/calendar";
+import {
+  buildLogsSearchParams,
+  type LogsDisplayMode,
+  type LogsMapGroup,
+  type LogsViewMode,
+} from "@/lib/logs/search-params";
 
-type ViewMode = "week" | "month";
-type DisplayMode = "list" | "calendar" | "map";
-type MapGroup = "all" | "client" | "project";
+type ViewMode = LogsViewMode;
+type DisplayMode = LogsDisplayMode;
+type MapGroup = LogsMapGroup;
 type ClientOpt = { id: string; name: string };
 
 function formatWeekLabel(timezone: string, offsetWeeks: number): string {
@@ -49,7 +55,10 @@ export function LogsContent({
   clients,
   organizations = [],
   shareStatuses = {},
-  displayMode: initialDisplayMode,
+  displayMode,
+  view,
+  offset,
+  mapGroup,
   initialFilters,
   basePath = "/logs",
 }: {
@@ -58,18 +67,14 @@ export function LogsContent({
   organizations?: ContractorOrgOption[];
   shareStatuses?: Record<string, { orgName: string; status: string }[]>;
   displayMode: DisplayMode;
+  view: ViewMode;
+  offset: number;
+  mapGroup: MapGroup;
   initialFilters: { clientId: string; fromDate: string; toDate: string };
   basePath?: string;
 }) {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const timezone = useTimezone();
-  const displayMode = (["list", "calendar", "map"].includes(searchParams.get("display") || "")
-    ? searchParams.get("display")
-    : initialDisplayMode) as DisplayMode;
-  const mapGroup = (searchParams.get("group") || "all") as MapGroup;
-  const view = (searchParams.get("view") === "month" ? "month" : "week") as ViewMode;
-  const offset = parseInt(searchParams.get("offset") || "0", 10);
 
   const [localLogs, setLocalLogs] = useState(logs);
   const [editingLog, setEditingLog] = useState<TimeLogRow | null>(null);
@@ -86,10 +91,10 @@ export function LogsContent({
   }, [logs]);
 
   useEffect(() => {
-    setClientFilter(searchParams.get("client") ?? "");
-    setFromDate(searchParams.get("from") ?? "");
-    setToDate(searchParams.get("to") ?? "");
-  }, [searchParams]);
+    setClientFilter(initialFilters.clientId);
+    setFromDate(initialFilters.fromDate);
+    setToDate(initialFilters.toDate);
+  }, [initialFilters.clientId, initialFilters.fromDate, initialFilters.toDate]);
 
   useEffect(() => {
     setDayListDateKey(null);
@@ -115,37 +120,37 @@ export function LogsContent({
         ? formatWeekLabel(timezone, offset)
         : formatMonthLabel(timezone, offset);
 
+  function navigate(updates: Record<string, string> = {}) {
+    const qs = buildLogsSearchParams(
+      {
+        displayMode,
+        view,
+        offset,
+        mapGroup,
+        clientId: clientFilter,
+        fromDate,
+        toDate,
+      },
+      updates
+    );
+    router.push(qs ? `${basePath}?${qs}` : basePath);
+  }
+
   function updateParams(updates: Record<string, string>) {
-    const params = new URLSearchParams(searchParams);
-    for (const [k, v] of Object.entries(updates)) {
-      if (v) params.set(k, v);
-      else params.delete(k);
-    }
-    router.push(`${basePath}?${params.toString()}`);
+    navigate(updates);
   }
 
   function setViewOffset(v: ViewMode, o: number) {
-    const params = new URLSearchParams(searchParams);
-    params.set("view", v);
-    params.set("offset", String(o));
-    params.delete("from");
-    params.delete("to");
-    router.push(`${basePath}?${params.toString()}`);
+    navigate({
+      view: v,
+      offset: String(o),
+      from: "",
+      to: "",
+    });
   }
 
   function setDisplayMode(d: DisplayMode) {
-    const params = new URLSearchParams(searchParams);
-    params.set("display", d);
-    if (d === "calendar") {
-      const existing = params.get("view");
-      if (existing !== "week" && existing !== "month") {
-        params.set("view", "week");
-      }
-      if (!params.get("offset")) {
-        params.set("offset", "0");
-      }
-    }
-    router.push(`${basePath}?${params.toString()}`);
+    navigate({ display: d });
   }
 
   function openDayList(dateKey: string) {
