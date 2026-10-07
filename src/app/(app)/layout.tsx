@@ -3,6 +3,7 @@ import { AppShell } from "@/components/app-shell";
 import { OrgLinkBanner } from "@/components/org-link-banner";
 import { OnboardingGate } from "@/components/onboarding/onboarding-gate";
 import { LocaleProvider } from "@/contexts/locale-context";
+import { TimezoneProvider } from "@/contexts/timezone-context";
 import { isPortalOnlyUser, isOrganizationPrimaryUser } from "@/lib/auth/routing";
 import { getUnacknowledgedOrgLinks } from "@/app/actions/organizations";
 import { parseLocale } from "@/lib/i18n";
@@ -22,12 +23,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     full_name: string | null;
     business_name: string | null;
     locale: string | null;
+    timezone: string | null;
     onboarding_completed_at: string | null;
   } | null = null;
   if (user) {
     const { data } = await supabase
       .from("profiles")
-      .select("logo_url, full_name, business_name, locale, onboarding_completed_at")
+      .select("logo_url, full_name, business_name, locale, timezone, onboarding_completed_at")
       .eq("id", user.id)
       .single();
     profile = data;
@@ -44,12 +46,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <LocaleProvider locale={locale}>
-      <OnboardingGate show={showOnboarding} variant="contractor" displayName={displayName}>
-        <AppShell logoUrl={profile?.logo_url ?? null} displayName={displayName}>
-          <OrgLinkBanner links={unackedLinks} />
-          {children}
-        </AppShell>
-      </OnboardingGate>
+      <TimezoneProvider timezone={profile?.timezone}>
+        <OnboardingGate show={showOnboarding} variant="contractor" displayName={displayName}>
+          <AppShell logoUrl={profile?.logo_url ?? null} displayName={displayName}>
+            <OrgLinkBanner links={unackedLinks} />
+            {children}
+          </AppShell>
+        </OnboardingGate>
+      </TimezoneProvider>
     </LocaleProvider>
   );
 }

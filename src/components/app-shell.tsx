@@ -8,6 +8,8 @@ import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useTranslations } from "@/contexts/locale-context";
+import { useTimezone } from "@/contexts/timezone-context";
+import { formatLocalTodayLabel } from "@/lib/dates";
 import { SidebarTimerWidget } from "./sidebar-timer-widget";
 import { ThemeToggle } from "./theme-toggle";
 import { isDesktopShell } from "@/lib/desktop/shell";
@@ -35,12 +37,19 @@ export function AppShell({ children, logoUrl, displayName = "?" }: AppShellProps
   const router = useRouter();
   const supabase = createClient();
   const t = useTranslations();
+  const timezone = useTimezone();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [desktopShell, setDesktopShell] = useState(false);
+  // Defer date label to client to avoid SSR/client timezone hydration mismatch (#418)
+  const [today, setToday] = useState("");
 
   useEffect(() => {
     setDesktopShell(isDesktopShell());
   }, []);
+
+  useEffect(() => {
+    setToday(formatLocalTodayLabel(timezone));
+  }, [timezone]);
 
   useEffect(() => {
     setSidebarOpen(false);
@@ -51,13 +60,6 @@ export function AppShell({ children, logoUrl, displayName = "?" }: AppShellProps
     router.push("/login");
     router.refresh();
   }
-
-  const today = new Date().toLocaleDateString("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-  }).toUpperCase();
 
   return (
     <div className="flex h-screen overflow-hidden bg-[var(--bg-app)]">

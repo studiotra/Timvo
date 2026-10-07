@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { OrgShell } from "@/components/org-shell";
 import { OnboardingGate } from "@/components/onboarding/onboarding-gate";
+import { TimezoneProvider } from "@/contexts/timezone-context";
 import { isOrganizationMember } from "@/lib/auth/routing";
 import { getOrgContext } from "@/app/actions/organizations";
 
@@ -29,7 +30,7 @@ export default async function OrgLayout({ children }: { children: React.ReactNod
       .maybeSingle(),
     supabase
       .from("profiles")
-      .select("full_name, business_name, onboarding_completed_at")
+      .select("full_name, business_name, onboarding_completed_at, timezone")
       .eq("id", user.id)
       .single(),
   ]);
@@ -43,10 +44,12 @@ export default async function OrgLayout({ children }: { children: React.ReactNod
   const showOnboarding = !profile?.onboarding_completed_at;
 
   return (
-    <OnboardingGate show={showOnboarding} variant="org" displayName={displayName}>
-      <OrgShell orgName={ctx.org.name} hasContractorDashboard={Boolean(soloClient)}>
-        {children}
-      </OrgShell>
-    </OnboardingGate>
+    <TimezoneProvider timezone={profile?.timezone}>
+      <OnboardingGate show={showOnboarding} variant="org" displayName={displayName}>
+        <OrgShell orgName={ctx.org.name} hasContractorDashboard={Boolean(soloClient)}>
+          {children}
+        </OrgShell>
+      </OnboardingGate>
+    </TimezoneProvider>
   );
 }
