@@ -9,6 +9,7 @@ export type ProjectOption = {
   clientId: string;
   billing_type?: "hourly" | "fixed";
   agreed_fee?: number | null;
+  tax_rate?: number | null;
 };
 export type UnbilledLog = {
   id: string;
@@ -41,7 +42,7 @@ export async function getProjectsForInvoice(clientId: string): Promise<ProjectOp
   if (!user) return [];
   const { data } = await supabase
     .from("projects")
-    .select("id, name, billing_type, agreed_fee")
+    .select("id, name, billing_type, agreed_fee, tax_rate")
     .eq("client_id", clientId)
     .eq("status", "active")
     .order("name");
@@ -51,6 +52,7 @@ export async function getProjectsForInvoice(clientId: string): Promise<ProjectOp
     clientId,
     billing_type: (p.billing_type ?? "hourly") as "hourly" | "fixed",
     agreed_fee: p.agreed_fee != null ? Number(p.agreed_fee) : null,
+    tax_rate: p.tax_rate != null ? Number(p.tax_rate) : null,
   }));
 }
 

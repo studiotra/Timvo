@@ -3,6 +3,15 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { addDaysToDateString, localToday, resolveTimezone } from "@/lib/dates";
+import {
+  computeInvoiceMoney,
+  isZeroMoneyTotal,
+  lineAmount,
+  parseTaxRateInput,
+  resolveDisplayMoney,
+  resolveTaxRate,
+  roundCents,
+} from "@/lib/invoices/money";
 import { fetchUserTimezone } from "@/lib/user-timezone";
 
 export type DefaultInvoiceSettings = {
@@ -10,6 +19,7 @@ export type DefaultInvoiceSettings = {
   default_terms: string | null;
   default_due_days: number;
   timezone: string;
+  default_tax_rate: number | null;
 };
 
 export async function getDefaultInvoiceSettings(): Promise<DefaultInvoiceSettings> {
@@ -21,12 +31,13 @@ export async function getDefaultInvoiceSettings(): Promise<DefaultInvoiceSetting
       default_terms: null,
       default_due_days: 30,
       timezone: "America/New_York",
+      default_tax_rate: null,
     };
   }
 
   const { data } = await supabase
     .from("profiles")
-    .select("default_invoice_footer, default_invoice_terms, default_due_days, timezone")
+    .select("default_invoice_footer, default_invoice_terms, default_due_days, timezone, tax_rate")
     .eq("id", user.id)
     .single();
 
@@ -35,6 +46,7 @@ export async function getDefaultInvoiceSettings(): Promise<DefaultInvoiceSetting
     default_terms: data?.default_invoice_terms ?? null,
     default_due_days: data?.default_due_days ?? 30,
     timezone: resolveTimezone(data?.timezone),
+    default_tax_rate: resolveTaxRate(null, data?.tax_rate),
   };
 }
 
@@ -54,18 +66,24 @@ export async function createInvoice(formData: FormData) {
   ) as Record<string, string>;
   const manualItems = JSON.parse(
     (formData.get("manual_items") as string) || "[]"
-  ) as { description: string; quantity: number; unit_rate: number; amount: number }[];
+  ) as { description: string; quantity: number; unit_rate: number; amount?: number }[];
+  const formTaxRate = parseTaxRateInput(formData.get("tax_rate") as string);
 
   if (!clientId || !projectId) return { error: "Client and project required" };
   const hasLogs = logIds.length > 0;
-  const hasManual = manualItems.length > 0 && manualItems.every(
-    (m) => m.description?.trim() && !isNaN(m.quantity) && !isNaN(m.unit_rate) && !isNaN(m.amount)
-  );
+  const hasManual =
+    manualItems.length > 0 &&
+    manualItems.every(
+      (m) =>
+        m.description?.trim() &&
+        Number.isFinite(Number(m.quantity)) &&
+        Number.isFinite(Number(m.unit_rate))
+    );
   if (!hasLogs && !hasManual) return { error: "Add at least one log or manual line item." };
 
   const { data: project } = await supabase
     .from("projects")
-    .select("id, name, billing_type, agreed_fee")
+    .select("id, name, billing_type, agreed_fee, tax_rate")
     .eq("id", projectId)
     .eq("client_id", clientId)
     .single();
@@ -166,14 +184,13 @@ export async function createInvoice(formData: FormData) {
         byService.set(serviceId, arr);
       } else {
         const projRate = Number((log.projects as { hourly_rate?: number })?.hourly_rate) || 0;
-        const hours = mins / 60;
-        const amount = Math.round(hours * projRate * 100) / 100;
+        const hours = roundCents(mins / 60);
         items.push({
           time_log_ids: [log.id],
           description: taskName,
-          quantity: Math.round(hours * 100) / 100,
+          quantity: hours,
           unit_rate: projRate,
-          amount,
+          amount: lineAmount(hours, projRate),
         });
       }
     }
@@ -193,7 +210,7 @@ export async function createInvoice(formData: FormData) {
           description: svc?.name ?? "Service",
           quantity: 1,
           unit_rate: rate,
-          amount: Math.round(rate * 100) / 100,
+          amount: roundCents(rate),
         });
         const byTask = new Map<string, { ids: string[]; mins: number }>();
         for (const e of entries) {
@@ -204,7 +221,7 @@ export async function createInvoice(formData: FormData) {
           byTask.set(k, x);
         }
         for (const [taskName, g] of byTask) {
-          const hours = Math.round((g.mins / 60) * 100) / 100;
+          const hours = roundCents(g.mins / 60);
           items.push({
             time_log_ids: g.ids,
             description: `  ${taskName}`,
@@ -223,14 +240,13 @@ export async function createInvoice(formData: FormData) {
           byTask.set(k, x);
         }
         for (const [taskName, g] of byTask) {
-          const hours = Math.round((g.mins / 60) * 100) / 100;
-          const amount = Math.round(hours * rate * 100) / 100;
+          const hours = roundCents(g.mins / 60);
           items.push({
             time_log_ids: g.ids,
             description: taskName,
             quantity: hours,
             unit_rate: rate,
-            amount,
+            amount: lineAmount(hours, rate),
           });
         }
       }
@@ -239,29 +255,39 @@ export async function createInvoice(formData: FormData) {
   }
 
   for (const m of manualItems) {
-    if (!m.description?.trim() || isNaN(m.quantity) || isNaN(m.unit_rate) || isNaN(m.amount)) continue;
-    const amount = Math.round(m.amount * 100) / 100;
+    if (
+      !m.description?.trim() ||
+      !Number.isFinite(Number(m.quantity)) ||
+      !Number.isFinite(Number(m.unit_rate))
+    ) {
+      continue;
+    }
+    const quantity = Number(m.quantity);
+    const unitRate = Number(m.unit_rate);
     items.push({
       time_log_ids: [],
       description: m.description.trim(),
-      quantity: m.quantity,
-      unit_rate: m.unit_rate,
-      amount,
+      quantity,
+      unit_rate: unitRate,
+      amount: lineAmount(quantity, unitRate),
     });
   }
 
-  const total = items.reduce((s, i) => s + i.amount, 0);
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("default_due_days, tax_rate")
+    .eq("id", user.id)
+    .single();
+
+  const taxRate =
+    formTaxRate ?? resolveTaxRate(project.tax_rate, profile?.tax_rate);
+  const money = computeInvoiceMoney(items, taxRate);
   const timezone = await fetchUserTimezone(supabase, user.id);
   const issuedDate = localToday(timezone);
   let dueDate: string;
   if (dueAt) {
     dueDate = dueAt;
   } else {
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("default_due_days")
-      .eq("id", user.id)
-      .single();
     const days = profile?.default_due_days ?? 30;
     dueDate = addDaysToDateString(issuedDate, days);
   }
@@ -273,7 +299,7 @@ export async function createInvoice(formData: FormData) {
       project_id: projectId,
       user_id: user.id,
       status: "draft",
-      total_amount: Math.round(total * 100) / 100,
+      total_amount: money.total,
       currency: client.currency ?? "USD",
       issued_at: issuedDate,
       due_at: dueDate,
@@ -319,9 +345,48 @@ export async function updateInvoiceStatus(invoiceId: string, status: string) {
   if (!user) return { error: "Unauthorized" };
   const valid = ["draft", "sent", "paid", "overdue"].includes(status);
   if (!valid) return { error: "Invalid status" };
+
+  const { data: existing } = await supabase
+    .from("invoices")
+    .select("id, total_amount, project_id")
+    .eq("id", invoiceId)
+    .eq("user_id", user.id)
+    .single();
+  if (!existing) return { error: "Invoice not found" };
+
+  const { data: items } = await supabase
+    .from("invoice_items")
+    .select("quantity, unit_rate, amount")
+    .eq("invoice_id", invoiceId);
+
+  let projectTax: number | null = null;
+  if (existing.project_id) {
+    const { data: project } = await supabase
+      .from("projects")
+      .select("tax_rate")
+      .eq("id", existing.project_id)
+      .maybeSingle();
+    projectTax = project?.tax_rate != null ? Number(project.tax_rate) : null;
+  }
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("tax_rate")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  const taxRate = resolveTaxRate(projectTax, profile?.tax_rate);
+  // Upgrade legacy pre-tax totals; keep a custom stored total when present
+  const money = resolveDisplayMoney(items ?? [], existing.total_amount, taxRate);
+
+  if (status === "overdue" && isZeroMoneyTotal(money.total)) {
+    return { error: "A $0 invoice cannot be marked overdue." };
+  }
+
   const dbStatus = status === "overdue" ? "overdue" : status;
-  const updates: Record<string, string> = {
+  const updates: Record<string, string | number> = {
     status: dbStatus,
+    // Keep total tax-inclusive so status changes never drop tax
+    total_amount: money.total,
     updated_at: new Date().toISOString(),
   };
   if (status === "paid") {
@@ -337,6 +402,8 @@ export async function updateInvoiceStatus(invoiceId: string, status: string) {
   if (error) return { error: error.message };
   revalidatePath("/invoices");
   revalidatePath(`/invoices/${invoiceId}`);
+  revalidatePath("/");
+  revalidatePath("/reports");
   return { success: true };
 }
 
@@ -370,25 +437,66 @@ export async function updateInvoice(formData: FormData) {
   const dueAt = (formData.get("due_at") as string)?.trim() || null;
   const footer = (formData.get("footer") as string)?.trim() || null;
   const terms = (formData.get("terms_and_conditions") as string)?.trim() || null;
+  const formTaxRate = parseTaxRateInput(formData.get("tax_rate") as string);
   const manualItems = JSON.parse(
     (formData.get("manual_items") as string) || "[]"
-  ) as { id?: string; description: string; quantity: number; unit_rate: number; amount: number }[];
+  ) as { id?: string; description: string; quantity: number; unit_rate: number; amount?: number }[];
 
   if (!invoiceId) return { error: "Invoice ID required" };
 
   const { data: inv } = await supabase
     .from("invoices")
-    .select("id, total_amount")
+    .select("id, project_id, total_amount")
     .eq("id", invoiceId)
     .eq("user_id", user.id)
     .single();
 
   if (!inv) return { error: "Invoice not found" };
 
-  const items = manualItems.filter(
-    (m) => m.description?.trim() && !isNaN(m.quantity) && !isNaN(m.unit_rate) && !isNaN(m.amount)
-  );
-  const total = items.reduce((s, i) => s + i.amount, 0);
+  const items = manualItems
+    .filter(
+      (m) =>
+        m.description?.trim() &&
+        Number.isFinite(Number(m.quantity)) &&
+        Number.isFinite(Number(m.unit_rate))
+    )
+    .map((m) => {
+      const quantity = Number(m.quantity);
+      const unit_rate = Number(m.unit_rate);
+      return {
+        id: m.id,
+        description: m.description.trim(),
+        quantity,
+        unit_rate,
+        amount: lineAmount(quantity, unit_rate),
+      };
+    });
+
+  if (items.length === 0) {
+    return { error: "Add at least one line item." };
+  }
+
+  let projectTax: number | null = null;
+  if (inv.project_id) {
+    const { data: project } = await supabase
+      .from("projects")
+      .select("tax_rate")
+      .eq("id", inv.project_id)
+      .maybeSingle();
+    projectTax = project?.tax_rate != null ? Number(project.tax_rate) : null;
+  }
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("tax_rate")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  const taxRate = formTaxRate ?? resolveTaxRate(projectTax, profile?.tax_rate);
+  const money = computeInvoiceMoney(items, taxRate);
+
+  if (status === "overdue" && isZeroMoneyTotal(money.total)) {
+    return { error: "A $0 invoice cannot be marked overdue." };
+  }
 
   const { error: invErr } = await supabase
     .from("invoices")
@@ -398,7 +506,7 @@ export async function updateInvoice(formData: FormData) {
       due_at: dueAt,
       footer,
       terms_and_conditions: terms,
-      total_amount: Math.round(total * 100) / 100,
+      total_amount: money.total,
       updated_at: new Date().toISOString(),
     })
     .eq("id", invoiceId)
@@ -419,7 +527,7 @@ export async function updateInvoice(formData: FormData) {
       await supabase
         .from("invoice_items")
         .update({
-          description: item.description.trim(),
+          description: item.description,
           quantity: item.quantity,
           unit_rate: item.unit_rate,
           amount: item.amount,
@@ -429,7 +537,7 @@ export async function updateInvoice(formData: FormData) {
     } else {
       await supabase.from("invoice_items").insert({
         invoice_id: invoiceId,
-        description: item.description.trim(),
+        description: item.description,
         quantity: item.quantity,
         unit_rate: item.unit_rate,
         amount: item.amount,
@@ -446,5 +554,7 @@ export async function updateInvoice(formData: FormData) {
 
   revalidatePath("/invoices");
   revalidatePath(`/invoices/${invoiceId}`);
+  revalidatePath("/");
+  revalidatePath("/reports");
   return { success: true };
 }

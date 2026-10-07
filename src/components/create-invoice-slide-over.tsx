@@ -15,6 +15,13 @@ import {
 import { polishDescription } from "@/app/actions/ai-polish";
 import { addDaysToDateString, localToday } from "@/lib/dates";
 import { useTimezone } from "@/contexts/timezone-context";
+import {
+  computeInvoiceMoney,
+  isZeroMoneyTotal,
+  lineAmount,
+  resolveTaxRate,
+  roundCents,
+} from "@/lib/invoices/money";
 
 export function CreateInvoiceSlideOver({
   open,
@@ -37,13 +44,15 @@ export function CreateInvoiceSlideOver({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [aiPolish, setAiPolish] = useState(false);
-  type ManualItem = { id: string; description: string; quantity: string; amount: string };
+  type ManualItem = { id: string; description: string; quantity: string; unit_rate: string };
   const [manualItems, setManualItems] = useState<ManualItem[]>([]);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [dueAt, setDueAt] = useState("");
   const [footer, setFooter] = useState("");
   const [terms, setTerms] = useState("");
+  const [taxRateInput, setTaxRateInput] = useState("");
+  const [profileTaxRate, setProfileTaxRate] = useState<number | null>(null);
   const timezone = useTimezone();
 
   const loadClients = useCallback(async () => {
@@ -72,6 +81,8 @@ export function CreateInvoiceSlideOver({
         setTerms(s.default_terms ?? "");
         const tz = s.timezone || timezone;
         setDueAt(addDaysToDateString(localToday(tz), s.default_due_days));
+        setProfileTaxRate(s.default_tax_rate);
+        setTaxRateInput(s.default_tax_rate != null ? String(s.default_tax_rate) : "");
       });
     }
   }, [open, loadClients, initialClientId, initialProjectId, timezone]);
@@ -103,10 +114,18 @@ export function CreateInvoiceSlideOver({
     });
   }, [projectId, dateFrom, dateTo]);
 
+  const selectedProject = projects.find((p) => p.id === projectId);
+
+  useEffect(() => {
+    if (!projectId) return;
+    const resolved = resolveTaxRate(selectedProject?.tax_rate, profileTaxRate);
+    setTaxRateInput(resolved != null ? String(resolved) : "");
+  }, [projectId, selectedProject?.tax_rate, profileTaxRate]);
+
   function addManualItem() {
     setManualItems((prev) => [
       ...prev,
-      { id: crypto.randomUUID(), description: "", quantity: "1", amount: "" },
+      { id: crypto.randomUUID(), description: "", quantity: "1", unit_rate: "" },
     ]);
   }
   function removeManualItem(id: string) {
@@ -163,19 +182,62 @@ export function CreateInvoiceSlideOver({
         serviceName: first.service_name ?? null,
         logIds: v.logs.map((l) => l.id),
         totalMins: v.totalMins,
-        totalAmount: v.totalAmount,
+        totalAmount: roundCents(v.totalAmount),
       };
     });
   })();
 
-  const selectedProject = projects.find((p) => p.id === projectId);
   const isFixedProject = selectedProject?.billing_type === "fixed" && (selectedProject?.agreed_fee ?? 0) > 0;
   const fixedPrice = selectedProject?.agreed_fee ?? 0;
 
+  const parsedTaxRate = (() => {
+    const n = parseFloat(taxRateInput);
+    return !isNaN(n) && n > 0 ? n : null;
+  })();
+
+  const logsTotal = (() => {
+    if (isFixedProject) return fixedPrice;
+    const sel = logs.filter((l) => selected.has(l.id));
+    const byService = new Map<string, UnbilledLog[]>();
+    let total = 0;
+    for (const l of sel) {
+      if (l.service_id && l.service_billing_type === "fixed" && (l.service_default_rate ?? 0) > 0) {
+        const arr = byService.get(l.service_id) ?? [];
+        arr.push(l);
+        byService.set(l.service_id, arr);
+      } else {
+        total += l.amount;
+      }
+    }
+    for (const [, arr] of byService) {
+      if (arr.length > 0) total += arr[0].service_default_rate ?? 0;
+    }
+    return roundCents(total);
+  })();
+
+  const manualLines = isFixedProject
+    ? []
+    : manualItems
+        .filter((m) => m.description.trim())
+        .map((m) => {
+          const quantity = parseFloat(m.quantity);
+          const unit_rate = parseFloat(m.unit_rate);
+          const qty = Number.isFinite(quantity) ? quantity : 0;
+          const rate = Number.isFinite(unit_rate) ? unit_rate : 0;
+          return { quantity: qty, unit_rate: rate, amount: lineAmount(qty, rate) };
+        });
+
+  const money = computeInvoiceMoney(
+    [{ amount: logsTotal }, ...manualLines],
+    parsedTaxRate
+  );
+
   async function handleSubmit() {
-    const validManual = manualItems.filter(
-      (m) => m.description.trim() && !isNaN(parseFloat(m.quantity)) && !isNaN(parseFloat(m.amount))
-    );
+    const validManual = manualItems.filter((m) => {
+      const qty = parseFloat(m.quantity);
+      const rate = parseFloat(m.unit_rate);
+      return m.description.trim() && Number.isFinite(qty) && Number.isFinite(rate);
+    });
     if (!clientId || !projectId) {
       setError("Select client and project.");
       return;
@@ -192,6 +254,12 @@ export function CreateInvoiceSlideOver({
     } else if (selected.size === 0 && validManual.length === 0) {
       setError("Select at least one log or add a manual line item.");
       return;
+    }
+    if (isZeroMoneyTotal(money.total)) {
+      const ok = window.confirm(
+        "This invoice totals $0.00. Create it anyway?"
+      );
+      if (!ok) return;
     }
     setSubmitting(true);
     setError(null);
@@ -211,19 +279,20 @@ export function CreateInvoiceSlideOver({
     formData.set("due_at", dueAt);
     formData.set("footer", footer);
     formData.set("terms_and_conditions", terms);
+    formData.set("tax_rate", taxRateInput);
     formData.set("log_ids", JSON.stringify([...selected]));
     formData.set("polished_descriptions", JSON.stringify(polishedDescriptions));
     formData.set(
       "manual_items",
       JSON.stringify(
         validManual.map((m) => {
-          const qty = parseFloat(m.quantity) || 1;
-          const amt = parseFloat(m.amount) || 0;
+          const qty = parseFloat(m.quantity);
+          const rate = parseFloat(m.unit_rate);
           return {
             description: m.description.trim(),
             quantity: qty,
-            unit_rate: qty > 0 ? amt / qty : 0,
-            amount: amt,
+            unit_rate: rate,
+            amount: lineAmount(qty, rate),
           };
         })
       )
@@ -243,35 +312,15 @@ export function CreateInvoiceSlideOver({
     window.location.href = `/invoices/${result.invoiceId}`;
   }
 
-  const logsTotal = (() => {
-    if (isFixedProject) return fixedPrice;
-    const sel = logs.filter((l) => selected.has(l.id));
-    const byService = new Map<string, UnbilledLog[]>();
-    let total = 0;
-    for (const l of sel) {
-      if (l.service_id && l.service_billing_type === "fixed" && (l.service_default_rate ?? 0) > 0) {
-        const arr = byService.get(l.service_id) ?? [];
-        arr.push(l);
-        byService.set(l.service_id, arr);
-      } else {
-        total += l.amount;
-      }
-    }
-    for (const [, arr] of byService) {
-      if (arr.length > 0) total += arr[0].service_default_rate ?? 0;
-    }
-    return total;
-  })();
-  const manualTotal = isFixedProject ? 0 : manualItems.reduce((s, m) => {
-    const amt = parseFloat(m.amount);
-    return s + (isNaN(amt) ? 0 : amt);
-  }, 0);
-  const totalAmount = logsTotal + manualTotal;
-
   return (
     <SlideOver open={open} onClose={onClose} title="Create Invoice">
       <div className="flex flex-col h-full">
         <div className="p-5 space-y-4 flex-1">
+          {error && (
+            <p className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-400" role="alert">
+              {error}
+            </p>
+          )}
           <div>
             <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
               Client
@@ -334,16 +383,33 @@ export function CreateInvoiceSlideOver({
           <p className="text-[11px] text-[var(--text-muted)]">
             Optional: limit unbilled logs to a date range
           </p>
-          <div>
-            <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
-              Due date
-            </label>
-            <input
-              type="date"
-              value={dueAt}
-              onChange={(e) => setDueAt(e.target.value)}
-              className="w-full px-3 py-2 bg-[var(--bg-app)] border border-[var(--border)] rounded-lg text-[var(--text-primary)]"
-            />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
+                Due date
+              </label>
+              <input
+                type="date"
+                value={dueAt}
+                onChange={(e) => setDueAt(e.target.value)}
+                className="w-full px-3 py-2 bg-[var(--bg-app)] border border-[var(--border)] rounded-lg text-[var(--text-primary)]"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
+                Tax (%)
+              </label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="0.01"
+                value={taxRateInput}
+                onChange={(e) => setTaxRateInput(e.target.value)}
+                placeholder="0"
+                className="w-full px-3 py-2 bg-[var(--bg-app)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] font-mono"
+              />
+            </div>
           </div>
           <div>
             <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
@@ -442,55 +508,92 @@ export function CreateInvoiceSlideOver({
             </div>
             {manualItems.length > 0 && (
               <div className="space-y-2">
-                {manualItems.map((m) => (
-                  <div
-                    key={m.id}
-                    className="grid grid-cols-[1fr_60px_90px_auto] gap-2 items-center"
-                  >
-                    <input
-                      type="text"
-                      placeholder="Description"
-                      value={m.description}
-                      onChange={(e) => updateManualItem(m.id, "description", e.target.value)}
-                      className="px-2 py-1.5 text-sm bg-[var(--bg-app)] border border-[var(--border)] rounded"
-                    />
-                    <input
-                      type="number"
-                      placeholder="Qty"
-                      min="0"
-                      step="0.01"
-                      value={m.quantity}
-                      onChange={(e) => updateManualItem(m.id, "quantity", e.target.value)}
-                      className="px-2 py-1.5 text-sm font-mono bg-[var(--bg-app)] border border-[var(--border)] rounded"
-                    />
-                    <input
-                      type="number"
-                      placeholder="Amount"
-                      min="0"
-                      step="0.01"
-                      value={m.amount}
-                      onChange={(e) => updateManualItem(m.id, "amount", e.target.value)}
-                      className="px-2 py-1.5 text-sm font-mono bg-[var(--bg-app)] border border-[var(--border)] rounded"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => removeManualItem(m.id)}
-                      className="text-red-400 hover:text-red-300 text-sm px-1"
-                      aria-label="Remove"
+                <div className="grid grid-cols-[1fr_60px_80px_90px_auto] gap-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                  <span>Description</span>
+                  <span className="text-right">Qty</span>
+                  <span className="text-right">Rate</span>
+                  <span className="text-right">Amount</span>
+                  <span />
+                </div>
+                {manualItems.map((m) => {
+                  const qty = parseFloat(m.quantity);
+                  const rate = parseFloat(m.unit_rate);
+                  const amt =
+                    Number.isFinite(qty) && Number.isFinite(rate)
+                      ? lineAmount(qty, rate)
+                      : null;
+                  return (
+                    <div
+                      key={m.id}
+                      className="grid grid-cols-[1fr_60px_80px_90px_auto] gap-2 items-center"
                     >
-                      ✕
-                    </button>
-                  </div>
-                ))}
+                      <input
+                        type="text"
+                        placeholder="Description"
+                        aria-label="Description"
+                        value={m.description}
+                        onChange={(e) => updateManualItem(m.id, "description", e.target.value)}
+                        className="px-2 py-1.5 text-sm bg-[var(--bg-app)] border border-[var(--border)] rounded"
+                      />
+                      <input
+                        type="number"
+                        placeholder="Qty"
+                        aria-label="Quantity"
+                        step="0.01"
+                        value={m.quantity}
+                        onChange={(e) => updateManualItem(m.id, "quantity", e.target.value)}
+                        className="px-2 py-1.5 text-sm font-mono bg-[var(--bg-app)] border border-[var(--border)] rounded"
+                      />
+                      <input
+                        type="number"
+                        placeholder="Rate"
+                        aria-label="Rate"
+                        step="0.01"
+                        value={m.unit_rate}
+                        onChange={(e) => updateManualItem(m.id, "unit_rate", e.target.value)}
+                        className="px-2 py-1.5 text-sm font-mono bg-[var(--bg-app)] border border-[var(--border)] rounded"
+                      />
+                      <span className="px-2 py-1.5 text-sm font-mono text-right text-[var(--text-secondary)]">
+                        {amt != null ? `$${amt.toFixed(2)}` : "—"}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => removeManualItem(m.id)}
+                        className="text-red-400 hover:text-red-300 text-sm px-1"
+                        aria-label="Remove"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             )}
+            <p className="mt-1 text-[11px] text-[var(--text-muted)]">
+              Use a negative rate for discounts (e.g. qty 1, rate −50).
+            </p>
           </div>
           )}
           {(selected.size > 0 || manualItems.length > 0) && (
-            <div className="rounded-lg border-2 border-accent/50 bg-accent/10 px-4 py-3">
+            <div className="rounded-lg border-2 border-accent/50 bg-accent/10 px-4 py-3 space-y-1">
               <p className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Live total</p>
+              {money.taxRate != null && (
+                <>
+                  <p className="font-mono text-sm text-[var(--text-secondary)]">
+                    Subtotal: ${money.subtotal.toFixed(2)}
+                  </p>
+                  <p className="font-mono text-sm text-[var(--text-secondary)]">
+                    Tax ({money.taxRate}%): ${money.taxAmount.toFixed(2)}
+                  </p>
+                </>
+              )}
               <p className="font-mono text-2xl font-bold text-[var(--text-primary)]">
-                ${totalAmount.toFixed(2)}
+                ${money.total.toFixed(2)}
+                {money.taxRate != null && (
+                  <span className="ml-2 text-xs font-sans font-normal text-[var(--text-muted)]">
+                    incl. tax
+                  </span>
+                )}
               </p>
             </div>
           )}
@@ -505,30 +608,36 @@ export function CreateInvoiceSlideOver({
               AI Polish descriptions (requires OpenAI API key)
             </span>
           </label>
-          {error && <p className="text-sm text-red-400">{error}</p>}
         </div>
         <div className="p-5 border-t border-[var(--border)] flex items-center justify-between gap-4 flex-wrap">
           {(selected.size > 0 || manualItems.length > 0) && (
             <p className="font-mono text-lg font-bold text-[var(--text-primary)]">
-              Total: ${totalAmount.toFixed(2)}
+              Total: ${money.total.toFixed(2)}
             </p>
           )}
-          <div className="flex gap-3 ml-auto">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 border border-[var(--border)] rounded-lg text-[var(--text-primary)] text-sm hover:bg-[var(--bg-card)]"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleSubmit}
-            disabled={submitting || (selected.size === 0 && manualItems.every((m) => !m.description.trim()))}
-            className="px-4 py-2 bg-accent hover:bg-accent-hover text-white font-semibold rounded-lg text-sm disabled:opacity-50"
-          >
-            {submitting ? "Creating…" : "Create & Lock"}
-          </button>
+          <div className="flex flex-col items-end gap-2 ml-auto">
+            {error && (
+              <p className="text-sm text-red-400 max-w-xs text-right" role="alert">
+                {error}
+              </p>
+            )}
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 border border-[var(--border)] rounded-lg text-[var(--text-primary)] text-sm hover:bg-[var(--bg-card)]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={submitting || (selected.size === 0 && manualItems.every((m) => !m.description.trim()))}
+                className="px-4 py-2 bg-accent hover:bg-accent-hover text-white font-semibold rounded-lg text-sm disabled:opacity-50"
+              >
+                {submitting ? "Creating…" : "Create & Lock"}
+              </button>
+            </div>
           </div>
         </div>
       </div>

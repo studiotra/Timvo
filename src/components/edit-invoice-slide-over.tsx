@@ -3,6 +3,11 @@
 import { useState, useEffect } from "react";
 import { SlideOver } from "./slide-over";
 import { updateInvoice } from "@/app/actions/invoices";
+import {
+  computeInvoiceMoney,
+  isZeroMoneyTotal,
+  lineAmount,
+} from "@/lib/invoices/money";
 
 type InvoiceData = {
   id: string;
@@ -13,6 +18,7 @@ type InvoiceData = {
   due_at: string;
   footer: string;
   terms_and_conditions: string;
+  tax_rate?: number | null;
 };
 
 type ItemData = {
@@ -46,6 +52,9 @@ export function EditInvoiceSlideOver({
   const [dueAt, setDueAt] = useState(invoice.due_at);
   const [footer, setFooter] = useState(invoice.footer);
   const [terms, setTerms] = useState(invoice.terms_and_conditions);
+  const [taxRateInput, setTaxRateInput] = useState(
+    invoice.tax_rate != null && invoice.tax_rate > 0 ? String(invoice.tax_rate) : ""
+  );
   const [manualItems, setManualItems] = useState<ItemData[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -57,8 +66,17 @@ export function EditInvoiceSlideOver({
       setDueAt(invoice.due_at);
       setFooter(invoice.footer);
       setTerms(invoice.terms_and_conditions);
-      setManualItems([...items]);
+      setTaxRateInput(
+        invoice.tax_rate != null && invoice.tax_rate > 0 ? String(invoice.tax_rate) : ""
+      );
+      setManualItems(
+        items.map((item) => ({
+          ...item,
+          amount: lineAmount(item.quantity, item.unit_rate),
+        }))
+      );
       setError(null);
+      setSubmitting(false);
     }
   }, [open, invoice, items]);
 
@@ -84,20 +102,42 @@ export function EditInvoiceSlideOver({
         if (m.id !== id) return m;
         const next = { ...m, [field]: value };
         if (field === "quantity" || field === "unit_rate") {
-          next.amount = Math.round(Number(next.quantity) * Number(next.unit_rate) * 100) / 100;
+          next.amount = lineAmount(Number(next.quantity), Number(next.unit_rate));
         }
         return next;
       })
     );
   }
 
+  const parsedTaxRate = (() => {
+    const n = parseFloat(taxRateInput);
+    return !isNaN(n) && n > 0 ? n : null;
+  })();
+
+  const money = computeInvoiceMoney(
+    manualItems.map((m) => ({
+      quantity: m.quantity,
+      unit_rate: m.unit_rate,
+      amount: lineAmount(m.quantity, m.unit_rate),
+    })),
+    parsedTaxRate,
+    { recomputeFromQtyRate: true }
+  );
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const valid = manualItems.filter(
-      (m) => m.description.trim() && !isNaN(m.quantity) && !isNaN(m.unit_rate) && !isNaN(m.amount)
+      (m) =>
+        m.description.trim() &&
+        Number.isFinite(m.quantity) &&
+        Number.isFinite(m.unit_rate)
     );
     if (valid.length === 0) {
       setError("Add at least one line item.");
+      return;
+    }
+    if (status === "overdue" && isZeroMoneyTotal(money.total)) {
+      setError("A $0 invoice cannot be marked overdue.");
       return;
     }
     setSubmitting(true);
@@ -109,6 +149,7 @@ export function EditInvoiceSlideOver({
     formData.set("due_at", dueAt);
     formData.set("footer", footer);
     formData.set("terms_and_conditions", terms);
+    formData.set("tax_rate", taxRateInput);
     formData.set(
       "manual_items",
       JSON.stringify(
@@ -117,7 +158,7 @@ export function EditInvoiceSlideOver({
           description: m.description.trim(),
           quantity: m.quantity,
           unit_rate: m.unit_rate,
-          amount: m.amount,
+          amount: lineAmount(m.quantity, m.unit_rate),
         }))
       )
     );
@@ -130,12 +171,18 @@ export function EditInvoiceSlideOver({
     onSaved();
   }
 
-  const total = manualItems.reduce((s, m) => s + (isNaN(m.amount) ? 0 : m.amount), 0);
-
   return (
     <SlideOver open={open} onClose={onClose} title="Edit Invoice">
-      <form onSubmit={handleSubmit} className="flex flex-col h-full">
+      <form onSubmit={handleSubmit} noValidate className="flex flex-col h-full">
         <div className="p-5 space-y-4 flex-1 overflow-y-auto">
+          {error && (
+            <p
+              className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-400"
+              role="alert"
+            >
+              {error}
+            </p>
+          )}
           <p className="text-sm text-[var(--text-muted)]">
             Client: {client?.name ?? "—"} · Project: {project?.name ?? "—"}
           </p>
@@ -179,6 +226,21 @@ export function EditInvoiceSlideOver({
             </div>
           </div>
           <div>
+            <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
+              Tax (%)
+            </label>
+            <input
+              type="number"
+              min="0"
+              max="100"
+              step="0.01"
+              value={taxRateInput}
+              onChange={(e) => setTaxRateInput(e.target.value)}
+              placeholder="0"
+              className="w-full px-3 py-2 bg-[var(--bg-app)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] font-mono"
+            />
+          </div>
+          <div>
             <div className="flex items-center justify-between mb-2">
               <label className="text-sm font-medium text-[var(--text-secondary)]">
                 Line items
@@ -188,6 +250,13 @@ export function EditInvoiceSlideOver({
               </button>
             </div>
             <div className="space-y-2">
+              <div className="grid grid-cols-[1fr_60px_80px_90px_auto] gap-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                <span>Description</span>
+                <span className="text-right">Qty</span>
+                <span className="text-right">Rate</span>
+                <span className="text-right">Amount</span>
+                <span />
+              </div>
               {manualItems.map((m) => (
                 <div
                   key={m.id}
@@ -196,52 +265,50 @@ export function EditInvoiceSlideOver({
                   <input
                     type="text"
                     placeholder="Description"
+                    aria-label="Description"
                     value={m.description}
                     onChange={(e) => updateItem(m.id, "description", e.target.value)}
                     className="px-2 py-1.5 text-sm bg-[var(--bg-app)] border border-[var(--border)] rounded"
                   />
                   <input
                     type="number"
-                    min="0"
                     step="0.01"
+                    aria-label="Quantity"
                     value={m.quantity}
                     onChange={(e) => {
-                      updateItem(m.id, "quantity", parseFloat(e.target.value) || 0);
-                      const qty = parseFloat(e.target.value) || 0;
-                      updateItem(m.id, "amount", Math.round(qty * m.unit_rate * 100) / 100);
+                      const qty = parseFloat(e.target.value);
+                      updateItem(m.id, "quantity", Number.isFinite(qty) ? qty : 0);
                     }}
                     className="px-2 py-1.5 text-sm font-mono bg-[var(--bg-app)] border border-[var(--border)] rounded"
                   />
                   <input
                     type="number"
-                    min="0"
                     step="0.01"
+                    aria-label="Rate"
                     value={m.unit_rate}
                     onChange={(e) => {
-                      updateItem(m.id, "unit_rate", parseFloat(e.target.value) || 0);
-                      const rate = parseFloat(e.target.value) || 0;
-                      updateItem(m.id, "amount", Math.round(m.quantity * rate * 100) / 100);
+                      const rate = parseFloat(e.target.value);
+                      updateItem(m.id, "unit_rate", Number.isFinite(rate) ? rate : 0);
                     }}
                     className="px-2 py-1.5 text-sm font-mono bg-[var(--bg-app)] border border-[var(--border)] rounded"
                   />
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={m.amount}
-                    onChange={(e) => updateItem(m.id, "amount", parseFloat(e.target.value) || 0)}
-                    className="px-2 py-1.5 text-sm font-mono bg-[var(--bg-app)] border border-[var(--border)] rounded"
-                  />
+                  <span className="px-2 py-1.5 text-sm font-mono text-right text-[var(--text-secondary)]">
+                    ${lineAmount(m.quantity, m.unit_rate).toFixed(2)}
+                  </span>
                   <button
                     type="button"
                     onClick={() => removeItem(m.id)}
                     className="text-red-400 hover:text-red-300 text-sm"
+                    aria-label="Remove"
                   >
                     ✕
                   </button>
                 </div>
               ))}
             </div>
+            <p className="mt-1 text-[11px] text-[var(--text-muted)]">
+              Negative rates are allowed for discounts. Amount is always qty × rate.
+            </p>
           </div>
           <div>
             <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
@@ -267,20 +334,49 @@ export function EditInvoiceSlideOver({
               className="w-full px-3 py-2 bg-[var(--bg-app)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] text-sm"
             />
           </div>
-          <p className="font-mono text-sm font-semibold">Total: ${total.toFixed(2)}</p>
-          {error && <p className="text-sm text-red-400">{error}</p>}
+          <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-4 py-3 space-y-1">
+            {money.taxRate != null && (
+              <>
+                <p className="font-mono text-sm text-[var(--text-secondary)]">
+                  Subtotal: ${money.subtotal.toFixed(2)}
+                </p>
+                <p className="font-mono text-sm text-[var(--text-secondary)]">
+                  Tax ({money.taxRate}%): ${money.taxAmount.toFixed(2)}
+                </p>
+              </>
+            )}
+            <p className="font-mono text-sm font-semibold text-[var(--text-primary)]">
+              Total: ${money.total.toFixed(2)}
+              {money.taxRate != null && (
+                <span className="ml-2 text-xs font-sans font-normal text-[var(--text-muted)]">
+                  incl. tax
+                </span>
+              )}
+            </p>
+          </div>
         </div>
-        <div className="p-5 border-t border-[var(--border)] flex gap-3 justify-end">
-          <button type="button" onClick={onClose} className="px-4 py-2 border border-[var(--border)] rounded-lg text-[var(--text-primary)] hover:bg-[var(--bg-card)]">
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={submitting}
-            className="px-4 py-2 bg-accent hover:bg-accent-hover text-white font-semibold rounded-lg disabled:opacity-50"
-          >
-            {submitting ? "Saving…" : "Save"}
-          </button>
+        <div className="p-5 border-t border-[var(--border)] flex flex-col gap-2">
+          {error && (
+            <p className="text-sm text-red-400 text-right" role="alert">
+              {error}
+            </p>
+          )}
+          <div className="flex gap-3 justify-end">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 border border-[var(--border)] rounded-lg text-[var(--text-primary)] hover:bg-[var(--bg-card)]"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="px-4 py-2 bg-accent hover:bg-accent-hover text-white font-semibold rounded-lg disabled:opacity-50"
+            >
+              {submitting ? "Saving…" : "Save"}
+            </button>
+          </div>
         </div>
       </form>
     </SlideOver>
