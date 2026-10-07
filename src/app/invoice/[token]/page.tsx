@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { PublicInvoiceView } from "./public-invoice-view";
 import { resolveInvoiceDisplayStatus } from "@/lib/invoices/status";
+import { resolveTimezone } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
 
@@ -69,10 +70,14 @@ export default async function PublicInvoicePage({
   };
   let defaultFooter = "";
   let defaultTerms = "";
+  let ownerTimezone = resolveTimezone(null);
+  let profileTaxRate: number | null = null;
   if (userId) {
     const { data: prof } = await supabase
       .from("profiles")
-      .select("business_name, logo_url, full_name, phone_number, address, default_invoice_footer, default_invoice_terms")
+      .select(
+        "business_name, logo_url, full_name, phone_number, address, default_invoice_footer, default_invoice_terms, tax_rate, timezone"
+      )
       .eq("id", userId)
       .single();
     businessInfo = {
@@ -83,16 +88,8 @@ export default async function PublicInvoicePage({
     };
     defaultFooter = prof?.default_invoice_footer?.trim() ?? "";
     defaultTerms = prof?.default_invoice_terms?.trim() ?? "";
-  }
-
-  let profileTaxRate: number | null = null;
-  if (userId) {
-    const { data: taxProf } = await supabase
-      .from("profiles")
-      .select("tax_rate")
-      .eq("id", userId)
-      .single();
-    profileTaxRate = taxProf?.tax_rate != null ? Number(taxProf.tax_rate) : null;
+    ownerTimezone = resolveTimezone(prof?.timezone);
+    profileTaxRate = prof?.tax_rate != null ? Number(prof.tax_rate) : null;
   }
   const projectTaxRate = (project as { tax_rate?: number | null } | null)?.tax_rate;
   const taxRate = projectTaxRate != null && projectTaxRate > 0
@@ -105,10 +102,13 @@ export default async function PublicInvoicePage({
   const taxAmount = taxRate != null ? Math.round(subtotal * (taxRate / 100) * 100) / 100 : 0;
   const totalAmount = subtotal + taxAmount;
 
-  const displayStatus = resolveInvoiceDisplayStatus({
-    status: inv.status ?? "sent",
-    due_at: inv.due_at,
-  });
+  const displayStatus = resolveInvoiceDisplayStatus(
+    {
+      status: inv.status ?? "sent",
+      due_at: inv.due_at,
+    },
+    ownerTimezone
+  );
 
   return (
     <div className="min-h-screen bg-[var(--bg-app)] text-[var(--text-primary)]">

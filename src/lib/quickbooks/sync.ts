@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { formatInstantAsLocalDate, localToday, resolveTimezone } from "@/lib/dates";
 import {
   canUseQuickBooks,
   quickbooksApiBase,
@@ -163,10 +164,11 @@ export async function syncInvoiceToQuickBooks(
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("subscription_tier")
+    .select("subscription_tier, timezone")
     .eq("id", inv.user_id)
     .single();
   if (!canUseQuickBooks(profile)) return { ok: true };
+  const timezone = resolveTimezone(profile?.timezone);
 
   const conn = await getValidConnection(inv.user_id);
   if (!conn) return { ok: true };
@@ -221,7 +223,7 @@ export async function syncInvoiceToQuickBooks(
 
   const payload = {
     CustomerRef: { value: customerId },
-    TxnDate: inv.issued_at ?? new Date().toISOString().slice(0, 10),
+    TxnDate: inv.issued_at ?? localToday(timezone),
     DueDate: inv.due_at ?? undefined,
     DocNumber: invoiceId.slice(0, 8).toUpperCase(),
     PrivateNote: `Timvo invoice ${invoiceId}`,
@@ -273,10 +275,11 @@ export async function syncStripePaymentToQuickBooks(
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("subscription_tier")
+    .select("subscription_tier, timezone")
     .eq("id", inv.user_id)
     .single();
   if (!canUseQuickBooks(profile)) return { ok: true };
+  const timezone = resolveTimezone(profile?.timezone);
 
   const conn = await getValidConnection(inv.user_id);
   if (!conn) return { ok: true };
@@ -310,7 +313,9 @@ export async function syncStripePaymentToQuickBooks(
   if (!amount || amount <= 0) return { ok: false, error: "Invalid payment amount" };
 
   const depositAccountId = await findDepositAccountId(conn);
-  const txnDate = (options?.paidAt ?? new Date().toISOString()).slice(0, 10);
+  const txnDate = options?.paidAt
+    ? formatInstantAsLocalDate(options.paidAt, timezone)
+    : localToday(timezone);
 
   const payload = {
     CustomerRef: { value: customerId },

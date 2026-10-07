@@ -13,6 +13,8 @@ import {
   type UnbilledLog,
 } from "@/app/actions/invoice-data";
 import { polishDescription } from "@/app/actions/ai-polish";
+import { addDaysToDateString, localToday } from "@/lib/dates";
+import { useTimezone } from "@/contexts/timezone-context";
 
 export function CreateInvoiceSlideOver({
   open,
@@ -42,6 +44,7 @@ export function CreateInvoiceSlideOver({
   const [dueAt, setDueAt] = useState("");
   const [footer, setFooter] = useState("");
   const [terms, setTerms] = useState("");
+  const timezone = useTimezone();
 
   const loadClients = useCallback(async () => {
     const c = await getClientsForInvoice();
@@ -67,12 +70,11 @@ export function CreateInvoiceSlideOver({
       getDefaultInvoiceSettings().then((s) => {
         setFooter(s.default_footer ?? "");
         setTerms(s.default_terms ?? "");
-        const d = new Date();
-        d.setDate(d.getDate() + s.default_due_days);
-        setDueAt(d.toISOString().slice(0, 10));
+        const tz = s.timezone || timezone;
+        setDueAt(addDaysToDateString(localToday(tz), s.default_due_days));
       });
     }
-  }, [open, loadClients, initialClientId, initialProjectId]);
+  }, [open, loadClients, initialClientId, initialProjectId, timezone]);
 
   useEffect(() => {
     if (!clientId) {

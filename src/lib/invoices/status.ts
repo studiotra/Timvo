@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { isOverdueByDate, localToday, resolveTimezone } from "@/lib/dates";
 
 export type InvoiceStatus = "draft" | "sent" | "paid" | "overdue";
 
@@ -8,16 +9,18 @@ type InvoiceDates = {
 };
 
 /** Display status — sent/overdue invoices past due_at show as overdue. */
-export function resolveInvoiceDisplayStatus(inv: InvoiceDates): InvoiceStatus {
+export function resolveInvoiceDisplayStatus(
+  inv: InvoiceDates,
+  timeZone?: string | null,
+  now: Date = new Date()
+): InvoiceStatus {
   const base = (inv.status ?? "draft") as InvoiceStatus;
   if (base === "paid") return "paid";
   if (base === "overdue") return "overdue";
   if (base === "sent" && inv.due_at) {
-    const due = new Date(inv.due_at);
-    due.setHours(0, 0, 0, 0);
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    if (due < today) return "overdue";
+    if (isOverdueByDate(inv.due_at, resolveTimezone(timeZone), now)) {
+      return "overdue";
+    }
   }
   return base;
 }
@@ -29,12 +32,18 @@ export function invoiceStatusForDb(status: string): InvoiceStatus {
   return "draft";
 }
 
-/** Persist overdue flag in DB for sent invoices past due date. */
+/** Persist overdue flag in DB for sent invoices past due date (user's local today). */
 export async function markOverdueInvoices(
   supabase: SupabaseClient,
   userId: string
 ): Promise<number> {
-  const today = new Date().toISOString().slice(0, 10);
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("timezone")
+    .eq("id", userId)
+    .maybeSingle();
+  const today = localToday(resolveTimezone(profile?.timezone));
+
   const { data, error } = await supabase
     .from("invoices")
     .select("id")

@@ -2,21 +2,31 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import { addDaysToDateString, localToday, resolveTimezone } from "@/lib/dates";
+import { fetchUserTimezone } from "@/lib/user-timezone";
 
 export type DefaultInvoiceSettings = {
   default_footer: string | null;
   default_terms: string | null;
   default_due_days: number;
+  timezone: string;
 };
 
 export async function getDefaultInvoiceSettings(): Promise<DefaultInvoiceSettings> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { default_footer: null, default_terms: null, default_due_days: 30 };
+  if (!user) {
+    return {
+      default_footer: null,
+      default_terms: null,
+      default_due_days: 30,
+      timezone: "America/New_York",
+    };
+  }
 
   const { data } = await supabase
     .from("profiles")
-    .select("default_invoice_footer, default_invoice_terms, default_due_days")
+    .select("default_invoice_footer, default_invoice_terms, default_due_days, timezone")
     .eq("id", user.id)
     .single();
 
@@ -24,6 +34,7 @@ export async function getDefaultInvoiceSettings(): Promise<DefaultInvoiceSetting
     default_footer: data?.default_invoice_footer ?? null,
     default_terms: data?.default_invoice_terms ?? null,
     default_due_days: data?.default_due_days ?? 30,
+    timezone: resolveTimezone(data?.timezone),
   };
 }
 
@@ -240,7 +251,8 @@ export async function createInvoice(formData: FormData) {
   }
 
   const total = items.reduce((s, i) => s + i.amount, 0);
-  const issued = new Date();
+  const timezone = await fetchUserTimezone(supabase, user.id);
+  const issuedDate = localToday(timezone);
   let dueDate: string;
   if (dueAt) {
     dueDate = dueAt;
@@ -251,9 +263,7 @@ export async function createInvoice(formData: FormData) {
       .eq("id", user.id)
       .single();
     const days = profile?.default_due_days ?? 30;
-    const due = new Date(issued);
-    due.setDate(due.getDate() + days);
-    dueDate = due.toISOString().slice(0, 10);
+    dueDate = addDaysToDateString(issuedDate, days);
   }
 
   const { data: inv, error: invErr } = await supabase
@@ -265,7 +275,7 @@ export async function createInvoice(formData: FormData) {
       status: "draft",
       total_amount: Math.round(total * 100) / 100,
       currency: client.currency ?? "USD",
-      issued_at: issued.toISOString().slice(0, 10),
+      issued_at: issuedDate,
       due_at: dueDate,
       footer,
       terms_and_conditions: terms,

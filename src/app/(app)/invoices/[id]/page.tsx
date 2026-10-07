@@ -5,6 +5,7 @@ import { InvoiceDetailContent } from "./invoice-detail-content";
 import { markOverdueInvoices, resolveInvoiceDisplayStatus } from "@/lib/invoices/status";
 import { fetchInvoiceOptionalFields } from "@/lib/invoices/optional-fields";
 import { publicInvoiceUrl } from "@/lib/app-url";
+import { fetchUserTimezone } from "@/lib/user-timezone";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +21,7 @@ export default async function InvoiceDetailPage({
   if (!user) redirect("/login");
 
   await markOverdueInvoices(supabase, user.id);
+  const timezone = await fetchUserTimezone(supabase, user.id);
 
   // Base columns only — optional fields fetched separately if migrations exist
   const { data: inv, error: invError } = await supabase
@@ -86,10 +88,13 @@ export default async function InvoiceDetailPage({
     address: profile?.address ?? null,
   };
 
-  const displayStatus = resolveInvoiceDisplayStatus({
-    status: inv.status ?? "draft",
-    due_at: inv.due_at,
-  });
+  const displayStatus = resolveInvoiceDisplayStatus(
+    {
+      status: inv.status ?? "draft",
+      due_at: inv.due_at,
+    },
+    timezone
+  );
 
   const clientViewUrl =
     extras.viewToken &&

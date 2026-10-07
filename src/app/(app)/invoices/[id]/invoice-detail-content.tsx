@@ -9,6 +9,8 @@ import { PrintInvoiceButton } from "@/components/print-invoice-button";
 import { SendInvoiceButton } from "@/components/send-invoice-button";
 import { EditInvoiceSlideOver } from "@/components/edit-invoice-slide-over";
 import { updateInvoiceStatus, deleteInvoice } from "@/app/actions/invoices";
+import { useTimezone } from "@/contexts/timezone-context";
+import { formatDateOnly, formatInstantAsLocalDate } from "@/lib/dates";
 
 const STATUSES = ["draft", "sent", "paid", "overdue"] as const;
 
@@ -61,6 +63,7 @@ export function InvoiceDetailContent({
   isFixedProject?: boolean;
 }) {
   const router = useRouter();
+  const timezone = useTimezone();
   const [editOpen, setEditOpen] = useState(false);
   const [status, setStatus] = useState(invoice.status);
   const [statusUpdating, setStatusUpdating] = useState(false);
@@ -166,10 +169,15 @@ export function InvoiceDetailContent({
           </div>
         </div>
         <div className="flex justify-end gap-8 mb-8 text-sm text-[var(--text-secondary)]">
-          <span>Issued: {invoice.issued_at || "—"}</span>
-          <span>Due: {invoice.due_at || "—"}</span>
+          <span>Issued: {formatDateOnly(invoice.issued_at, { year: "numeric" })}</span>
+          <span>Due: {formatDateOnly(invoice.due_at, { year: "numeric" })}</span>
           {invoice.paid_at && (
-            <span>Paid: {new Date(invoice.paid_at).toLocaleDateString()}</span>
+            <span>
+              Paid:{" "}
+              {formatDateOnly(formatInstantAsLocalDate(invoice.paid_at, timezone), {
+                year: "numeric",
+              })}
+            </span>
           )}
           {project?.name && <span>Project: {project.name}</span>}
         </div>

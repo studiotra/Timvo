@@ -4,6 +4,8 @@ import { useState, useMemo } from "react";
 import Link from "next/link";
 import { CreateInvoiceSlideOver } from "@/components/create-invoice-slide-over";
 import { resolveInvoiceDisplayStatus } from "@/lib/invoices/status";
+import { useTimezone } from "@/contexts/timezone-context";
+import { formatDateOnly } from "@/lib/dates";
 
 type InvoiceRow = {
   id: string;
@@ -24,10 +26,6 @@ type ProjectOpt = { id: string; name: string; client_id: string };
 
 const TABS = ["All statuses", "Draft", "Sent", "Paid", "Overdue"] as const;
 
-function getDisplayStatus(inv: InvoiceRow): string {
-  return resolveInvoiceDisplayStatus({ status: inv.status, due_at: inv.due_at });
-}
-
 export function InvoicesContent({
   invoices,
   clients,
@@ -37,6 +35,9 @@ export function InvoicesContent({
   clients: ClientOpt[];
   projects: ProjectOpt[];
 }) {
+  const timezone = useTimezone();
+  const getDisplayStatus = (inv: InvoiceRow): string =>
+    resolveInvoiceDisplayStatus({ status: inv.status, due_at: inv.due_at }, timezone);
   const [invoiceOpen, setInvoiceOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<typeof TABS[number]>("All statuses");
   const [clientFilter, setClientFilter] = useState("");
@@ -48,13 +49,15 @@ export function InvoicesContent({
   );
 
   const filtered = useMemo(() => {
+    const statusOf = (inv: InvoiceRow) =>
+      resolveInvoiceDisplayStatus({ status: inv.status, due_at: inv.due_at }, timezone);
     let list = invoices;
     if (activeTab !== "All statuses") {
       if (activeTab === "Overdue") {
-        list = list.filter((i) => getDisplayStatus(i) === "overdue");
+        list = list.filter((i) => statusOf(i) === "overdue");
       } else {
         const tab = activeTab.toLowerCase();
-        list = list.filter((i) => getDisplayStatus(i) === tab);
+        list = list.filter((i) => statusOf(i) === tab);
       }
     }
     if (clientFilter) {
@@ -64,7 +67,7 @@ export function InvoicesContent({
       list = list.filter((i) => i.project_id === projectFilter);
     }
     return list;
-  }, [invoices, activeTab, clientFilter, projectFilter]);
+  }, [invoices, activeTab, clientFilter, projectFilter, timezone]);
 
   return (
     <>
@@ -170,14 +173,8 @@ export function InvoicesContent({
                 </span>
                 <span className="hidden min-w-[60px] text-[11px] text-[var(--text-muted)] sm:inline">
                   {inv.issued_at
-                    ? new Date(inv.issued_at).toLocaleDateString("en-US", {
-                        month: "short",
-                        day: "numeric",
-                      })
-                    : new Date(inv.created_at).toLocaleDateString("en-US", {
-                        month: "short",
-                        day: "numeric",
-                      })}
+                    ? formatDateOnly(inv.issued_at)
+                    : formatDateOnly(inv.created_at.slice(0, 10))}
                 </span>
                 <span className="min-w-[70px] text-right font-mono text-[12px] font-semibold text-[var(--text-primary)] sm:min-w-[80px] sm:text-[13px]">
                   ${Number(inv.total_amount ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}
