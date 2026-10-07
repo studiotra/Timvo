@@ -5,6 +5,7 @@ import { InvoiceDetailContent } from "./invoice-detail-content";
 import { markOverdueInvoices, resolveInvoiceDisplayStatus } from "@/lib/invoices/status";
 import { resolveDisplayMoney, resolveTaxRate } from "@/lib/invoices/money";
 import { fetchInvoiceOptionalFields } from "@/lib/invoices/optional-fields";
+import { normalizeInvoicePrefix } from "@/lib/invoices/number";
 import { publicInvoiceUrl } from "@/lib/app-url";
 import { fetchUserTimezone } from "@/lib/user-timezone";
 
@@ -36,13 +37,19 @@ export default async function InvoiceDetailPage({
 
   const extras = await fetchInvoiceOptionalFields(supabase, id);
 
-  let client: { name?: string; email?: string } | null = null;
+  let client: {
+    name?: string;
+    email?: string;
+    address?: string | null;
+    phone_number?: string | null;
+    business_phone?: string | null;
+  } | null = null;
   let project: { name?: string } | null = null;
 
   if (inv.client_id) {
     const { data: c } = await supabase
       .from("clients")
-      .select("name, email")
+      .select("name, email, address, phone_number, business_phone")
       .eq("id", inv.client_id)
       .single();
     client = c;
@@ -60,13 +67,15 @@ export default async function InvoiceDetailPage({
 
   const { data: items } = await supabase
     .from("invoice_items")
-    .select("id, description, quantity, unit_rate, amount, sort_order")
+    .select("id, description, quantity, unit_rate, amount, sort_order, time_log_id")
     .eq("invoice_id", id)
     .order("sort_order");
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("business_name, logo_url, full_name, phone_number, address, tax_rate, default_invoice_footer, default_invoice_terms")
+    .select(
+      "business_name, logo_url, full_name, phone_number, address, tax_rate, default_invoice_footer, default_invoice_terms, invoice_prefix"
+    )
     .eq("id", user.id)
     .single();
 
@@ -138,6 +147,11 @@ export default async function InvoiceDetailPage({
           paid_at: extras.paidAt,
           footer: extras.footer.trim() || profile?.default_invoice_footer?.trim() || "",
           terms_and_conditions: extras.terms.trim() || profile?.default_invoice_terms?.trim() || "",
+          invoice_number: extras.invoiceNumber,
+          invoice_prefix: normalizeInvoicePrefix(
+            (profile as { invoice_prefix?: string | null } | null)?.invoice_prefix
+          ),
+          has_been_emailed: !!extras.viewToken,
         }}
         client={client}
         project={project}
@@ -148,6 +162,7 @@ export default async function InvoiceDetailPage({
           unit_rate: Number(i.unit_rate) ?? 0,
           amount: Number(i.amount) ?? 0,
           sort_order: i.sort_order ?? 0,
+          time_log_id: (i as { time_log_id?: string | null }).time_log_id ?? null,
         }))}
         isFixedProject={isFixedProject}
       />

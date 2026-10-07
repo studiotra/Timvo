@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { PublicInvoiceView } from "./public-invoice-view";
 import { resolveInvoiceDisplayStatus } from "@/lib/invoices/status";
 import { resolveDisplayMoney, resolveTaxRate } from "@/lib/invoices/money";
+import { normalizeInvoicePrefix } from "@/lib/invoices/number";
 import { resolveTimezone } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
@@ -34,35 +35,55 @@ export default async function PublicInvoicePage({
     );
   }
 
-  const { data: inv, error } = await supabase
-    .from("invoices")
-    .select("id, user_id, status, total_amount, currency, issued_at, due_at, stripe_payment_url, footer, terms_and_conditions, client_id, project_id")
-    .eq("view_token", token)
-    .single();
-
-  if (error) {
-    console.error("Invoice fetch error:", error.message, error.code);
-    notFound();
+  let inv: Record<string, unknown> | null = null;
+  {
+    const withNumber = await supabase
+      .from("invoices")
+      .select(
+        "id, user_id, status, total_amount, currency, issued_at, due_at, stripe_payment_url, footer, terms_and_conditions, client_id, project_id, invoice_number"
+      )
+      .eq("view_token", token)
+      .single();
+    if (withNumber.error) {
+      const base = await supabase
+        .from("invoices")
+        .select(
+          "id, user_id, status, total_amount, currency, issued_at, due_at, stripe_payment_url, footer, terms_and_conditions, client_id, project_id"
+        )
+        .eq("view_token", token)
+        .single();
+      if (base.error) {
+        console.error("Invoice fetch error:", base.error.message, base.error.code);
+        notFound();
+      }
+      inv = base.data as Record<string, unknown> | null;
+    } else {
+      inv = withNumber.data as Record<string, unknown> | null;
+    }
   }
   if (!inv) notFound();
 
   const { data: client } = await supabase
     .from("clients")
-    .select("name, email")
-    .eq("id", inv.client_id)
+    .select("name, email, address, phone_number, business_phone")
+    .eq("id", inv.client_id as string)
     .single();
 
   const { data: project } = inv.project_id
-    ? await supabase.from("projects").select("name, tax_rate, billing_type").eq("id", inv.project_id).single()
+    ? await supabase
+        .from("projects")
+        .select("name, tax_rate, billing_type")
+        .eq("id", inv.project_id as string)
+        .single()
     : { data: null };
 
   const { data: items } = await supabase
     .from("invoice_items")
     .select("id, description, quantity, unit_rate, amount, sort_order")
-    .eq("invoice_id", inv.id)
+    .eq("invoice_id", inv.id as string)
     .order("sort_order");
 
-  const userId = (inv as { user_id?: string }).user_id;
+  const userId = inv.user_id as string | undefined;
   let businessInfo = {
     name: "Your Business",
     logoUrl: null as string | null,
@@ -73,11 +94,12 @@ export default async function PublicInvoicePage({
   let defaultTerms = "";
   let ownerTimezone = resolveTimezone(null);
   let profileTaxRate: number | null = null;
+  let invoicePrefix = "INV-";
   if (userId) {
     const { data: prof } = await supabase
       .from("profiles")
       .select(
-        "business_name, logo_url, full_name, phone_number, address, default_invoice_footer, default_invoice_terms, tax_rate, timezone"
+        "business_name, logo_url, full_name, phone_number, address, default_invoice_footer, default_invoice_terms, tax_rate, timezone, invoice_prefix"
       )
       .eq("id", userId)
       .single();
@@ -91,6 +113,7 @@ export default async function PublicInvoicePage({
     defaultTerms = prof?.default_invoice_terms?.trim() ?? "";
     ownerTimezone = resolveTimezone(prof?.timezone);
     profileTaxRate = prof?.tax_rate != null ? Number(prof.tax_rate) : null;
+    invoicePrefix = normalizeInvoicePrefix(prof?.invoice_prefix);
   }
   const taxRate = resolveTaxRate(
     (project as { tax_rate?: number | null } | null)?.tax_rate,
@@ -98,38 +121,44 @@ export default async function PublicInvoicePage({
   );
   const money = resolveDisplayMoney(
     (items ?? []).map((i) => ({ amount: Number(i.amount) ?? 0 })),
-    inv.total_amount,
+    inv.total_amount as number | null,
     taxRate
   );
 
   const displayStatus = resolveInvoiceDisplayStatus(
     {
-      status: inv.status ?? "sent",
-      due_at: inv.due_at,
+      status: (inv.status as string) ?? "sent",
+      due_at: inv.due_at as string | null,
       total_amount: money.total,
     },
     ownerTimezone
   );
+
+  const invoiceNumber =
+    inv.invoice_number != null && Number.isFinite(Number(inv.invoice_number))
+      ? Math.floor(Number(inv.invoice_number))
+      : null;
 
   return (
     <div className="min-h-screen bg-[var(--bg-app)] text-[var(--text-primary)]">
       <PublicInvoiceView
         businessInfo={businessInfo}
         invoice={{
-          id: inv.id,
+          id: inv.id as string,
           status: displayStatus,
           total_amount: money.total,
           subtotal: money.taxRate != null ? money.subtotal : undefined,
           tax_rate: money.taxRate,
           tax_amount: money.taxRate != null ? money.taxAmount : undefined,
-          currency: inv.currency ?? "USD",
-          issued_at: inv.issued_at ?? "",
-          due_at: inv.due_at ?? "",
-          stripe_payment_url: (inv as { stripe_payment_url?: string | null }).stripe_payment_url ?? null,
-          footer: ((inv as { footer?: string }).footer ?? "").trim() || defaultFooter,
+          currency: (inv.currency as string) ?? "USD",
+          issued_at: (inv.issued_at as string) ?? "",
+          due_at: (inv.due_at as string) ?? "",
+          stripe_payment_url: (inv.stripe_payment_url as string | null) ?? null,
+          footer: ((inv.footer as string) ?? "").trim() || defaultFooter,
           terms_and_conditions:
-            ((inv as { terms_and_conditions?: string }).terms_and_conditions ?? "").trim() ||
-            defaultTerms,
+            ((inv.terms_and_conditions as string) ?? "").trim() || defaultTerms,
+          invoice_number: invoiceNumber,
+          invoice_prefix: invoicePrefix,
         }}
         client={client}
         project={project}

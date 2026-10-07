@@ -8,6 +8,8 @@ import {
   isZeroMoneyTotal,
   lineAmount,
 } from "@/lib/invoices/money";
+import { localToday } from "@/lib/dates";
+import { useTimezone } from "@/contexts/timezone-context";
 
 type InvoiceData = {
   id: string;
@@ -28,6 +30,7 @@ type ItemData = {
   unit_rate: number;
   amount: number;
   sort_order: number;
+  time_log_id?: string | null;
 };
 
 export function EditInvoiceSlideOver({
@@ -47,6 +50,7 @@ export function EditInvoiceSlideOver({
   items: ItemData[];
   onSaved: () => void;
 }) {
+  const timezone = useTimezone();
   const [status, setStatus] = useState(invoice.status);
   const [issuedAt, setIssuedAt] = useState(invoice.issued_at);
   const [dueAt, setDueAt] = useState(invoice.due_at);
@@ -80,6 +84,10 @@ export function EditInvoiceSlideOver({
     }
   }, [open, invoice, items]);
 
+  function isLockedLine(item: ItemData) {
+    return !!item.time_log_id;
+  }
+
   function addItem() {
     setManualItems((prev) => [
       ...prev,
@@ -90,16 +98,22 @@ export function EditInvoiceSlideOver({
         unit_rate: 0,
         amount: 0,
         sort_order: prev.length,
+        time_log_id: null,
       },
     ]);
   }
   function removeItem(id: string) {
-    setManualItems((prev) => prev.filter((m) => m.id !== id));
+    setManualItems((prev) => {
+      const target = prev.find((m) => m.id === id);
+      if (target && isLockedLine(target)) return prev;
+      return prev.filter((m) => m.id !== id);
+    });
   }
   function updateItem(id: string, field: keyof ItemData, value: string | number) {
     setManualItems((prev) =>
       prev.map((m) => {
         if (m.id !== id) return m;
+        if (isLockedLine(m)) return m;
         const next = { ...m, [field]: value };
         if (field === "quantity" || field === "unit_rate") {
           next.amount = lineAmount(Number(next.quantity), Number(next.unit_rate));
@@ -140,6 +154,10 @@ export function EditInvoiceSlideOver({
       setError("A $0 invoice cannot be marked overdue.");
       return;
     }
+    if (status === "overdue" && dueAt && dueAt > localToday(timezone)) {
+      setError("Cannot mark overdue while the due date is still in the future.");
+      return;
+    }
     setSubmitting(true);
     setError(null);
     const formData = new FormData();
@@ -170,6 +188,8 @@ export function EditInvoiceSlideOver({
     }
     onSaved();
   }
+
+  const lockedCount = manualItems.filter(isLockedLine).length;
 
   return (
     <SlideOver open={open} onClose={onClose} title="Edit Invoice">
@@ -249,6 +269,12 @@ export function EditInvoiceSlideOver({
                 + Add line
               </button>
             </div>
+            {lockedCount > 0 && (
+              <p className="mb-2 text-[11px] text-[var(--text-muted)]">
+                {lockedCount} line{lockedCount === 1 ? "" : "s"} from time logs are
+                locked (Create & Lock).
+              </p>
+            )}
             <div className="space-y-2">
               <div className="grid grid-cols-[1fr_60px_80px_90px_auto] gap-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
                 <span>Description</span>
@@ -257,54 +283,62 @@ export function EditInvoiceSlideOver({
                 <span className="text-right">Amount</span>
                 <span />
               </div>
-              {manualItems.map((m) => (
-                <div
-                  key={m.id}
-                  className="grid grid-cols-[1fr_60px_80px_90px_auto] gap-2 items-center"
-                >
-                  <input
-                    type="text"
-                    placeholder="Description"
-                    aria-label="Description"
-                    value={m.description}
-                    onChange={(e) => updateItem(m.id, "description", e.target.value)}
-                    className="px-2 py-1.5 text-sm bg-[var(--bg-app)] border border-[var(--border)] rounded"
-                  />
-                  <input
-                    type="number"
-                    step="0.01"
-                    aria-label="Quantity"
-                    value={m.quantity}
-                    onChange={(e) => {
-                      const qty = parseFloat(e.target.value);
-                      updateItem(m.id, "quantity", Number.isFinite(qty) ? qty : 0);
-                    }}
-                    className="px-2 py-1.5 text-sm font-mono bg-[var(--bg-app)] border border-[var(--border)] rounded"
-                  />
-                  <input
-                    type="number"
-                    step="0.01"
-                    aria-label="Rate"
-                    value={m.unit_rate}
-                    onChange={(e) => {
-                      const rate = parseFloat(e.target.value);
-                      updateItem(m.id, "unit_rate", Number.isFinite(rate) ? rate : 0);
-                    }}
-                    className="px-2 py-1.5 text-sm font-mono bg-[var(--bg-app)] border border-[var(--border)] rounded"
-                  />
-                  <span className="px-2 py-1.5 text-sm font-mono text-right text-[var(--text-secondary)]">
-                    ${lineAmount(m.quantity, m.unit_rate).toFixed(2)}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => removeItem(m.id)}
-                    className="text-red-400 hover:text-red-300 text-sm"
-                    aria-label="Remove"
+              {manualItems.map((m) => {
+                const locked = isLockedLine(m);
+                return (
+                  <div
+                    key={m.id}
+                    className="grid grid-cols-[1fr_60px_80px_90px_auto] gap-2 items-center"
                   >
-                    ✕
-                  </button>
-                </div>
-              ))}
+                    <input
+                      type="text"
+                      placeholder="Description"
+                      aria-label="Description"
+                      value={m.description}
+                      onChange={(e) => updateItem(m.id, "description", e.target.value)}
+                      disabled={locked}
+                      className="px-2 py-1.5 text-sm bg-[var(--bg-app)] border border-[var(--border)] rounded disabled:opacity-60"
+                    />
+                    <input
+                      type="number"
+                      step="0.01"
+                      aria-label="Quantity"
+                      value={m.quantity}
+                      onChange={(e) => {
+                        const qty = parseFloat(e.target.value);
+                        updateItem(m.id, "quantity", Number.isFinite(qty) ? qty : 0);
+                      }}
+                      disabled={locked}
+                      className="px-2 py-1.5 text-sm font-mono bg-[var(--bg-app)] border border-[var(--border)] rounded disabled:opacity-60"
+                    />
+                    <input
+                      type="number"
+                      step="0.01"
+                      aria-label="Rate"
+                      value={m.unit_rate}
+                      onChange={(e) => {
+                        const rate = parseFloat(e.target.value);
+                        updateItem(m.id, "unit_rate", Number.isFinite(rate) ? rate : 0);
+                      }}
+                      disabled={locked}
+                      className="px-2 py-1.5 text-sm font-mono bg-[var(--bg-app)] border border-[var(--border)] rounded disabled:opacity-60"
+                    />
+                    <span className="px-2 py-1.5 text-sm font-mono text-right text-[var(--text-secondary)]">
+                      ${lineAmount(m.quantity, m.unit_rate).toFixed(2)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removeItem(m.id)}
+                      disabled={locked}
+                      className="text-red-400 hover:text-red-300 text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+                      aria-label={locked ? "Locked from time log" : "Remove"}
+                      title={locked ? "Locked from time log" : "Remove"}
+                    >
+                      {locked ? "·" : "✕"}
+                    </button>
+                  </div>
+                );
+              })}
             </div>
             <p className="mt-1 text-[11px] text-[var(--text-muted)]">
               Negative rates are allowed for discounts. Amount is always qty × rate.

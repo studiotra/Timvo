@@ -1,6 +1,8 @@
 "use client";
 
 import Image from "next/image";
+import { formatDateOnly } from "@/lib/dates";
+import { invoiceNumberLabel } from "@/lib/invoices/number";
 
 type BusinessInfo = {
   name: string;
@@ -22,6 +24,8 @@ type InvoiceData = {
   stripe_payment_url: string | null;
   footer: string;
   terms_and_conditions: string;
+  invoice_number?: number | null;
+  invoice_prefix?: string | null;
 };
 
 type ItemData = {
@@ -31,6 +35,14 @@ type ItemData = {
   unit_rate: number;
   amount: number;
   sort_order: number;
+};
+
+type ClientInfo = {
+  name?: string;
+  email?: string;
+  address?: string | null;
+  phone_number?: string | null;
+  business_phone?: string | null;
 };
 
 export function PublicInvoiceView({
@@ -44,7 +56,7 @@ export function PublicInvoiceView({
 }: {
   businessInfo: BusinessInfo;
   invoice: InvoiceData;
-  client: { name?: string; email?: string } | null;
+  client: ClientInfo | null;
   project: { name?: string } | null;
   items: ItemData[];
   paidSuccess?: boolean;
@@ -52,6 +64,12 @@ export function PublicInvoiceView({
 }) {
   const footerText = invoice.footer?.trim() ?? "";
   const termsText = invoice.terms_and_conditions?.trim() ?? "";
+  const displayNumber = invoiceNumberLabel(
+    invoice.invoice_prefix,
+    invoice.invoice_number
+  );
+  const clientPhone = client?.phone_number || client?.business_phone || null;
+  const dateOpts = { year: "numeric" as const, month: "short" as const, day: "numeric" as const };
 
   return (
     <div className="min-h-screen py-12 px-4">
@@ -83,7 +101,7 @@ export function PublicInvoiceView({
             </div>
             <div className="text-right">
               <p className="text-xs uppercase tracking-wider text-[var(--text-secondary)]">
-                Invoice #{invoice.id.slice(0, 8)}
+                Invoice {displayNumber}
               </p>
               <span
                 className={`mt-1 inline-block rounded px-2 py-0.5 text-xs font-semibold uppercase ${
@@ -119,15 +137,19 @@ export function PublicInvoiceView({
                 Bill To
               </p>
               <p className="font-semibold text-[var(--text-primary)]">{client?.name ?? "—"}</p>
-              {client?.email && (
-                <p className="text-sm text-[var(--text-secondary)]">{client.email}</p>
-              )}
+              <div className="mt-1 text-sm text-[var(--text-secondary)] space-y-0.5">
+                {client?.email && <p>{client.email}</p>}
+                {client?.address && (
+                  <p className="whitespace-pre-wrap">{client.address}</p>
+                )}
+                {clientPhone && <p>{clientPhone}</p>}
+              </div>
             </div>
           </div>
 
           <div className="flex justify-end gap-8 mb-8 text-sm text-[var(--text-secondary)]">
-            <span>Issued: {invoice.issued_at || "—"}</span>
-            <span>Due: {invoice.due_at || "—"}</span>
+            <span>Issued: {formatDateOnly(invoice.issued_at, dateOpts)}</span>
+            <span>Due: {formatDateOnly(invoice.due_at, dateOpts)}</span>
             {project?.name && <span>Project: {project.name}</span>}
           </div>
 
