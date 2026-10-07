@@ -4,11 +4,14 @@ import { useState, useMemo, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ProjectSlideOver } from "@/components/project-slide-over";
+import { ClientSlideOver } from "@/components/client-slide-over";
 import { ShareProjectToOrgButton } from "@/components/share-project-to-org-button";
 import { deleteProject } from "@/app/actions/projects";
 import type { ProjectListItem } from "@/types/database";
 import type { ContractorOrgOption } from "@/app/actions/organizations";
 import type { ProjectShareStatus } from "@/app/actions/project-shares";
+import type { ClientSummary } from "@/lib/clients/summary";
+import { formatCurrencyAmount } from "@/lib/clients/summary";
 
 type ProjectWithCreated = ProjectListItem & { created_at?: string };
 type ProjectEffectiveRate = {
@@ -51,6 +54,7 @@ export function ProjectContent({
   organizations = [],
   sharesByProject = {},
   effectiveRatesByProject = new Map<string, ProjectEffectiveRate>(),
+  summary,
 }: {
   client: {
     id: string;
@@ -58,6 +62,7 @@ export function ProjectContent({
     email: string | null;
     tax_id: string | null;
     currency: string;
+    status?: "active" | "archived";
     address?: string | null;
     phone_number?: string | null;
     business_phone?: string | null;
@@ -68,9 +73,11 @@ export function ProjectContent({
   organizations?: ContractorOrgOption[];
   sharesByProject?: Record<string, ProjectShareStatus[]>;
   effectiveRatesByProject?: Map<string, ProjectEffectiveRate>;
+  summary?: ClientSummary;
 }) {
   const router = useRouter();
   const [slideOpen, setSlideOpen] = useState(false);
+  const [clientEditOpen, setClientEditOpen] = useState(false);
   const [editing, setEditing] = useState<ProjectListItem | null>(null);
   const [sortBy, setSortBy] = useState<SortOption>("name-asc");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("active");
@@ -146,13 +153,76 @@ export function ProjectContent({
             )}
           </div>
         </div>
-        <button
-          onClick={openAdd}
-          className="w-fit shrink-0 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-hover"
-        >
-          Add Project
-        </button>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <button
+            onClick={() => setClientEditOpen(true)}
+            className="w-fit rounded-lg border border-[var(--border)] px-4 py-2 text-sm font-semibold text-[var(--text-primary)] hover:bg-[var(--bg-card)]"
+          >
+            Edit
+          </button>
+          <button
+            onClick={openAdd}
+            className="w-fit rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-hover"
+          >
+            Add Project
+          </button>
+        </div>
       </header>
+
+      {summary && (
+        <div className="mb-6 grid gap-3 sm:grid-cols-3">
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-4">
+            <p className="text-xs font-bold uppercase tracking-wide text-[var(--text-muted)]">
+              Hours
+            </p>
+            <p className="mt-1 font-mono text-xl text-[var(--text-primary)]">
+              {summary.totalHours.toFixed(1)}h
+            </p>
+          </div>
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-4">
+            <p className="text-xs font-bold uppercase tracking-wide text-[var(--text-muted)]">
+              Unbilled
+            </p>
+            <p className="mt-1 font-mono text-xl text-[var(--text-primary)]">
+              {formatCurrencyAmount(summary.unbilledAmount, client.currency)}
+            </p>
+          </div>
+          <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-4">
+            <p className="text-xs font-bold uppercase tracking-wide text-[var(--text-muted)]">
+              Invoices
+            </p>
+            <p className="mt-1 font-mono text-xl text-[var(--text-primary)]">
+              {formatCurrencyAmount(summary.invoiceTotal, client.currency)}
+            </p>
+            <p className="mt-0.5 text-xs text-[var(--text-muted)]">
+              {formatCurrencyAmount(summary.paidInvoiceTotal, client.currency)}{" "}
+              paid
+            </p>
+          </div>
+        </div>
+      )}
+
+      <ClientSlideOver
+        open={clientEditOpen}
+        onClose={() => {
+          setClientEditOpen(false);
+          router.refresh();
+        }}
+        client={{
+          id: client.id,
+          name: client.name,
+          email: client.email,
+          tax_id: client.tax_id,
+          currency: client.currency,
+          status: client.status ?? "active",
+          address: client.address ?? null,
+          phone_number: client.phone_number ?? null,
+          business_phone: client.business_phone ?? null,
+          extension: client.extension ?? null,
+          note: client.note ?? null,
+          project_count: projects.length,
+        }}
+      />
 
       <ProjectSlideOver
         open={slideOpen}

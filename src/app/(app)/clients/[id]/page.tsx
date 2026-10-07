@@ -4,6 +4,7 @@ import { ProjectContent } from "./project-content";
 import { getProjectEffectiveRates } from "@/app/actions/effective-rates";
 import { getContractorOrganizations } from "@/app/actions/organizations";
 import { getProjectSharesForProjects } from "@/app/actions/project-shares";
+import { getClientBillingSummary } from "@/app/actions/client-summary";
 
 export default async function ClientDetailPage({
   params,
@@ -23,7 +24,7 @@ export default async function ClientDetailPage({
   const { data: client } = await supabase
     .from("clients")
     .select(
-      "id, name, email, tax_id, currency, address, phone_number, business_phone, extension, note"
+      "id, name, email, tax_id, currency, status, address, phone_number, business_phone, extension, note"
     )
     .eq("id", id)
     .eq("user_id", user.id)
@@ -33,7 +34,7 @@ export default async function ClientDetailPage({
     notFound();
   }
 
-  const [projectsRes, projectRates, organizations] = await Promise.all([
+  const [projectsRes, projectRates, organizations, summary] = await Promise.all([
     supabase
       .from("projects")
       .select(
@@ -43,6 +44,7 @@ export default async function ClientDetailPage({
       .order("name"),
     getProjectEffectiveRates(id),
     getContractorOrganizations(),
+    getClientBillingSummary(id),
   ]);
   const projects = projectsRes.data ?? [];
   const effectiveRatesByProject = new Map(
@@ -60,6 +62,7 @@ export default async function ClientDetailPage({
         organizations={organizations}
         sharesByProject={sharesByProject}
         effectiveRatesByProject={effectiveRatesByProject}
+        summary={summary}
       />
     </div>
   );
