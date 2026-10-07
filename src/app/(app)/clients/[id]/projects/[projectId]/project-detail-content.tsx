@@ -13,11 +13,22 @@ import {
   updateTask,
   deleteTask,
   getTaskTimeLogCount,
+  reorderTasks,
 } from "@/app/actions/clients-projects";
 import type { ProjectListItem } from "@/types/database";
 import { getServicesForSelect } from "@/app/actions/services";
+import { formatDateOnly } from "@/lib/dates";
 
-type TaskRow = { id: string | null; name: string; serviceId?: string | null; serviceName?: string | null; totalMinutes: number };
+type TaskRow = {
+  id: string | null;
+  name: string;
+  serviceId?: string | null;
+  serviceName?: string | null;
+  totalMinutes: number;
+  isDone?: boolean;
+  dueDate?: string | null;
+  sortOrder?: number;
+};
 type ServiceOpt = { id: string; name: string };
 
 type Client = {
@@ -33,11 +44,13 @@ export function ProjectDetailContent({
   project,
   tasks,
   totalMinutes = 0,
+  taskFeatures = { extras: false },
 }: {
   client: Client;
   project: ProjectListItem;
   tasks: TaskRow[];
   totalMinutes?: number;
+  taskFeatures?: { extras: boolean };
 }) {
   const router = useRouter();
   const [slideOpen, setSlideOpen] = useState(false);
@@ -48,6 +61,9 @@ export function ProjectDetailContent({
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editingTaskName, setEditingTaskName] = useState("");
   const [editingTaskServiceId, setEditingTaskServiceId] = useState("");
+  const [editingTaskDueDate, setEditingTaskDueDate] = useState("");
+  const [savingTask, setSavingTask] = useState(false);
+  const [reordering, setReordering] = useState(false);
 
   async function handleDeleteProject() {
     if (!confirm("Delete this project?")) return;
@@ -69,30 +85,73 @@ export function ProjectDetailContent({
     setEditingTaskId(task.id);
     setEditingTaskName(task.name);
     setEditingTaskServiceId(task.serviceId ?? "");
+    setEditingTaskDueDate(task.dueDate ?? "");
+  }
+
+  function clearEditState() {
+    setEditingTaskId(null);
+    setEditingTaskName("");
+    setEditingTaskServiceId("");
+    setEditingTaskDueDate("");
   }
 
   async function handleUpdateTask() {
-    if (!editingTaskId) return;
-    const updates: { name?: string; serviceId?: string } = {};
+    if (!editingTaskId || savingTask) return;
+    const updates: {
+      name?: string;
+      serviceId?: string;
+      dueDate?: string | null;
+    } = {};
     if (editingTaskName.trim()) updates.name = editingTaskName.trim();
     if (editingTaskServiceId) updates.serviceId = editingTaskServiceId;
+    if (taskFeatures.extras) {
+      updates.dueDate = editingTaskDueDate.trim() || null;
+    }
+    setSavingTask(true);
     const r = await updateTask(project.id, editingTaskId, updates);
+    setSavingTask(false);
     if (r?.error) {
       toast.error(r.error);
       return;
     }
-    setEditingTaskId(null);
-    setEditingTaskName("");
-    setEditingTaskServiceId("");
+    clearEditState();
+    router.refresh();
+  }
+
+  async function handleToggleDone(task: TaskRow) {
+    if (!task.id || !taskFeatures.extras) return;
+    const r = await updateTask(project.id, task.id, { isDone: !task.isDone });
+    if (r?.error) {
+      toast.error(r.error);
+      return;
+    }
+    router.refresh();
+  }
+
+  async function handleMoveTask(taskId: string, direction: -1 | 1) {
+    if (!taskFeatures.extras || reordering) return;
+    const realIds = tasks.filter((t) => t.id).map((t) => t.id as string);
+    const idx = realIds.indexOf(taskId);
+    const swapWith = idx + direction;
+    if (idx < 0 || swapWith < 0 || swapWith >= realIds.length) return;
+    const next = [...realIds];
+    [next[idx], next[swapWith]] = [next[swapWith], next[idx]];
+    setReordering(true);
+    const r = await reorderTasks(project.id, next);
+    setReordering(false);
+    if (r?.error) {
+      toast.error(r.error);
+      return;
+    }
     router.refresh();
   }
 
   async function handleDeleteTask(taskId: string | null, taskName: string) {
     if (!taskId) return;
-    const { count, totalMinutes } = await getTaskTimeLogCount(taskId);
+    const { count, totalMinutes: mins } = await getTaskTimeLogCount(taskId);
     const warning =
       count > 0
-        ? `This task "${taskName}" has ${count} time log(s) (${totalMinutes} minutes recorded). The time will be kept but unassigned from this task. Delete anyway?`
+        ? `This task "${taskName}" has ${count} time log(s) (${mins} minutes recorded). The time will be kept but unassigned from this task. Delete anyway?`
         : `Delete task "${taskName}"?`;
     if (!confirm(warning)) return;
     const r = await deleteTask(taskId);
@@ -100,8 +159,11 @@ export function ProjectDetailContent({
       toast.error(r.error);
       return;
     }
+    toast.success("Task deleted");
     router.refresh();
   }
+
+  const realTaskIds = tasks.filter((t) => t.id).map((t) => t.id as string);
 
   return (
     <>
@@ -312,15 +374,27 @@ export function ProjectDetailContent({
               No tasks yet. Add a task manually or log time — tasks will appear as you track.
             </p>
           ) : null}
+          {!taskFeatures.extras && tasks.some((t) => t.id) ? (
+            <p className="mb-3 text-xs text-[var(--text-muted)]">
+              Done, due date, and reorder need a database update before they appear.
+            </p>
+          ) : null}
           {tasks.length > 0 && (
             <ul className="space-y-2 mb-3">
-              {tasks.map((task, i) => (
+              {tasks.map((task, i) => {
+                const realIdx = task.id ? realTaskIds.indexOf(task.id) : -1;
+                const canMoveUp = taskFeatures.extras && realIdx > 0;
+                const canMoveDown =
+                  taskFeatures.extras &&
+                  realIdx >= 0 &&
+                  realIdx < realTaskIds.length - 1;
+                return (
                 <li
                   key={task.id ?? `derived-${task.name}-${i}`}
                   className="flex items-center justify-between gap-2 group/task py-2"
                 >
                   {editingTaskId != null && editingTaskId === task.id ? (
-                    <div className="flex gap-2 flex-1 flex-wrap">
+                    <div className="flex gap-2 flex-1 flex-wrap items-center">
                       <input
                         type="text"
                         value={editingTaskName}
@@ -330,30 +404,40 @@ export function ProjectDetailContent({
                         }
                         className="min-w-[120px] flex-1 rounded border border-[var(--border)] bg-[var(--bg-app)] px-2 py-1.5 text-sm"
                         placeholder="Task name"
+                        aria-label="Task name"
                       />
                       <select
                         value={editingTaskServiceId}
                         onChange={(e) => setEditingTaskServiceId(e.target.value)}
                         className="rounded border border-[var(--border)] bg-[var(--bg-app)] px-2 py-1.5 text-sm"
+                        aria-label="Service"
                       >
                         <option value="">Service</option>
                         {services.map((s) => (
                           <option key={s.id} value={s.id}>{s.name}</option>
                         ))}
                       </select>
+                      {taskFeatures.extras && (
+                        <input
+                          type="date"
+                          value={editingTaskDueDate}
+                          onChange={(e) => setEditingTaskDueDate(e.target.value)}
+                          className="rounded border border-[var(--border)] bg-[var(--bg-app)] px-2 py-1.5 text-sm"
+                          aria-label="Due date"
+                        />
+                      )}
                       <button
                         type="button"
                         onClick={handleUpdateTask}
-                        className="text-sm text-accent hover:underline"
+                        disabled={savingTask}
+                        className="text-sm text-accent hover:underline disabled:opacity-50"
                       >
-                        Save
+                        {savingTask ? "Saving…" : "Save"}
                       </button>
                       <button
                         type="button"
-                        onClick={() => {
-                          setEditingTaskId(null);
-                          setEditingTaskName("");
-                        }}
+                        onClick={clearEditState}
+                        disabled={savingTask}
                         className="text-sm text-[var(--text-muted)] hover:underline"
                       >
                         Cancel
@@ -361,19 +445,67 @@ export function ProjectDetailContent({
                     </div>
                   ) : (
                     <>
-                      <span className="text-sm text-[var(--text-primary)] font-medium">
-                        {task.name}
-                        {task.serviceName && (
-                          <span className="ml-2 inline-flex rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-medium text-emerald-400">
-                            {task.serviceName}
+                      <div className="flex min-w-0 flex-1 items-center gap-2">
+                        {task.id && taskFeatures.extras ? (
+                          <input
+                            type="checkbox"
+                            checked={!!task.isDone}
+                            onChange={() => handleToggleDone(task)}
+                            className="h-4 w-4 shrink-0 rounded border-[var(--border)]"
+                            aria-label={
+                              task.isDone
+                                ? `Mark "${task.name}" not done`
+                                : `Mark "${task.name}" done`
+                            }
+                          />
+                        ) : null}
+                        <span
+                          className={`text-sm font-medium ${
+                            task.isDone
+                              ? "text-[var(--text-muted)] line-through"
+                              : "text-[var(--text-primary)]"
+                          }`}
+                        >
+                          {task.name}
+                          {task.serviceName && (
+                            <span className="ml-2 inline-flex rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-medium text-emerald-400 no-underline">
+                              {task.serviceName}
+                            </span>
+                          )}
+                          {taskFeatures.extras && task.dueDate && (
+                            <span className="ml-2 text-xs text-[var(--text-secondary)] no-underline">
+                              Due {formatDateOnly(task.dueDate)}
+                            </span>
+                          )}
+                          <span className="ml-2 font-mono text-xs text-[var(--text-secondary)] no-underline">
+                            Total: {(task.totalMinutes / 60).toFixed(1)}h
                           </span>
-                        )}
-                        <span className="ml-2 font-mono text-xs text-[var(--text-secondary)]">
-                          Total: {(task.totalMinutes / 60).toFixed(1)}h
                         </span>
-                      </span>
+                      </div>
                       {task.id ? (
-                        <div className="flex gap-2 opacity-0 group-hover/task:opacity-100 transition-opacity">
+                        <div className="flex shrink-0 items-center gap-2 opacity-0 group-hover/task:opacity-100 transition-opacity">
+                          {taskFeatures.extras && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleMoveTask(task.id!, -1)}
+                                disabled={!canMoveUp || reordering}
+                                className="text-xs text-[var(--text-muted)] hover:underline disabled:opacity-30"
+                                aria-label="Move up"
+                              >
+                                ↑
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleMoveTask(task.id!, 1)}
+                                disabled={!canMoveDown || reordering}
+                                className="text-xs text-[var(--text-muted)] hover:underline disabled:opacity-30"
+                                aria-label="Move down"
+                              >
+                                ↓
+                              </button>
+                            </>
+                          )}
                           <button
                             type="button"
                             onClick={() => startEditTask(task)}
@@ -395,7 +527,8 @@ export function ProjectDetailContent({
                     </>
                   )}
                 </li>
-              ))}
+              );
+              })}
             </ul>
           )}
           <button
