@@ -19,7 +19,7 @@ export default async function OrgLogsPage({
   const params = await searchParams;
   const displayMode =
     params.display === "calendar" || params.display === "map" ? params.display : "list";
-  const view = displayMode === "calendar" ? "week" : ((params.view || "week") as "week" | "month");
+  const view = (params.view === "month" ? "month" : "week") as "week" | "month";
   const offset = parseInt(params.offset || "0", 10);
   const filters = {
     clientId: params.client || undefined,

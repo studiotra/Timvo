@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, ChevronRight, Pencil, Plus, Trash2, List, Calendar, Map as MapIcon } from "lucide-react";
 import { type TimeLogRow, getTimeLogs, deleteTimeLog } from "@/app/actions/time-logs";
+import { DayLogsSlideOver } from "@/components/day-logs-slide-over";
 import { EditLogSlideOver } from "@/components/edit-log-slide-over";
 import { ManualLogSlideOver } from "@/components/manual-log-slide-over";
 import { SubmitToOrgBar } from "@/components/submit-to-org-bar";
@@ -16,7 +17,15 @@ import {
   formatInstantAsLocalDate,
   getMonthRange,
   getWeekRange,
+  localToday,
 } from "@/lib/dates";
+import {
+  buildMonthGrid,
+  dayLogVisibility,
+  formatDayDuration,
+  MONTH_VISIBLE_LOGS,
+  WEEK_VISIBLE_LOGS,
+} from "@/lib/logs/calendar";
 
 type ViewMode = "week" | "month";
 type DisplayMode = "list" | "calendar" | "map";
@@ -59,11 +68,12 @@ export function LogsContent({
     ? searchParams.get("display")
     : initialDisplayMode) as DisplayMode;
   const mapGroup = (searchParams.get("group") || "all") as MapGroup;
-  const view = displayMode === "calendar" ? "week" : (searchParams.get("view") || "week") as ViewMode;
+  const view = (searchParams.get("view") === "month" ? "month" : "week") as ViewMode;
   const offset = parseInt(searchParams.get("offset") || "0", 10);
 
   const [localLogs, setLocalLogs] = useState(logs);
   const [editingLog, setEditingLog] = useState<TimeLogRow | null>(null);
+  const [dayListDateKey, setDayListDateKey] = useState<string | null>(null);
   const [addLogOpen, setAddLogOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -81,6 +91,10 @@ export function LogsContent({
     setToDate(searchParams.get("to") ?? "");
   }, [searchParams]);
 
+  useEffect(() => {
+    setDayListDateKey(null);
+  }, [view, offset, displayMode]);
+
   async function refreshLogsList() {
     const filters =
       clientFilter || fromDate || toDate
@@ -90,8 +104,7 @@ export function LogsContent({
             toDate: toDate || undefined,
           }
         : undefined;
-    const listView = displayMode === "calendar" ? "week" : view;
-    const fresh = await getTimeLogs(listView, offset, filters);
+    const fresh = await getTimeLogs(view, offset, filters);
     setLocalLogs(fresh);
   }
 
@@ -124,10 +137,28 @@ export function LogsContent({
     const params = new URLSearchParams(searchParams);
     params.set("display", d);
     if (d === "calendar") {
-      params.set("view", "week");
-      params.set("offset", "0");
+      const existing = params.get("view");
+      if (existing !== "week" && existing !== "month") {
+        params.set("view", "week");
+      }
+      if (!params.get("offset")) {
+        params.set("offset", "0");
+      }
     }
     router.push(`${basePath}?${params.toString()}`);
+  }
+
+  function openDayList(dateKey: string) {
+    setDayListDateKey(dateKey);
+  }
+
+  function closeDayList() {
+    setDayListDateKey(null);
+  }
+
+  function selectLogFromDayList(log: TimeLogRow) {
+    setDayListDateKey(null);
+    setEditingLog(log);
   }
 
   function applyFilters() {
@@ -189,6 +220,19 @@ export function LogsContent({
       return { key, label: formatDateOnly(key) };
     });
   }, [weekRange.mondayDate]);
+
+  const todayKey = useMemo(() => localToday(timezone), [timezone]);
+
+  const monthGrid = useMemo(() => {
+    if (view !== "month") return [];
+    const { monthDate } = getMonthRange(timezone, offset);
+    return buildMonthGrid(monthDate, todayKey);
+  }, [view, timezone, offset, todayKey]);
+
+  const dayListLogs = useMemo(() => {
+    if (!dayListDateKey) return [];
+    return logsByDay[dayListDateKey] ?? [];
+  }, [dayListDateKey, logsByDay]);
 
   const showSelection = organizations.length > 0;
 
@@ -294,15 +338,17 @@ export function LogsContent({
               ))}
             </div>
           )}
-          {displayMode === "list" && (
+          {(displayMode === "list" || displayMode === "calendar") && (
             <div className="flex rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-1">
               <button
+                type="button"
                 onClick={() => setViewOffset("week", 0)}
                 className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${view === "week" ? "bg-accent text-white" : "text-[var(--text-secondary)] hover:bg-white/5"}`}
               >
                 Week
               </button>
               <button
+                type="button"
                 onClick={() => setViewOffset("month", 0)}
                 className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${view === "month" ? "bg-accent text-white" : "text-[var(--text-secondary)] hover:bg-white/5"}`}
               >
@@ -313,6 +359,7 @@ export function LogsContent({
           {displayMode === "list" && (
             <div className="flex items-center gap-1">
               <button
+                type="button"
                 onClick={() => setViewOffset(view, offset - 1)}
                 className="rounded-lg border border-[var(--border)] p-2 text-[var(--text-secondary)] hover:bg-[var(--bg-card)] hover:text-[var(--text-primary)]"
                 aria-label="Previous"
@@ -323,6 +370,7 @@ export function LogsContent({
                 {label}
               </span>
               <button
+                type="button"
                 onClick={() => setViewOffset(view, offset + 1)}
                 className="rounded-lg border border-[var(--border)] p-2 text-[var(--text-secondary)] hover:bg-[var(--bg-card)] hover:text-[var(--text-primary)]"
                 aria-label="Next"
@@ -343,7 +391,8 @@ export function LogsContent({
       </div>
 
       {/* Weekly summary: hours by day, by client */}
-      {(displayMode === "calendar" || (displayMode === "list" && view === "week" && !fromDate && !toDate)) && (
+      {((displayMode === "calendar" && view === "week") ||
+        (displayMode === "list" && view === "week" && !fromDate && !toDate)) && (
         <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-4">
           <h3 className="mb-3 text-sm font-semibold text-[var(--text-primary)]">Weekly summary</h3>
           <div className="flex flex-wrap gap-6">
@@ -404,76 +453,215 @@ export function LogsContent({
         />
       ) : displayMode === "calendar" ? (
         <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden">
-          <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3 sm:px-5 sm:py-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] px-4 py-3 sm:px-5 sm:py-4">
             <h2 className="text-base font-bold text-[var(--text-primary)] sm:text-lg">
-              {formatWeekLabel(timezone, offset)}
+              {view === "week"
+                ? formatWeekLabel(timezone, offset)
+                : formatMonthLabel(timezone, offset)}
             </h2>
             <div className="flex items-center gap-1">
               <button
-                onClick={() => {
-                  const params = new URLSearchParams(searchParams);
-                  params.set("offset", String(offset - 1));
-                  router.push(`${basePath}?${params.toString()}`);
-                }}
+                type="button"
+                onClick={() => setViewOffset(view, offset - 1)}
                 className="rounded-lg border border-[var(--border)] p-2 text-[var(--text-secondary)] hover:bg-[var(--bg-app)]"
+                aria-label="Previous"
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
               <button
-                onClick={() => {
-                  const params = new URLSearchParams(searchParams);
-                  params.set("offset", String(offset + 1));
-                  router.push(`${basePath}?${params.toString()}`);
-                }}
+                type="button"
+                onClick={() => setViewOffset(view, 0)}
+                className="rounded-lg border border-[var(--border)] px-2.5 py-1.5 text-xs font-medium text-[var(--text-secondary)] hover:bg-[var(--bg-app)] hover:text-[var(--text-primary)] sm:text-sm"
+              >
+                Today
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewOffset(view, offset + 1)}
                 className="rounded-lg border border-[var(--border)] p-2 text-[var(--text-secondary)] hover:bg-[var(--bg-app)]"
+                aria-label="Next"
               >
                 <ChevronRight className="h-4 w-4" />
               </button>
             </div>
           </div>
           <div className="grid grid-cols-7 border-b border-[var(--border)]">
-            {weekDays.map(({ key }, i) => (
-              <div key={key} className="px-1 py-2 text-center text-[9px] font-bold uppercase text-[var(--text-muted)] sm:px-2 sm:text-[10px]">
-                {dayLabels[i]}
+            {dayLabels.map((label) => (
+              <div
+                key={label}
+                className="px-1 py-2 text-center text-[9px] font-bold uppercase text-[var(--text-muted)] sm:px-2 sm:text-[10px]"
+              >
+                {label}
               </div>
             ))}
           </div>
-          <div className="grid grid-cols-7">
-            {weekDays.map(({ key }) => {
-              const dayLogs = logsByDay[key] ?? [];
-              const dayMins = dayLogs.reduce((s, l) => s + (l.duration_minutes ?? 0), 0);
-              const dayNum = Number(key.slice(8, 10));
-              return (
-                <div
-                  key={key}
-                  className="aspect-[1.6/1] border-b border-r border-[var(--border)] p-1.5 last:border-r-0 sm:p-2"
-                >
-                  <div className="text-[10px] font-semibold text-[var(--text-muted)] mb-0.5 sm:text-[11px] sm:mb-1">
-                    {dayNum}
-                  </div>
-                  <div className="space-y-0.5 sm:space-y-1">
-                    {dayLogs.slice(0, 3).map((log) => (
-                      <button
-                        key={log.id}
-                        onClick={() => setEditingLog(log)}
-                        className="block w-full text-left text-[9px] truncate rounded px-1 py-0.5 bg-indigo-500/15 text-[var(--accent-text)] hover:bg-indigo-500/25 sm:text-[10px]"
-                      >
-                        {log.project_name}: {log.duration_minutes}m
-                      </button>
-                    ))}
-                    {dayLogs.length > 3 && (
-                      <span className="text-[8px] text-[var(--text-muted)] sm:text-[9px]">+{dayLogs.length - 3}</span>
+          {view === "week" ? (
+            <div className="grid grid-cols-7">
+              {weekDays.map(({ key }) => {
+                const dayLogs = logsByDay[key] ?? [];
+                const dayMins = dayLogs.reduce((s, l) => s + (l.duration_minutes ?? 0), 0);
+                const dayNum = Number(key.slice(8, 10));
+                const { visibleCount, overflowCount } = dayLogVisibility(
+                  dayLogs.length,
+                  WEEK_VISIBLE_LOGS
+                );
+                const isToday = key === todayKey;
+                const dayOpen = dayListDateKey === key;
+                return (
+                  <div
+                    key={key}
+                    className={`flex min-h-[160px] flex-col border-b border-r border-[var(--border)] p-1.5 last:border-r-0 sm:min-h-[200px] sm:p-2 lg:min-h-[220px] ${
+                      isToday ? "bg-accent/5" : ""
+                    }`}
+                  >
+                    <div
+                      className={`mb-0.5 text-[10px] font-semibold sm:mb-1 sm:text-[11px] ${
+                        isToday ? "text-accent" : "text-[var(--text-muted)]"
+                      }`}
+                    >
+                      {dayNum}
+                    </div>
+                    <div className="min-h-0 flex-1 space-y-0.5 overflow-hidden sm:space-y-1">
+                      {dayLogs.slice(0, visibleCount).map((log) => (
+                        <button
+                          key={log.id}
+                          type="button"
+                          onClick={() => setEditingLog(log)}
+                          className="block w-full truncate rounded px-1 py-0.5 text-left text-[9px] bg-indigo-500/15 text-[var(--accent-text)] hover:bg-indigo-500/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent sm:text-[10px]"
+                        >
+                          {log.project_name}: {log.duration_minutes}m
+                        </button>
+                      ))}
+                      {overflowCount > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => openDayList(key)}
+                          aria-label={`Show all ${dayLogs.length} logs for ${formatDateOnly(key, { month: "long", year: "numeric" })}`}
+                          aria-haspopup="dialog"
+                          aria-expanded={dayOpen}
+                          className="block w-full rounded px-1 py-0.5 text-left text-[8px] text-[var(--text-muted)] hover:bg-[var(--row-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent sm:text-[9px]"
+                        >
+                          +{overflowCount} more
+                        </button>
+                      )}
+                    </div>
+                    {dayLogs.length > 0 && (
+                      <div className="mt-auto pt-0.5 font-mono text-[8px] text-[var(--text-muted)] sm:pt-1 sm:text-[9px]">
+                        {formatDayDuration(dayMins)}
+                      </div>
                     )}
                   </div>
-                  {dayLogs.length > 0 && (
-                    <div className="mt-0.5 text-[8px] font-mono text-[var(--text-muted)] sm:mt-1 sm:text-[9px]">
-                      {Math.floor(dayMins / 60)}h {dayMins % 60}m
-                    </div>
-                  )}
+                );
+              })}
+            </div>
+          ) : (
+            <div>
+              {monthGrid.map((week) => (
+                <div key={week[0].dateKey} className="grid grid-cols-7">
+                  {week.map((cell) => {
+                    const dayLogs = cell.inMonth ? (logsByDay[cell.dateKey] ?? []) : [];
+                    const dayMins = dayLogs.reduce((s, l) => s + (l.duration_minutes ?? 0), 0);
+                    const { visibleCount, overflowCount } = dayLogVisibility(
+                      dayLogs.length,
+                      MONTH_VISIBLE_LOGS
+                    );
+                    const dayOpen = dayListDateKey === cell.dateKey;
+                    const dim = !cell.inMonth;
+                    return (
+                      <div
+                        key={cell.dateKey}
+                        className={`min-h-[64px] border-b border-r border-[var(--border)] p-1 last:border-r-0 sm:min-h-[96px] sm:p-1.5 lg:min-h-[110px] ${
+                          cell.isToday ? "bg-accent/5" : ""
+                        } ${dim ? "bg-[var(--bg-app)]/40" : ""}`}
+                      >
+                        {/* Narrow screens: day number + total + count opens day list */}
+                        <button
+                          type="button"
+                          disabled={dim || dayLogs.length === 0}
+                          onClick={() => {
+                            if (!dim && dayLogs.length > 0) openDayList(cell.dateKey);
+                          }}
+                          aria-label={
+                            dim
+                              ? `${formatDateOnly(cell.dateKey)} outside month`
+                              : dayLogs.length === 0
+                                ? `${formatDateOnly(cell.dateKey, { month: "long", year: "numeric" })}, no logs`
+                                : `Show all ${dayLogs.length} logs for ${formatDateOnly(cell.dateKey, { month: "long", year: "numeric" })}`
+                          }
+                          aria-haspopup={dayLogs.length > 0 ? "dialog" : undefined}
+                          aria-expanded={dayLogs.length > 0 ? dayOpen : undefined}
+                          className={`flex w-full flex-col items-start rounded px-0.5 py-0.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-default sm:hidden ${
+                            dim ? "opacity-40" : ""
+                          }`}
+                        >
+                          <span
+                            className={`text-[10px] font-semibold ${
+                              cell.isToday ? "text-accent" : "text-[var(--text-muted)]"
+                            }`}
+                          >
+                            {cell.dayNum}
+                          </span>
+                          {!dim && dayLogs.length > 0 && (
+                            <span className="mt-0.5 flex items-center gap-1 font-mono text-[8px] text-[var(--text-muted)]">
+                              {formatDayDuration(dayMins)}
+                              <span
+                                className="inline-block h-1.5 w-1.5 rounded-full bg-accent"
+                                aria-hidden
+                              />
+                              <span>{dayLogs.length}</span>
+                            </span>
+                          )}
+                        </button>
+                        {/* Wider screens: chips + overflow */}
+                        <div className={`hidden h-full flex-col sm:flex ${dim ? "opacity-40" : ""}`}>
+                          <div
+                            className={`mb-0.5 text-[10px] font-semibold sm:text-[11px] ${
+                              cell.isToday ? "text-accent" : "text-[var(--text-muted)]"
+                            }`}
+                          >
+                            {cell.dayNum}
+                          </div>
+                          {!dim && (
+                            <>
+                              <div className="min-h-0 flex-1 space-y-0.5 overflow-hidden">
+                                {dayLogs.slice(0, visibleCount).map((log) => (
+                                  <button
+                                    key={log.id}
+                                    type="button"
+                                    onClick={() => setEditingLog(log)}
+                                    className="block w-full truncate rounded px-1 py-0.5 text-left text-[9px] bg-indigo-500/15 text-[var(--accent-text)] hover:bg-indigo-500/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent sm:text-[10px]"
+                                  >
+                                    {log.project_name}: {log.duration_minutes}m
+                                  </button>
+                                ))}
+                                {overflowCount > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => openDayList(cell.dateKey)}
+                                    aria-label={`Show all ${dayLogs.length} logs for ${formatDateOnly(cell.dateKey, { month: "long", year: "numeric" })}`}
+                                    aria-haspopup="dialog"
+                                    aria-expanded={dayOpen}
+                                    className="block w-full rounded px-1 py-0.5 text-left text-[8px] text-[var(--text-muted)] hover:bg-[var(--row-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent sm:text-[9px]"
+                                  >
+                                    +{overflowCount} more
+                                  </button>
+                                )}
+                              </div>
+                              {dayLogs.length > 0 && (
+                                <div className="mt-auto pt-0.5 font-mono text-[8px] text-[var(--text-muted)] sm:text-[9px]">
+                                  {formatDayDuration(dayMins)}
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              );
-            })}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
       ) : (
       <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden">
@@ -596,6 +784,13 @@ export function LogsContent({
       </div>
       )}
 
+      <DayLogsSlideOver
+        open={!!dayListDateKey}
+        dateKey={dayListDateKey}
+        logs={dayListLogs}
+        onClose={closeDayList}
+        onSelectLog={selectLogFromDayList}
+      />
       {editingLog && (
         <EditLogSlideOver
           key={editingLog.id}
