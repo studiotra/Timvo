@@ -2,8 +2,7 @@
 
 import { toast } from "sonner";
 
-import { useState, useEffect, useCallback, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { startTimer, stopTimer } from "@/app/actions/time-logs";
 import {
   getClientsForTimer,
@@ -25,6 +24,7 @@ import {
   getOrgTasksForTimer,
   createOrgTask,
 } from "@/app/actions/org-tracking";
+import { filterTasksForService } from "@/lib/timer/filter-tasks";
 
 type TimerScope = "contractor" | "org";
 
@@ -62,11 +62,10 @@ function formatTime(secs: number) {
 }
 
 export function SidebarTimerWidget({ scope = "contractor" }: { scope?: TimerScope }) {
-  const router = useRouter();
   const [clients, setClients] = useState<ClientOption[]>([]);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [services, setServices] = useState<ServiceOption[]>([]);
-  const [tasks, setTasks] = useState<TaskOpt[]>([]);
+  const [projectTasks, setProjectTasks] = useState<TaskOpt[]>([]);
   const [clientId, setClientId] = useState("");
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [serviceId, setServiceId] = useState("");
@@ -77,6 +76,15 @@ export function SidebarTimerWidget({ scope = "contractor" }: { scope?: TimerScop
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const restoredRef = useRef(false);
+
+  const tasks = useMemo(
+    () => filterTasksForService(projectTasks, serviceId || null),
+    [projectTasks, serviceId]
+  );
+
+  useEffect(() => {
+    setTaskId((prev) => (tasks.some((t) => t.id === prev) ? prev : ""));
+  }, [tasks]);
 
   const load = useCallback(async () => {
     const loadClients = scope === "org" ? getOrgClientsForTimer : getClientsForTimer;
@@ -120,12 +128,16 @@ export function SidebarTimerWidget({ scope = "contractor" }: { scope?: TimerScop
     if (!clientId) {
       setProjects([]);
       setSelectedProjectId("");
-      setTasks([]);
+      setProjectTasks([]);
       setTaskId("");
       return;
     }
     let cancelled = false;
-    (scope === "org" ? getOrgProjectsForTimer : getProjectsForTimer)(clientId).then((projs) => {
+    const clientName = clients.find((c) => c.id === clientId)?.name ?? "";
+    (scope === "org" ? getOrgProjectsForTimer : getProjectsForTimer)(
+      clientId,
+      clientName
+    ).then((projs) => {
       if (cancelled) return;
       setProjects(projs);
       setSelectedProjectId((prev) => {
@@ -140,24 +152,26 @@ export function SidebarTimerWidget({ scope = "contractor" }: { scope?: TimerScop
     return () => {
       cancelled = true;
     };
-  }, [clientId, scope]);
+  }, [clientId, clients, scope]);
 
   useEffect(() => {
     if (!selectedProjectId) {
-      setTasks([]);
+      setProjectTasks([]);
       setTaskId("");
       return;
     }
     let cancelled = false;
-    (scope === "org" ? getOrgTasksForTimer : getTasksForTimer)(selectedProjectId, serviceId || undefined).then((list) => {
-      if (cancelled) return;
-      setTasks(list);
-      setTaskId((prev) => (list.some((t) => t.id === prev) ? prev : ""));
-    });
+    // Load all project tasks once; filter by service client-side.
+    (scope === "org" ? getOrgTasksForTimer : getTasksForTimer)(selectedProjectId).then(
+      (list) => {
+        if (cancelled) return;
+        setProjectTasks(list);
+      }
+    );
     return () => {
       cancelled = true;
     };
-  }, [selectedProjectId, serviceId, scope]);
+  }, [selectedProjectId, scope]);
 
   async function handleAddTask() {
     if (!newTaskName.trim() || !selectedProjectId || !serviceId) return;
@@ -167,7 +181,9 @@ export function SidebarTimerWidget({ scope = "contractor" }: { scope?: TimerScop
       return;
     }
     if (r?.task) {
-      setTasks((prev) => [...prev, r.task].sort((a, b) => a.name.localeCompare(b.name)));
+      setProjectTasks((prev) =>
+        [...prev, r.task].sort((a, b) => a.name.localeCompare(b.name))
+      );
       setTaskId(r.task.id);
       setNewTaskName("");
       setAddingTask(false);
@@ -195,10 +211,7 @@ export function SidebarTimerWidget({ scope = "contractor" }: { scope?: TimerScop
     setActionLoading(true);
     const r = await stopTimer();
     if (r?.error) toast.error(r.error);
-    else {
-      setActiveTimer(null);
-      router.refresh();
-    }
+    else setActiveTimer(null);
     setActionLoading(false);
   }
 
@@ -228,7 +241,6 @@ export function SidebarTimerWidget({ scope = "contractor" }: { scope?: TimerScop
         taskName: task?.name,
         startedAt: r.startedAt,
       });
-      router.refresh();
     }
     setActionLoading(false);
   }
@@ -289,7 +301,7 @@ export function SidebarTimerWidget({ scope = "contractor" }: { scope?: TimerScop
           setSelectedProjectId("");
           setServiceId("");
           setTaskId("");
-          setTasks([]);
+          setProjectTasks([]);
         }}
         className="mb-1.5 w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-2 py-1.5 text-[11px] text-[var(--text-primary)]"
       >

@@ -4,8 +4,7 @@ import { useState, useEffect, useMemo } from "react";
 import { toast } from "sonner";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, ChevronRight, Pencil, Plus, Trash2, List, Calendar, Map as MapIcon } from "lucide-react";
-import { type TimeLogRow } from "@/app/actions/time-logs";
-import { deleteTimeLog } from "@/app/actions/time-logs";
+import { type TimeLogRow, getTimeLogs, deleteTimeLog } from "@/app/actions/time-logs";
 import { EditLogSlideOver } from "@/components/edit-log-slide-over";
 import { ManualLogSlideOver } from "@/components/manual-log-slide-over";
 import { SubmitToOrgBar } from "@/components/submit-to-org-bar";
@@ -63,6 +62,7 @@ export function LogsContent({
   const view = displayMode === "calendar" ? "week" : (searchParams.get("view") || "week") as ViewMode;
   const offset = parseInt(searchParams.get("offset") || "0", 10);
 
+  const [localLogs, setLocalLogs] = useState(logs);
   const [editingLog, setEditingLog] = useState<TimeLogRow | null>(null);
   const [addLogOpen, setAddLogOpen] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -72,10 +72,28 @@ export function LogsContent({
   const [toDate, setToDate] = useState(initialFilters.toDate);
 
   useEffect(() => {
+    setLocalLogs(logs);
+  }, [logs]);
+
+  useEffect(() => {
     setClientFilter(searchParams.get("client") ?? "");
     setFromDate(searchParams.get("from") ?? "");
     setToDate(searchParams.get("to") ?? "");
   }, [searchParams]);
+
+  async function refreshLogsList() {
+    const filters =
+      clientFilter || fromDate || toDate
+        ? {
+            clientId: clientFilter || undefined,
+            fromDate: fromDate || undefined,
+            toDate: toDate || undefined,
+          }
+        : undefined;
+    const listView = displayMode === "calendar" ? "week" : view;
+    const fresh = await getTimeLogs(listView, offset, filters);
+    setLocalLogs(fresh);
+  }
 
   const label =
     fromDate && toDate
@@ -131,10 +149,11 @@ export function LogsContent({
       return;
     }
     toast.success("Time log deleted");
-    router.refresh();
+    setLocalLogs((prev) => prev.filter((l) => l.id !== id));
+    setSelectedIds((prev) => prev.filter((x) => x !== id));
   }
 
-  const totalMins = logs.reduce((s, l) => s + (l.duration_minutes ?? 0), 0);
+  const totalMins = localLogs.reduce((s, l) => s + (l.duration_minutes ?? 0), 0);
 
   const weekRange = useMemo(
     () => getWeekRange(timezone, offset),
@@ -142,25 +161,25 @@ export function LogsContent({
   );
   const logsByDay = useMemo(() => {
     const map: Record<string, TimeLogRow[]> = {};
-    for (const log of logs) {
+    for (const log of localLogs) {
       if (!log.started_at) continue;
       const key = formatInstantAsLocalDate(log.started_at, timezone);
       if (!map[key]) map[key] = [];
       map[key].push(log);
     }
     return map;
-  }, [logs, timezone]);
+  }, [localLogs, timezone]);
 
   const hoursByClient = useMemo(() => {
     const map: Record<string, number> = {};
-    for (const log of logs) {
+    for (const log of localLogs) {
       const name = log.client_name || "Unknown";
       map[name] = (map[name] ?? 0) + (log.duration_minutes ?? 0);
     }
     return Object.entries(map)
       .map(([name, mins]) => ({ name, hours: mins / 60 }))
       .sort((a, b) => b.hours - a.hours);
-  }, [logs]);
+  }, [localLogs]);
 
   const dayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -377,7 +396,7 @@ export function LogsContent({
 
       {displayMode === "map" ? (
         <LogsMapView
-          logs={logs}
+          logs={localLogs}
           group={mapGroup}
           onEdit={setEditingLog}
           onDelete={handleDelete}
@@ -476,14 +495,14 @@ export function LogsContent({
               </tr>
             </thead>
             <tbody>
-              {logs.length === 0 ? (
+              {localLogs.length === 0 ? (
                 <tr>
                   <td colSpan={showSelection ? 9 : 8} className="px-4 py-12 text-center text-[var(--text-muted)]">
                     No time logs for this period.
                   </td>
                 </tr>
               ) : (
-                logs.map((log) => (
+                localLogs.map((log) => (
                   <tr
                     key={log.id}
                     className="border-b border-[var(--border)] last:border-0 hover:bg-white/5"
@@ -569,7 +588,7 @@ export function LogsContent({
             </tbody>
           </table>
         </div>
-        {logs.length > 0 && (
+        {localLogs.length > 0 && (
           <div className="border-t border-[var(--border)] px-4 py-2 text-sm text-[var(--text-secondary)]">
             Total: {Math.floor(totalMins / 60)}h {totalMins % 60}m
           </div>
@@ -584,14 +603,18 @@ export function LogsContent({
           open={!!editingLog}
           scope={basePath.startsWith("/org") ? "org" : "contractor"}
           onClose={() => setEditingLog(null)}
-          onSuccess={() => router.refresh()}
+          onSuccess={() => {
+            void refreshLogsList();
+          }}
         />
       )}
       <ManualLogSlideOver
         open={addLogOpen}
         scope={basePath.startsWith("/org") ? "org" : "contractor"}
         onClose={() => setAddLogOpen(false)}
-        onSuccess={() => router.refresh()}
+        onSuccess={() => {
+          void refreshLogsList();
+        }}
       />
     </div>
   );

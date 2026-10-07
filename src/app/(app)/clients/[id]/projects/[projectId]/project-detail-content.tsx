@@ -348,7 +348,6 @@ export function ProjectDetailContent({
       <ManualLogSlideOver
         open={manualLogOpen}
         onClose={() => setManualLogOpen(false)}
-        onSuccess={() => router.refresh()}
         initialClientId={client.id}
         initialProjectId={project.id}
       />

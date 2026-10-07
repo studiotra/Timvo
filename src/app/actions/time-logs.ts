@@ -15,6 +15,12 @@ import {
 } from "@/lib/dates";
 import { fetchUserTimezone } from "@/lib/user-timezone";
 
+/** Invalidate log list routes only — avoid layout-wide `/` refresh after every save. */
+function revalidateTimeLogPaths() {
+  revalidatePath("/logs");
+  revalidatePath("/org/logs");
+}
+
 export type TimeLogRow = {
   id: string;
   project_id: string;
@@ -157,10 +163,7 @@ export async function startTimer(projectId: string, options?: { taskId?: string;
     .single();
 
   if (error) return { error: error.message };
-  revalidatePath("/");
-  revalidatePath("/clients");
-  revalidatePath("/logs");
-  revalidatePath("/org/logs");
+  revalidateTimeLogPaths();
   return { success: true, logId: data.id, startedAt: data.started_at };
 }
 
@@ -191,10 +194,7 @@ export async function stopTimer() {
     .eq("id", active.id);
 
   if (error) return { error: error.message };
-  revalidatePath("/");
-  revalidatePath("/clients");
-  revalidatePath("/logs");
-  revalidatePath("/org/logs");
+  revalidateTimeLogPaths();
   return { success: true };
 }
 
@@ -249,10 +249,7 @@ export async function addManualLog(formData: FormData) {
   });
 
   if (error) return { error: error.message };
-  revalidatePath("/");
-  revalidatePath("/clients");
-  revalidatePath("/logs");
-  revalidatePath("/org/logs");
+  revalidateTimeLogPaths();
   return { success: true };
 }
 
@@ -301,10 +298,7 @@ export async function addTimeLogForTask(
   });
 
   if (error) return { error: error.message };
-  revalidatePath("/");
-  revalidatePath("/clients");
-  revalidatePath("/logs");
-  revalidatePath("/org/logs");
+  revalidateTimeLogPaths();
   return { success: true };
 }
 
@@ -385,9 +379,7 @@ export async function updateTimeLog(
     .eq("user_id", user.id);
 
   if (error) return { error: error.message };
-  revalidatePath("/");
-  revalidatePath("/logs");
-  revalidatePath("/org/logs");
+  revalidateTimeLogPaths();
   return { success: true };
 }
 
@@ -403,8 +395,6 @@ export async function deleteTimeLog(id: string) {
     .eq("user_id", user.id);
 
   if (error) return { error: error.message };
-  revalidatePath("/");
-  revalidatePath("/logs");
-  revalidatePath("/org/logs");
+  revalidateTimeLogPaths();
   return { success: true };
 }
