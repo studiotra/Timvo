@@ -357,6 +357,7 @@ export function SidebarTimerWidget({ scope = "contractor" }: { scope?: TimerScop
                 onChange={(e) => setNewTaskName(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleAddTask())}
                 placeholder="Task name"
+                aria-label="New task name"
                 className="flex-1 rounded border border-[var(--border)] bg-[var(--bg-app)] px-1.5 py-1 text-[11px] text-[var(--text-primary)]"
               />
               <button
