@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildLogsNavigationParams,
   buildLogsSearchParams,
   parseLogsDisplayMode,
   parseLogsMapGroup,
@@ -89,5 +90,72 @@ describe("buildLogsSearchParams", () => {
         { display: "calendar" }
       )
     ).toBe("display=calendar&view=month");
+  });
+});
+
+describe("buildLogsNavigationParams", () => {
+  const appliedBase = {
+    displayMode: "list" as const,
+    view: "week" as const,
+    offset: 0,
+    mapGroup: "all" as const,
+    clientId: "",
+    fromDate: "",
+    toDate: "",
+  };
+
+  it("ignores unapplied draft client on view/offset/display changes", () => {
+    // Draft client "abc" must never enter applied state — only updates write filters.
+    expect(buildLogsNavigationParams(appliedBase, { view: "month" })).toBe("view=month");
+    expect(buildLogsNavigationParams(appliedBase, { offset: "-1" })).toBe("offset=-1");
+    expect(buildLogsNavigationParams(appliedBase, { display: "calendar" })).toBe(
+      "display=calendar"
+    );
+    expect(buildLogsNavigationParams(appliedBase, { display: "map" })).toBe("display=map");
+  });
+
+  it("preserves applied client/from/to on offset/display/group changes", () => {
+    const applied = {
+      ...appliedBase,
+      clientId: "c1",
+      fromDate: "2026-10-01",
+      toDate: "2026-10-07",
+    };
+    expect(buildLogsNavigationParams(applied, { offset: "1" })).toBe(
+      "offset=1&client=c1&from=2026-10-01&to=2026-10-07"
+    );
+    expect(buildLogsNavigationParams(applied, { display: "calendar" })).toBe(
+      "display=calendar&client=c1&from=2026-10-01&to=2026-10-07"
+    );
+    expect(buildLogsNavigationParams(applied, { group: "client" })).toBe(
+      "group=client&client=c1&from=2026-10-01&to=2026-10-07"
+    );
+  });
+
+  it("setViewOffset-style updates clear from/to but keep applied client", () => {
+    const applied = {
+      ...appliedBase,
+      clientId: "c1",
+      fromDate: "2026-10-01",
+      toDate: "2026-10-07",
+    };
+    expect(
+      buildLogsNavigationParams(applied, {
+        view: "month",
+        offset: "0",
+        from: "",
+        to: "",
+      })
+    ).toBe("view=month&client=c1");
+  });
+
+  it("applying filters writes draft client/from/to into the URL", () => {
+    expect(
+      buildLogsNavigationParams(appliedBase, {
+        client: "abc",
+        from: "2026-09-01",
+        to: "2026-09-30",
+      })
+    ).toBe("client=abc&from=2026-09-01&to=2026-09-30");
   });
 });

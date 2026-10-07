@@ -27,7 +27,7 @@ import {
   WEEK_VISIBLE_LOGS,
 } from "@/lib/logs/calendar";
 import {
-  buildLogsSearchParams,
+  buildLogsNavigationParams,
   type LogsDisplayMode,
   type LogsMapGroup,
   type LogsViewMode,
@@ -102,11 +102,11 @@ export function LogsContent({
 
   async function refreshLogsList() {
     const filters =
-      clientFilter || fromDate || toDate
+      initialFilters.clientId || initialFilters.fromDate || initialFilters.toDate
         ? {
-            clientId: clientFilter || undefined,
-            fromDate: fromDate || undefined,
-            toDate: toDate || undefined,
+            clientId: initialFilters.clientId || undefined,
+            fromDate: initialFilters.fromDate || undefined,
+            toDate: initialFilters.toDate || undefined,
           }
         : undefined;
     const fresh = await getTimeLogs(view, offset, filters);
@@ -114,22 +114,23 @@ export function LogsContent({
   }
 
   const label =
-    fromDate && toDate
-      ? `${fromDate} – ${toDate}`
+    initialFilters.fromDate && initialFilters.toDate
+      ? `${initialFilters.fromDate} – ${initialFilters.toDate}`
       : view === "week"
         ? formatWeekLabel(timezone, offset)
         : formatMonthLabel(timezone, offset);
 
   function navigate(updates: Record<string, string> = {}) {
-    const qs = buildLogsSearchParams(
+    // Applied URL state only — draft filter inputs are written on Apply/Clear.
+    const qs = buildLogsNavigationParams(
       {
         displayMode,
         view,
         offset,
         mapGroup,
-        clientId: clientFilter,
-        fromDate,
-        toDate,
+        clientId: initialFilters.clientId,
+        fromDate: initialFilters.fromDate,
+        toDate: initialFilters.toDate,
       },
       updates
     );

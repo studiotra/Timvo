@@ -49,6 +49,18 @@ export function buildLogsSearchParams(
   return params.toString();
 }
 
+/**
+ * Build Logs query string from currently APPLIED URL state.
+ * Pass filter draft values only via updates (Apply / Clear), never as applied state,
+ * so week/offset/display/group navigation does not silently commit unapplied filters.
+ */
+export function buildLogsNavigationParams(
+  applied: LogsUrlState,
+  updates: Record<string, string> = {}
+): string {
+  return buildLogsSearchParams(applied, updates);
+}
+
 export function parseLogsDisplayMode(value: string | undefined | null): LogsDisplayMode {
   return value === "calendar" || value === "map" ? value : "list";
 }
