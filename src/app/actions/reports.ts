@@ -165,10 +165,14 @@ export async function getUnderpricedProjects(): Promise<UnderpricedProject[]> {
 
   const { data: projects } = await supabase
     .from("projects")
-    .select("id, name, client_id, hourly_rate")
+    .select("id, name, client_id, hourly_rate, billing_type")
     .in("client_id", clientIds);
 
-  const projectIds = (projects ?? []).map((p) => p.id);
+  // Fixed-price projects are not "$0/hr vs target" — skip them.
+  const hourlyProjects = (projects ?? []).filter(
+    (p) => (p.billing_type ?? "hourly") !== "fixed"
+  );
+  const projectIds = hourlyProjects.map((p) => p.id);
   if (projectIds.length === 0) return [];
 
   const [{ data: invoices }, { data: logs }] = await Promise.all([
@@ -201,7 +205,7 @@ export async function getUnderpricedProjects(): Promise<UnderpricedProject[]> {
   const clientMap = new Map((clients ?? []).map((c) => [c.id, c.name]));
   const alerts: UnderpricedProject[] = [];
 
-  for (const p of projects ?? []) {
+  for (const p of hourlyProjects) {
     const revenue = revenueByProject.get(p.id) ?? 0;
     const totalMinutes = minutesByProject.get(p.id) ?? 0;
     const totalHours = totalMinutes / 60;

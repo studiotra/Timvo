@@ -14,9 +14,12 @@ const PROJECT_COLORS: Record<string, string> = {
 
 type DashboardContentProps = {
   unbilledTotal: number;
+  unbilledLogCount?: number;
+  unbilledMissingRateCount?: number;
   weekMinutes: number;
   receivedTotal: number;
-  heatmapData?: number[];
+  /** Absolute hours per day Mon–Sun (same source as weekMinutes / Logs). */
+  weekDayHours?: number[];
   effectiveRate?: number | null;
   targetRate?: number | null;
   mostProfitableClient?: { name: string; effectiveRate: number } | null;
@@ -26,8 +29,10 @@ type DashboardContentProps = {
   recentLogs?: Array<{
     id: string;
     description: string | null;
+    title?: string;
     duration_minutes: number;
     amount: number;
+    missingRate?: boolean;
     projectName: string;
     projectColor?: string;
     isBilled: boolean;
@@ -89,9 +94,11 @@ function MetricCard({
 
 export function DashboardContent({
   unbilledTotal,
+  unbilledLogCount = 0,
+  unbilledMissingRateCount = 0,
   weekMinutes,
   receivedTotal,
-  heatmapData = [0.45, 0.7, 0.85, 0.6, 0.9, 0.3, 0.1],
+  weekDayHours = [0, 0, 0, 0, 0, 0, 0],
   effectiveRate = null,
   targetRate = null,
   mostProfitableClient = null,
@@ -106,9 +113,13 @@ export function DashboardContent({
   const t = useTranslations();
 
   const weekHours = (weekMinutes / 60).toFixed(1);
-  const maxHeat = Math.max(...heatmapData, 0.01);
+  const maxDayHours = Math.max(...weekDayHours, 0.01);
   const gapToGoal =
     annualGoal != null && projectedAnnual > 0 ? annualGoal - projectedAnnual : null;
+  const unbilledSub =
+    unbilledMissingRateCount > 0
+      ? `${unbilledLogCount} ${t("dashboard.logsReady")} · ${unbilledMissingRateCount} missing rate`
+      : `${unbilledLogCount} ${t("dashboard.logsReady")}`;
 
   return (
     <>
@@ -198,7 +209,8 @@ export function DashboardContent({
         <MetricCard
           label={t("dashboard.unbilled")}
           value={`$${unbilledTotal.toLocaleString("en-US", { minimumFractionDigits: 0 })}`}
-          sub={`${recentLogs.filter((l) => !l.isBilled).length} ${t("dashboard.logsReady")}`}
+          sub={unbilledSub}
+          subClass={unbilledMissingRateCount > 0 ? "text-amber-400" : ""}
           icon="⏳"
           iconBg="rgba(245,158,11,0.1)"
           highlight
@@ -241,18 +253,18 @@ export function DashboardContent({
             </div>
             <div className="p-5">
               <div className="mb-2 flex h-[120px] items-end gap-3">
-                {heatmapData.map((val, i) => (
+                {weekDayHours.map((hours, i) => (
                   <div
                     key={i}
                     className="flex flex-1 flex-col items-center gap-1.5"
                   >
                     <span className="font-mono text-[10px] font-medium text-[var(--text-muted)]">
-                      {((val || 0) * 8).toFixed(1)}h
+                      {(hours || 0).toFixed(1)}h
                     </span>
                     <div
                       className="relative w-full rounded-t-md bg-gradient-to-t from-indigo-500/60 to-indigo-500/30"
                       style={{
-                        height: `${Math.max(((val || 0) / maxHeat) * 100, 8)}px`,
+                        height: `${Math.max(((hours || 0) / maxDayHours) * 100, hours > 0 ? 8 : 2)}px`,
                       }}
                     />
                   </div>
@@ -280,7 +292,17 @@ export function DashboardContent({
                   </div>
                   <div className="mt-0.5 text-[11px] font-medium text-[var(--text-muted)]">
                     {t("dashboard.unbilled")}
+                    {unbilledLogCount > 0 && (
+                      <span className="ml-1">· {unbilledLogCount} logs</span>
+                    )}
                   </div>
+                  {unbilledMissingRateCount > 0 && (
+                    <div className="mt-1 text-[11px] font-medium text-amber-400">
+                      {unbilledMissingRateCount} log
+                      {unbilledMissingRateCount === 1 ? "" : "s"} have no project or
+                      service rate — set a rate before invoicing.
+                    </div>
+                  )}
                 </div>
                 <div className="h-10 w-px bg-white/10" />
                 <div>
@@ -336,7 +358,7 @@ export function DashboardContent({
                     />
                     <div className="min-w-0 flex-1">
                       <div className="text-[12px] font-medium text-[var(--text-primary)]">
-                        {log.description || "Time"}
+                        {log.title || log.description || log.projectName || "Time"}
                       </div>
                       <div className="text-[10px] font-semibold text-[var(--text-muted)]">
                         {log.projectName}

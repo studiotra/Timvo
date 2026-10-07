@@ -112,6 +112,11 @@
 }
 
 @media print {
+  /* Hide chrome we control. Browsers may still print their own header/footer
+     (URL, page title, date) — turn those off in the print dialog if unwanted. */
+  @page {
+    margin: 12mm;
+  }
   aside,
   header,
   nav,
@@ -119,10 +124,16 @@
   a[href="/invoices"] {
     display: none !important;
   }
+  .print-only {
+    display: inline-block !important;
+  }
+  body {
+    background: white !important;
+  }
   #invoice-print {
     box-shadow: none !important;
     background: white !important;
-    border: 1px solid #e5e7eb !important;
+    border: none !important;
     color: #111827 !important;
     --text-primary: #111827;
     --text-secondary: #6b7280;
@@ -138,4 +149,8 @@
     --status-overdue-bg: #fee2e2;
     --status-overdue-text: #dc2626;
   }
+}
+
+.print-only {
+  display: none;
 }

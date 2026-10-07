@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useFormStatus } from "react-dom";
+import { toast } from "sonner";
 import { SlideOver } from "./slide-over";
 import { addService, updateService } from "@/app/actions/services";
 import type { ServiceListItem } from "@/types/database";
@@ -22,12 +23,14 @@ function SubmitButton() {
 type ServiceSlideOverProps = {
   open: boolean;
   onClose: () => void;
+  onSuccess?: () => void;
   service?: ServiceListItem | null;
 };
 
 export function ServiceSlideOver({
   open,
   onClose,
+  onSuccess,
   service,
 }: ServiceSlideOverProps) {
   const [error, setError] = useState<string | null>(null);
@@ -39,8 +42,11 @@ export function ServiceSlideOver({
       : await addService(formData);
     if (result.error) {
       setError(result.error);
+      toast.error(result.error);
       return;
     }
+    toast.success(service ? "Service saved" : "Service added");
+    onSuccess?.();
     onClose();
   }
 
@@ -50,8 +56,8 @@ export function ServiceSlideOver({
       onClose={onClose}
       title={service ? "Edit Service" : "Add Service"}
     >
-      <form action={handleSubmit} className="flex flex-col h-full">
-        <div className="p-5 space-y-4 flex-1">
+      <form action={handleSubmit} className="flex h-full min-h-0 flex-col">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
           <div>
             <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
               Service Name *
@@ -97,7 +103,7 @@ export function ServiceSlideOver({
           </div>
           {error && <p className="text-sm text-red-400">{error}</p>}
         </div>
-        <div className="p-5 border-t border-[var(--border)] flex gap-3 justify-end">
+        <div className="flex shrink-0 justify-end gap-3 border-t border-[var(--border)] p-5">
           <button
             type="button"
             onClick={onClose}

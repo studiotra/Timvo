@@ -13,6 +13,16 @@ import {
   type UnbilledLog,
 } from "@/app/actions/invoice-data";
 import { polishDescription } from "@/app/actions/ai-polish";
+import { addDaysToDateString, formatInstantAsLocalDate, localToday } from "@/lib/dates";
+import { useTimezone } from "@/contexts/timezone-context";
+import {
+  computeInvoiceMoney,
+  isZeroMoneyTotal,
+  lineAmount,
+  resolveTaxRate,
+  roundCents,
+} from "@/lib/invoices/money";
+import { formatInvoiceNumber, normalizeInvoicePrefix } from "@/lib/invoices/number";
 
 export function CreateInvoiceSlideOver({
   open,
@@ -35,13 +45,20 @@ export function CreateInvoiceSlideOver({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [aiPolish, setAiPolish] = useState(false);
-  type ManualItem = { id: string; description: string; quantity: string; amount: string };
+  type ManualItem = { id: string; description: string; quantity: string; unit_rate: string };
   const [manualItems, setManualItems] = useState<ManualItem[]>([]);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [issuedAt, setIssuedAt] = useState("");
   const [dueAt, setDueAt] = useState("");
   const [footer, setFooter] = useState("");
   const [terms, setTerms] = useState("");
+  const [taxRateInput, setTaxRateInput] = useState("");
+  const [profileTaxRate, setProfileTaxRate] = useState<number | null>(null);
+  const [invoicePrefix, setInvoicePrefix] = useState("INV-");
+  const [nextInvoiceNumber, setNextInvoiceNumber] = useState<number | null>(null);
+  const [groupByTask, setGroupByTask] = useState(true);
+  const timezone = useTimezone();
 
   const loadClients = useCallback(async () => {
     const c = await getClientsForInvoice();
@@ -64,15 +81,21 @@ export function CreateInvoiceSlideOver({
       setSelected(new Set());
       setManualItems([]);
       setError(null);
+      setGroupByTask(true);
       getDefaultInvoiceSettings().then((s) => {
         setFooter(s.default_footer ?? "");
         setTerms(s.default_terms ?? "");
-        const d = new Date();
-        d.setDate(d.getDate() + s.default_due_days);
-        setDueAt(d.toISOString().slice(0, 10));
+        const tz = s.timezone || timezone;
+        const today = localToday(tz);
+        setIssuedAt(today);
+        setDueAt(addDaysToDateString(today, s.default_due_days));
+        setProfileTaxRate(s.default_tax_rate);
+        setTaxRateInput(s.default_tax_rate != null ? String(s.default_tax_rate) : "");
+        setInvoicePrefix(normalizeInvoicePrefix(s.invoice_prefix));
+        setNextInvoiceNumber(s.next_invoice_number);
       });
     }
-  }, [open, loadClients, initialClientId, initialProjectId]);
+  }, [open, loadClients, initialClientId, initialProjectId, timezone]);
 
   useEffect(() => {
     if (!clientId) {
@@ -101,10 +124,18 @@ export function CreateInvoiceSlideOver({
     });
   }, [projectId, dateFrom, dateTo]);
 
+  const selectedProject = projects.find((p) => p.id === projectId);
+
+  useEffect(() => {
+    if (!projectId) return;
+    const resolved = resolveTaxRate(selectedProject?.tax_rate, profileTaxRate);
+    setTaxRateInput(resolved != null ? String(resolved) : "");
+  }, [projectId, selectedProject?.tax_rate, profileTaxRate]);
+
   function addManualItem() {
     setManualItems((prev) => [
       ...prev,
-      { id: crypto.randomUUID(), description: "", quantity: "1", amount: "" },
+      { id: crypto.randomUUID(), description: "", quantity: "1", unit_rate: "" },
     ]);
   }
   function removeManualItem(id: string) {
@@ -124,122 +155,16 @@ export function CreateInvoiceSlideOver({
     });
   }
 
-  function toggleGroup(ids: string[]) {
-    setSelected((s) => {
-      const next = new Set(s);
-      const allSelected = ids.every((id) => next.has(id));
-      if (allSelected) {
-        ids.forEach((id) => next.delete(id));
-      } else {
-        ids.forEach((id) => next.add(id));
-      }
-      return next;
-    });
-  }
-
-  const groupedLogs = (() => {
-    const byKey = new Map<string, { logs: UnbilledLog[]; totalMins: number; totalAmount: number }>();
-    for (const log of logs) {
-      const taskName = log.task_name ?? (log.description?.trim() || "Uncategorized");
-      const key = `${taskName}::${log.service_id ?? ""}`;
-      const existing = byKey.get(key);
-      const mins = log.duration_minutes ?? 0;
-      const amt = log.amount ?? 0;
-      if (existing) {
-        existing.logs.push(log);
-        existing.totalMins += mins;
-        existing.totalAmount += amt;
-      } else {
-        byKey.set(key, { logs: [log], totalMins: mins, totalAmount: amt });
-      }
-    }
-    return Array.from(byKey.entries()).map(([key, v]) => {
-      const first = v.logs[0];
-      return {
-        key,
-        taskName: first.task_name ?? (first.description?.trim() || "Uncategorized"),
-        serviceName: first.service_name ?? null,
-        logIds: v.logs.map((l) => l.id),
-        totalMins: v.totalMins,
-        totalAmount: v.totalAmount,
-      };
-    });
-  })();
-
-  const selectedProject = projects.find((p) => p.id === projectId);
   const isFixedProject = selectedProject?.billing_type === "fixed" && (selectedProject?.agreed_fee ?? 0) > 0;
   const fixedPrice = selectedProject?.agreed_fee ?? 0;
+  const selectedMissingRateCount = isFixedProject
+    ? 0
+    : logs.filter((l) => selected.has(l.id) && l.missing_rate).length;
 
-  async function handleSubmit() {
-    const validManual = manualItems.filter(
-      (m) => m.description.trim() && !isNaN(parseFloat(m.quantity)) && !isNaN(parseFloat(m.amount))
-    );
-    if (!clientId || !projectId) {
-      setError("Select client and project.");
-      return;
-    }
-    if (isFixedProject) {
-      if (selected.size === 0) {
-        setError("Select at least one task to include in the invoice.");
-        return;
-      }
-      if (fixedPrice <= 0) {
-        setError("Fixed project must have an agreed fee. Edit the project to set it.");
-        return;
-      }
-    } else if (selected.size === 0 && validManual.length === 0) {
-      setError("Select at least one log or add a manual line item.");
-      return;
-    }
-    setSubmitting(true);
-    setError(null);
-    const polishedDescriptions: Record<string, string> = {};
-    if (aiPolish) {
-      for (const log of logs) {
-        if (selected.has(log.id)) {
-          polishedDescriptions[log.id] = await polishDescription(
-            log.description ?? "Time"
-          );
-        }
-      }
-    }
-    const formData = new FormData();
-    formData.set("client_id", clientId);
-    formData.set("project_id", projectId);
-    formData.set("due_at", dueAt);
-    formData.set("footer", footer);
-    formData.set("terms_and_conditions", terms);
-    formData.set("log_ids", JSON.stringify([...selected]));
-    formData.set("polished_descriptions", JSON.stringify(polishedDescriptions));
-    formData.set(
-      "manual_items",
-      JSON.stringify(
-        validManual.map((m) => {
-          const qty = parseFloat(m.quantity) || 1;
-          const amt = parseFloat(m.amount) || 0;
-          return {
-            description: m.description.trim(),
-            quantity: qty,
-            unit_rate: qty > 0 ? amt / qty : 0,
-            amount: amt,
-          };
-        })
-      )
-    );
-    const result = await createInvoice(formData);
-    setSubmitting(false);
-    if (result.error) {
-      setError(result.error);
-      return;
-    }
-    if (!result.invoiceId) {
-      setError("Invoice created but could not navigate.");
-      return;
-    }
-    toast.success("Invoice created");
-    onClose();
-    window.location.href = `/invoices/${result.invoiceId}`;
-  }
+  const parsedTaxRate = (() => {
+    const n = parseFloat(taxRateInput);
+    return !isNaN(n) && n > 0 ? n : null;
+  })();
 
   const logsTotal = (() => {
     if (isFixedProject) return fixedPrice;
@@ -258,18 +183,160 @@ export function CreateInvoiceSlideOver({
     for (const [, arr] of byService) {
       if (arr.length > 0) total += arr[0].service_default_rate ?? 0;
     }
-    return total;
+    return roundCents(total);
   })();
-  const manualTotal = isFixedProject ? 0 : manualItems.reduce((s, m) => {
-    const amt = parseFloat(m.amount);
-    return s + (isNaN(amt) ? 0 : amt);
-  }, 0);
-  const totalAmount = logsTotal + manualTotal;
+
+  const manualLines = isFixedProject
+    ? []
+    : manualItems
+        .filter((m) => m.description.trim())
+        .map((m) => {
+          const quantity = parseFloat(m.quantity);
+          const unit_rate = parseFloat(m.unit_rate);
+          const qty = Number.isFinite(quantity) ? quantity : 0;
+          const rate = Number.isFinite(unit_rate) ? unit_rate : 0;
+          return { quantity: qty, unit_rate: rate, amount: lineAmount(qty, rate) };
+        });
+
+  const money = computeInvoiceMoney(
+    [{ amount: logsTotal }, ...manualLines],
+    parsedTaxRate
+  );
+
+  const hasValidManual = manualItems.some((m) => m.description.trim());
+  const canCreate =
+    !!clientId &&
+    !!projectId &&
+    (selected.size > 0 || hasValidManual) &&
+    !submitting;
+
+  const disabledReason = (() => {
+    if (submitting) return null;
+    if (!clientId) return "Select a client to continue.";
+    if (!projectId) return "Select a project to continue.";
+    if (selected.size === 0 && !hasValidManual) {
+      return "Select at least one log or add a manual line.";
+    }
+    return null;
+  })();
+
+  const numberPreview = formatInvoiceNumber(invoicePrefix, nextInvoiceNumber);
+
+  async function handleSubmit() {
+    const validManual = manualItems.filter((m) => {
+      const qty = parseFloat(m.quantity);
+      const rate = parseFloat(m.unit_rate);
+      return m.description.trim() && Number.isFinite(qty) && Number.isFinite(rate);
+    });
+    if (!clientId || !projectId) {
+      setError("Select client and project.");
+      return;
+    }
+    if (isFixedProject) {
+      if (selected.size === 0) {
+        setError("Select at least one task to include in the invoice.");
+        return;
+      }
+      if (fixedPrice <= 0) {
+        setError("Fixed project must have an agreed fee. Edit the project to set it.");
+        return;
+      }
+    } else if (selected.size === 0 && validManual.length === 0) {
+      setError("Select at least one log or add a manual line item.");
+      return;
+    }
+    if (isZeroMoneyTotal(money.total)) {
+      const ok = window.confirm(
+        "This invoice totals $0.00. Create it anyway?"
+      );
+      if (!ok) return;
+    }
+    setSubmitting(true);
+    setError(null);
+    const polishedDescriptions: Record<string, string> = {};
+    if (aiPolish) {
+      const selectedLogs = logs.filter((log) => selected.has(log.id));
+      const polished = await Promise.all(
+        selectedLogs.map(async (log) => ({
+          id: log.id,
+          text: await polishDescription(log.description ?? "Time"),
+        }))
+      );
+      for (const row of polished) {
+        polishedDescriptions[row.id] = row.text;
+      }
+    }
+    const formData = new FormData();
+    formData.set("client_id", clientId);
+    formData.set("project_id", projectId);
+    formData.set("issued_at", issuedAt);
+    formData.set("due_at", dueAt);
+    formData.set("footer", footer);
+    formData.set("terms_and_conditions", terms);
+    formData.set("tax_rate", taxRateInput);
+    formData.set("group_by_task", groupByTask ? "true" : "false");
+    formData.set("log_ids", JSON.stringify([...selected]));
+    formData.set("polished_descriptions", JSON.stringify(polishedDescriptions));
+    formData.set(
+      "manual_items",
+      JSON.stringify(
+        validManual.map((m) => {
+          const qty = parseFloat(m.quantity);
+          const rate = parseFloat(m.unit_rate);
+          return {
+            description: m.description.trim(),
+            quantity: qty,
+            unit_rate: rate,
+            amount: lineAmount(qty, rate),
+          };
+        })
+      )
+    );
+    const result = await createInvoice(formData);
+    setSubmitting(false);
+    if (result.error) {
+      setError(result.error);
+      return;
+    }
+    if (!result.invoiceId) {
+      setError("Invoice created but could not navigate.");
+      return;
+    }
+    toast.success("Invoice created and locked");
+    onClose();
+    window.location.href = `/invoices/${result.invoiceId}`;
+  }
 
   return (
     <SlideOver open={open} onClose={onClose} title="Create Invoice">
-      <div className="flex flex-col h-full">
-        <div className="p-5 space-y-4 flex-1">
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
+          {error && (
+            <p className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-400" role="alert">
+              {error}
+            </p>
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
+                Invoice number
+              </label>
+              <p className="rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 font-mono text-sm text-[var(--text-primary)]">
+                {numberPreview ?? `${invoicePrefix}—`}
+              </p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
+                Issue date
+              </label>
+              <input
+                type="date"
+                value={issuedAt}
+                onChange={(e) => setIssuedAt(e.target.value)}
+                className="w-full px-3 py-2 bg-[var(--bg-app)] border border-[var(--border)] rounded-lg text-[var(--text-primary)]"
+              />
+            </div>
+          </div>
           <div>
             <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
               Client
@@ -332,16 +399,33 @@ export function CreateInvoiceSlideOver({
           <p className="text-[11px] text-[var(--text-muted)]">
             Optional: limit unbilled logs to a date range
           </p>
-          <div>
-            <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
-              Due date
-            </label>
-            <input
-              type="date"
-              value={dueAt}
-              onChange={(e) => setDueAt(e.target.value)}
-              className="w-full px-3 py-2 bg-[var(--bg-app)] border border-[var(--border)] rounded-lg text-[var(--text-primary)]"
-            />
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
+                Due date
+              </label>
+              <input
+                type="date"
+                value={dueAt}
+                onChange={(e) => setDueAt(e.target.value)}
+                className="w-full px-3 py-2 bg-[var(--bg-app)] border border-[var(--border)] rounded-lg text-[var(--text-primary)]"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
+                Tax (%)
+              </label>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="0.01"
+                value={taxRateInput}
+                onChange={(e) => setTaxRateInput(e.target.value)}
+                placeholder="0"
+                className="w-full px-3 py-2 bg-[var(--bg-app)] border border-[var(--border)] rounded-lg text-[var(--text-primary)] font-mono"
+              />
+            </div>
           </div>
           <div>
             <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
@@ -379,9 +463,24 @@ export function CreateInvoiceSlideOver({
             </div>
           )}
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)] mb-2">
-              {isFixedProject ? "Tasks completed (select to include — no time/price shown to client)" : "Logs to include (grouped by task in invoice)"}
-            </p>
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)]">
+                {isFixedProject
+                  ? "Tasks completed (select each to include)"
+                  : "Logs to include"}
+              </p>
+              {!isFixedProject && logs.length > 0 && (
+                <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={groupByTask}
+                    onChange={(e) => setGroupByTask(e.target.checked)}
+                    className="w-3.5 h-3.5 rounded accent-accent"
+                  />
+                  Group by task on invoice
+                </label>
+              )}
+            </div>
             {loading ? (
               <p className="text-sm text-[var(--text-muted)]">Loading…</p>
             ) : logs.length === 0 && projectId ? (
@@ -390,38 +489,68 @@ export function CreateInvoiceSlideOver({
               </p>
             ) : (
               <div className="space-y-0 divide-y divide-[var(--border)]">
-                {groupedLogs.map((group) => {
-                  const allSelected = group.logIds.every((id) => selected.has(id));
+                {logs.map((log) => {
+                  const label =
+                    log.task_name ?? (log.description?.trim() || "Uncategorized");
+                  const dateLabel = log.started_at
+                    ? formatInstantAsLocalDate(log.started_at, timezone)
+                    : "";
                   return (
                     <label
-                      key={group.key}
+                      key={log.id}
                       className="flex items-center gap-3 py-3 cursor-pointer hover:bg-[var(--bg-card)]/50 px-1 -mx-1 rounded"
                     >
                       <input
                         type="checkbox"
-                        checked={allSelected}
-                        onChange={() => toggleGroup(group.logIds)}
+                        checked={selected.has(log.id)}
+                        onChange={() => toggle(log.id)}
                         className="w-[18px] h-[18px] rounded border-[var(--border)] accent-accent"
                       />
-                      <span className="flex-1 text-sm flex items-center gap-2">
-                        <span className="text-[var(--text-primary)] font-medium">
-                          {group.taskName}
+                      <span className="flex-1 text-sm min-w-0">
+                        <span className="text-[var(--text-primary)] font-medium block truncate">
+                          {label}
                         </span>
-                        {group.serviceName && (
-                          <span className="inline-flex rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-medium text-emerald-400">
-                            {group.serviceName}
-                          </span>
-                        )}
+                        <span className="text-[11px] text-[var(--text-muted)] flex flex-wrap gap-x-2">
+                          {dateLabel && <span>{dateLabel}</span>}
+                          {log.service_name && <span>{log.service_name}</span>}
+                          {log.description?.trim() &&
+                            log.description.trim() !== label && (
+                              <span className="truncate">{log.description.trim()}</span>
+                            )}
+                        </span>
                       </span>
                       {!isFixedProject && (
-                        <span className="font-mono text-xs text-[var(--text-secondary)]">
-                          {(group.totalMins / 60).toFixed(1)}h · ${group.totalAmount.toFixed(2)}
+                        <span
+                          className={`font-mono text-xs shrink-0 ${
+                            log.missing_rate
+                              ? "text-amber-400"
+                              : "text-[var(--text-secondary)]"
+                          }`}
+                        >
+                          {(log.duration_minutes / 60).toFixed(1)}h · $
+                          {log.amount.toFixed(2)}
+                          {log.missing_rate ? " · no rate" : ""}
                         </span>
                       )}
                     </label>
                   );
                 })}
               </div>
+            )}
+            {!isFixedProject && selectedMissingRateCount > 0 && (
+              <div className="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+                {selectedMissingRateCount} selected log
+                {selectedMissingRateCount === 1 ? "" : "s"} have no project or
+                service rate and will bill at $0.00. Set a project rate or link a
+                service before creating the invoice.
+              </div>
+            )}
+            {!isFixedProject && logs.length > 0 && (
+              <p className="mt-2 text-[11px] text-[var(--text-muted)]">
+                {groupByTask
+                  ? "Same-task logs will be combined into one line on the invoice."
+                  : "Each selected log will be its own line on the invoice."}
+              </p>
             )}
           </div>
           {!isFixedProject && (
@@ -440,55 +569,92 @@ export function CreateInvoiceSlideOver({
             </div>
             {manualItems.length > 0 && (
               <div className="space-y-2">
-                {manualItems.map((m) => (
-                  <div
-                    key={m.id}
-                    className="grid grid-cols-[1fr_60px_90px_auto] gap-2 items-center"
-                  >
-                    <input
-                      type="text"
-                      placeholder="Description"
-                      value={m.description}
-                      onChange={(e) => updateManualItem(m.id, "description", e.target.value)}
-                      className="px-2 py-1.5 text-sm bg-[var(--bg-app)] border border-[var(--border)] rounded"
-                    />
-                    <input
-                      type="number"
-                      placeholder="Qty"
-                      min="0"
-                      step="0.01"
-                      value={m.quantity}
-                      onChange={(e) => updateManualItem(m.id, "quantity", e.target.value)}
-                      className="px-2 py-1.5 text-sm font-mono bg-[var(--bg-app)] border border-[var(--border)] rounded"
-                    />
-                    <input
-                      type="number"
-                      placeholder="Amount"
-                      min="0"
-                      step="0.01"
-                      value={m.amount}
-                      onChange={(e) => updateManualItem(m.id, "amount", e.target.value)}
-                      className="px-2 py-1.5 text-sm font-mono bg-[var(--bg-app)] border border-[var(--border)] rounded"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => removeManualItem(m.id)}
-                      className="text-red-400 hover:text-red-300 text-sm px-1"
-                      aria-label="Remove"
+                <div className="grid grid-cols-[1fr_60px_80px_90px_auto] gap-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                  <span>Description</span>
+                  <span className="text-right">Qty</span>
+                  <span className="text-right">Rate</span>
+                  <span className="text-right">Amount</span>
+                  <span />
+                </div>
+                {manualItems.map((m) => {
+                  const qty = parseFloat(m.quantity);
+                  const rate = parseFloat(m.unit_rate);
+                  const amt =
+                    Number.isFinite(qty) && Number.isFinite(rate)
+                      ? lineAmount(qty, rate)
+                      : null;
+                  return (
+                    <div
+                      key={m.id}
+                      className="grid grid-cols-[1fr_60px_80px_90px_auto] gap-2 items-center"
                     >
-                      ✕
-                    </button>
-                  </div>
-                ))}
+                      <input
+                        type="text"
+                        placeholder="Description"
+                        aria-label="Description"
+                        value={m.description}
+                        onChange={(e) => updateManualItem(m.id, "description", e.target.value)}
+                        className="px-2 py-1.5 text-sm bg-[var(--bg-app)] border border-[var(--border)] rounded"
+                      />
+                      <input
+                        type="number"
+                        placeholder="Qty"
+                        aria-label="Quantity"
+                        step="0.01"
+                        value={m.quantity}
+                        onChange={(e) => updateManualItem(m.id, "quantity", e.target.value)}
+                        className="px-2 py-1.5 text-sm font-mono bg-[var(--bg-app)] border border-[var(--border)] rounded"
+                      />
+                      <input
+                        type="number"
+                        placeholder="Rate"
+                        aria-label="Rate"
+                        step="0.01"
+                        value={m.unit_rate}
+                        onChange={(e) => updateManualItem(m.id, "unit_rate", e.target.value)}
+                        className="px-2 py-1.5 text-sm font-mono bg-[var(--bg-app)] border border-[var(--border)] rounded"
+                      />
+                      <span className="px-2 py-1.5 text-sm font-mono text-right text-[var(--text-secondary)]">
+                        {amt != null ? `$${amt.toFixed(2)}` : "—"}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => removeManualItem(m.id)}
+                        className="text-red-400 hover:text-red-300 text-sm px-1"
+                        aria-label="Remove"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             )}
+            <p className="mt-1 text-[11px] text-[var(--text-muted)]">
+              Use a negative rate for discounts (e.g. qty 1, rate −50).
+            </p>
           </div>
           )}
           {(selected.size > 0 || manualItems.length > 0) && (
-            <div className="rounded-lg border-2 border-accent/50 bg-accent/10 px-4 py-3">
+            <div className="rounded-lg border-2 border-accent/50 bg-accent/10 px-4 py-3 space-y-1">
               <p className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Live total</p>
+              {money.taxRate != null && (
+                <>
+                  <p className="font-mono text-sm text-[var(--text-secondary)]">
+                    Subtotal: ${money.subtotal.toFixed(2)}
+                  </p>
+                  <p className="font-mono text-sm text-[var(--text-secondary)]">
+                    Tax ({money.taxRate}%): ${money.taxAmount.toFixed(2)}
+                  </p>
+                </>
+              )}
               <p className="font-mono text-2xl font-bold text-[var(--text-primary)]">
-                ${totalAmount.toFixed(2)}
+                ${money.total.toFixed(2)}
+                {money.taxRate != null && (
+                  <span className="ml-2 text-xs font-sans font-normal text-[var(--text-muted)]">
+                    incl. tax
+                  </span>
+                )}
               </p>
             </div>
           )}
@@ -503,30 +669,37 @@ export function CreateInvoiceSlideOver({
               AI Polish descriptions (requires OpenAI API key)
             </span>
           </label>
-          {error && <p className="text-sm text-red-400">{error}</p>}
         </div>
-        <div className="p-5 border-t border-[var(--border)] flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-4 border-t border-[var(--border)] p-5">
           {(selected.size > 0 || manualItems.length > 0) && (
             <p className="font-mono text-lg font-bold text-[var(--text-primary)]">
-              Total: ${totalAmount.toFixed(2)}
+              Total: ${money.total.toFixed(2)}
             </p>
           )}
-          <div className="flex gap-3 ml-auto">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 border border-[var(--border)] rounded-lg text-[var(--text-primary)] text-sm hover:bg-[var(--bg-card)]"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleSubmit}
-            disabled={submitting || (selected.size === 0 && manualItems.every((m) => !m.description.trim()))}
-            className="px-4 py-2 bg-accent hover:bg-accent-hover text-white font-semibold rounded-lg text-sm disabled:opacity-50"
-          >
-            {submitting ? "Creating…" : "Create & Lock"}
-          </button>
+          <div className="flex flex-col items-end gap-2 ml-auto">
+            {(error || disabledReason) && (
+              <p className="text-sm text-red-400 max-w-xs text-right" role="alert">
+                {error ?? disabledReason}
+              </p>
+            )}
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 border border-[var(--border)] rounded-lg text-[var(--text-primary)] text-sm hover:bg-[var(--bg-card)]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={!canCreate}
+                title={disabledReason ?? undefined}
+                className="px-4 py-2 bg-accent hover:bg-accent-hover text-white font-semibold rounded-lg text-sm disabled:opacity-50"
+              >
+                {submitting ? "Creating…" : "Create & Lock"}
+              </button>
+            </div>
           </div>
         </div>
       </div>

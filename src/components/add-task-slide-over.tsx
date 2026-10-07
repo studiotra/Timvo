@@ -1,10 +1,13 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { toast } from "sonner";
 import { SlideOver } from "./slide-over";
 import { createTask } from "@/app/actions/clients-projects";
 import { addTimeLogForTask } from "@/app/actions/time-logs";
 import { getServicesForSelect } from "@/app/actions/services";
+import { useTimezone } from "@/contexts/timezone-context";
+import { localToday } from "@/lib/dates";
 
 type ServiceOpt = { id: string; name: string };
 
@@ -22,6 +25,7 @@ export function AddTaskSlideOver({
   onSuccess,
   projectId,
 }: AddTaskSlideOverProps) {
+  const timezone = useTimezone();
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [taskName, setTaskName] = useState("");
@@ -39,14 +43,13 @@ export function AddTaskSlideOver({
 
   useEffect(() => {
     if (open) {
-      const today = new Date().toISOString().slice(0, 10);
-      setDate(today);
+      setDate(localToday(timezone));
       setStartTime("09:00");
       setEndTime("17:00");
       setDescription("");
       setIsBillable(true);
     }
-  }, [open]);
+  }, [open, timezone]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -66,10 +69,11 @@ export function AddTaskSlideOver({
 
     const addTimeEntry = startTime && endTime;
     if (addTimeEntry && taskResult?.task?.id) {
-      const d = date || new Date().toISOString().slice(0, 10);
-      const start = new Date(`${d}T${startTime}`);
-      const end = new Date(`${d}T${endTime}`);
-      const durationMinutes = Math.round((end.getTime() - start.getTime()) / 60000);
+      const d = date || localToday(timezone);
+      // Duration for validation only; server builds instants in user timezone
+      const [sh, sm] = startTime.split(":").map(Number);
+      const [eh, em] = endTime.split(":").map(Number);
+      const durationMinutes = eh * 60 + em - (sh * 60 + sm);
       if (durationMinutes <= 0) {
         setError("End time must be after start time.");
         setSaving(false);
@@ -78,6 +82,8 @@ export function AddTaskSlideOver({
       const logResult = await addTimeLogForTask(projectId, taskResult.task.id, {
         date: d,
         durationMinutes,
+        startTime,
+        endTime,
         description: description.trim() || null,
         isBillable: isBillable,
       });
@@ -91,14 +97,15 @@ export function AddTaskSlideOver({
     setSaving(false);
     setTaskName("");
     setServiceId("");
+    toast.success("Task added");
     onSuccess?.();
     onClose();
   }
 
   return (
     <SlideOver open={open} onClose={onClose} title="Add Task">
-      <form onSubmit={handleSubmit} className="flex flex-col h-full">
-        <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-5">
+      <form onSubmit={handleSubmit} className="flex h-full min-h-0 flex-col">
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-5">
           <div>
             <label className="mb-1.5 block text-sm font-medium text-[var(--text-secondary)]">
               Task name *
@@ -156,6 +163,7 @@ export function AddTaskSlideOver({
                     type="time"
                     value={startTime}
                     onChange={(e) => setStartTime(e.target.value)}
+                    aria-label="Start time"
                     className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 font-mono text-[var(--text-primary)] focus:ring-2 focus:ring-accent"
                   />
                   <span className="text-[var(--text-muted)]">–</span>
@@ -163,6 +171,7 @@ export function AddTaskSlideOver({
                     type="time"
                     value={endTime}
                     onChange={(e) => setEndTime(e.target.value)}
+                    aria-label="End time"
                     className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 font-mono text-[var(--text-primary)] focus:ring-2 focus:ring-accent"
                   />
                 </div>
@@ -211,7 +220,7 @@ export function AddTaskSlideOver({
 
           {error && <p className="text-sm text-red-400">{error}</p>}
         </div>
-        <div className="flex justify-end gap-3 border-t border-[var(--border)] p-5">
+        <div className="flex shrink-0 justify-end gap-3 border-t border-[var(--border)] p-5">
           <button
             type="button"
             onClick={onClose}

@@ -2,8 +2,7 @@
 
 import { toast } from "sonner";
 
-import { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { startTimer, stopTimer } from "@/app/actions/time-logs";
 import {
   getClientsForTimer,
@@ -18,13 +17,13 @@ import {
   type TaskOpt,
   type ActiveTimer,
 } from "@/app/actions/timer";
+import { filterTasksForService } from "@/lib/timer/filter-tasks";
 
 export function TimerBar() {
-  const router = useRouter();
   const [clients, setClients] = useState<ClientOption[]>([]);
   const [projects, setProjects] = useState<ProjectOption[]>([]);
   const [services, setServices] = useState<ServiceOption[]>([]);
-  const [tasks, setTasks] = useState<TaskOpt[]>([]);
+  const [projectTasks, setProjectTasks] = useState<TaskOpt[]>([]);
   const [activeTimer, setActiveTimer] = useState<ActiveTimer>(null);
   const [clientId, setClientId] = useState("");
   const [projectId, setProjectId] = useState("");
@@ -34,6 +33,15 @@ export function TimerBar() {
   const [newTaskName, setNewTaskName] = useState("");
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+
+  const tasks = useMemo(
+    () => filterTasksForService(projectTasks, serviceId || null),
+    [projectTasks, serviceId]
+  );
+
+  useEffect(() => {
+    setTaskId((prev) => (tasks.some((t) => t.id === prev) ? prev : ""));
+  }, [tasks]);
 
   const loadClientsAndActive = useCallback(async () => {
     const [c, active] = await Promise.all([
@@ -53,25 +61,26 @@ export function TimerBar() {
     if (!clientId) {
       setProjects([]);
       setProjectId("");
-      setTasks([]);
+      setProjectTasks([]);
       setTaskId("");
       return;
     }
-    getProjectsForTimer(clientId).then((p) => {
+    const clientName = clients.find((c) => c.id === clientId)?.name ?? "";
+    getProjectsForTimer(clientId, clientName).then((p) => {
       setProjects(p);
       setProjectId("");
-      setTasks([]);
+      setProjectTasks([]);
       setTaskId("");
     });
-  }, [clientId]);
+  }, [clientId, clients]);
 
   useEffect(() => {
     if (!projectId) {
-      setTasks([]);
+      setProjectTasks([]);
       setTaskId("");
       return;
     }
-    getTasksForTimer(projectId).then(setTasks);
+    getTasksForTimer(projectId).then(setProjectTasks);
     getServicesForTimer().then(setServices);
     setTaskId("");
   }, [projectId]);
@@ -99,7 +108,9 @@ export function TimerBar() {
       return;
     }
     if (r?.task) {
-      setTasks((prev) => [...prev, r.task].sort((a, b) => a.name.localeCompare(b.name)));
+      setProjectTasks((prev) =>
+        [...prev, r.task].sort((a, b) => a.name.localeCompare(b.name))
+      );
       setTaskId(r.task.id);
       setNewTaskName("");
       setAddingTask(false);
@@ -112,10 +123,7 @@ export function TimerBar() {
     if (activeTimer) {
       const r = await stopTimer();
       if (r?.error) toast.error(r.error);
-      else {
-        setActiveTimer(null);
-        router.refresh();
-      }
+      else setActiveTimer(null);
     } else {
       const pid = projectId || projects[0]?.id;
       if (!pid) {
@@ -136,7 +144,6 @@ export function TimerBar() {
           taskName: task?.name,
           startedAt: r.startedAt,
         });
-        router.refresh();
       }
     }
     setActionLoading(false);
@@ -190,7 +197,7 @@ export function TimerBar() {
         >
           <option value="">Project</option>
           {projects.map((p) => (
-            <option key={p.id} value={p.id}>{p.name}</option>
+            <option key={p.id} value={p.id}>{p.displayName || p.name}</option>
           ))}
         </select>
         <div className="flex items-center gap-1">

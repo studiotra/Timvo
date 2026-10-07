@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect, notFound } from "next/navigation";
 import { ProjectDetailContent } from "./project-detail-content";
+import { sortTaskRows } from "@/lib/tasks/fields";
 
 export const dynamic = "force-dynamic";
 
@@ -39,11 +40,36 @@ export default async function ProjectDetailPage({
     notFound();
   }
 
-  const { data: tasks } = await supabase
+  let taskFeatures = { extras: true };
+  let tasks:
+    | Array<{
+        id: string;
+        name: string;
+        service_id: string | null;
+        is_done?: boolean | null;
+        due_date?: string | null;
+        sort_order?: number | null;
+      }>
+    | null = null;
+
+  const withExtras = await supabase
     .from("tasks")
-    .select("id, name, service_id")
+    .select("id, name, service_id, is_done, due_date, sort_order")
     .eq("project_id", projectId)
+    .order("sort_order")
     .order("name");
+
+  if (withExtras.error) {
+    taskFeatures = { extras: false };
+    const { data } = await supabase
+      .from("tasks")
+      .select("id, name, service_id")
+      .eq("project_id", projectId)
+      .order("name");
+    tasks = data ?? [];
+  } else {
+    tasks = withExtras.data ?? [];
+  }
 
   const serviceIds = [...new Set((tasks ?? []).map((t) => t.service_id).filter(Boolean))] as string[];
   const servicesMap: Record<string, string> = {};
@@ -82,7 +108,16 @@ export default async function ProjectDetailPage({
     }
   }
 
-  const mergedTasks: { id: string | null; name: string; serviceId: string | null; serviceName: string | null; totalMinutes: number }[] = [];
+  const mergedTasks: {
+    id: string | null;
+    name: string;
+    serviceId: string | null;
+    serviceName: string | null;
+    totalMinutes: number;
+    isDone: boolean;
+    dueDate: string | null;
+    sortOrder: number;
+  }[] = [];
 
   for (const t of tasks ?? []) {
     const agg = byTaskId.get(t.id);
@@ -92,6 +127,9 @@ export default async function ProjectDetailPage({
       serviceId: t.service_id ?? null,
       serviceName: t.service_id ? servicesMap[t.service_id] ?? null : null,
       totalMinutes: agg?.minutes ?? 0,
+      isDone: !!t.is_done,
+      dueDate: t.due_date ?? null,
+      sortOrder: t.sort_order ?? 0,
     });
   }
 
@@ -102,18 +140,22 @@ export default async function ProjectDetailPage({
       serviceId: null,
       serviceName: null,
       totalMinutes: mins,
+      isDone: false,
+      dueDate: null,
+      sortOrder: Number.MAX_SAFE_INTEGER,
     });
   }
 
-  mergedTasks.sort((a, b) => a.name.localeCompare(b.name));
+  const sorted = sortTaskRows(mergedTasks);
 
   return (
     <div className="p-6">
       <ProjectDetailContent
         client={client}
         project={project}
-        tasks={mergedTasks}
+        tasks={sorted}
         totalMinutes={totalMinutes}
+        taskFeatures={taskFeatures}
       />
     </div>
   );

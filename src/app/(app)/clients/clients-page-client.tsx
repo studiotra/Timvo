@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { ClientsContent } from "./clients-content";
 import type { ClientListItem } from "@/types/database";
@@ -15,136 +15,75 @@ type ProjectRow = {
   status: string;
 };
 
-export function ClientsPageClient() {
-  const [clients, setClients] = useState<ClientListItem[]>([]);
-  const [projects, setProjects] = useState<ProjectRow[]>([]);
-  const [loading, setLoading] = useState(true);
+export function ClientsPageClient({
+  initialClients,
+  initialProjects,
+}: {
+  initialClients: ClientListItem[];
+  initialProjects: ProjectRow[];
+}) {
+  const [clients, setClients] = useState(initialClients);
+  const [projects, setProjects] = useState(initialProjects);
 
-  const refetch = async () => {
+  useEffect(() => {
+    setClients(initialClients);
+    setProjects(initialProjects);
+  }, [initialClients, initialProjects]);
+
+  const refetch = useCallback(async () => {
     const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user) return;
+
     const { data: clientsData } = await supabase
       .from("clients")
-      .select("id, name, email, tax_id, currency, status, address, phone_number, business_phone, extension, note, created_at")
+      .select(
+        "id, name, email, tax_id, currency, status, address, phone_number, business_phone, extension, note, created_at"
+      )
       .eq("user_id", user.id)
       .order("name");
+
     const clientsList = clientsData ?? [];
     if (clientsList.length === 0) {
       setClients([]);
       setProjects([]);
       return;
     }
-    const { data: countsData } = await supabase
-      .from("projects")
-      .select("client_id")
-      .in("client_id", clientsList.map((c) => c.id));
-    const counts = (countsData ?? []).reduce<Record<string, number>>(
-      (acc, p) => {
-        acc[p.client_id] = (acc[p.client_id] ?? 0) + 1;
-        return acc;
-      },
-      {}
-    );
-    setClients(clientsList.map((c) => ({ ...c, project_count: counts[c.id] ?? 0 })));
+
+    const clientIds = clientsList.map((c) => c.id);
     const { data: projectsData } = await supabase
       .from("projects")
       .select("id, name, client_id, hourly_rate, billing_type, status, clients(name)")
-      .in("client_id", clientsList.map((c) => c.id))
+      .in("client_id", clientIds)
       .order("name");
-    setProjects(
-      (projectsData ?? []).map((p) => {
-        const c = p.clients as { name?: string } | null;
-        return {
-          id: p.id,
-          name: p.name,
-          clientId: p.client_id,
-          clientName: c?.name ?? "Unknown",
-          hourly_rate: p.hourly_rate,
-          billing_type: p.billing_type ?? "hourly",
-          status: p.status ?? "active",
-        };
-      })
+
+    const nextProjects: ProjectRow[] = (projectsData ?? []).map((p) => {
+      const c = p.clients as { name?: string } | null;
+      return {
+        id: p.id,
+        name: p.name,
+        clientId: p.client_id,
+        clientName: c?.name ?? "Unknown",
+        hourly_rate: p.hourly_rate,
+        billing_type: p.billing_type ?? "hourly",
+        status: p.status ?? "active",
+      };
+    });
+
+    const counts = nextProjects.reduce<Record<string, number>>((acc, p) => {
+      acc[p.clientId] = (acc[p.clientId] ?? 0) + 1;
+      return acc;
+    }, {});
+
+    setClients(
+      clientsList.map((c) => ({ ...c, project_count: counts[c.id] ?? 0 }))
     );
-  };
-
-  useEffect(() => {
-    async function load() {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        setLoading(false);
-        return;
-      }
-
-      const { data: clientsData } = await supabase
-        .from("clients")
-        .select("id, name, email, tax_id, currency, status, address, phone_number, business_phone, extension, note, created_at")
-        .eq("user_id", user.id)
-        .order("name");
-
-      const clientsList = clientsData ?? [];
-      if (clientsList.length === 0) {
-        setClients([]);
-        setProjects([]);
-        setLoading(false);
-        return;
-      }
-
-      const { data: countsData } = await supabase
-        .from("projects")
-        .select("client_id")
-        .in("client_id", clientsList.map((c) => c.id));
-
-      const counts = (countsData ?? []).reduce<Record<string, number>>(
-        (acc, p) => {
-          acc[p.client_id] = (acc[p.client_id] ?? 0) + 1;
-          return acc;
-        },
-        {}
-      );
-      setClients(
-        clientsList.map((c) => ({ ...c, project_count: counts[c.id] ?? 0 }))
-      );
-
-      const { data: projectsData } = await supabase
-        .from("projects")
-        .select("id, name, client_id, hourly_rate, billing_type, status, clients(name)")
-        .in("client_id", clientsList.map((c) => c.id))
-        .order("name");
-
-      setProjects(
-        (projectsData ?? []).map((p) => {
-          const c = p.clients as { name?: string } | null;
-          return {
-            id: p.id,
-            name: p.name,
-            clientId: p.client_id,
-            clientName: c?.name ?? "Unknown",
-            hourly_rate: p.hourly_rate,
-            billing_type: p.billing_type ?? "hourly",
-            status: p.status ?? "active",
-          };
-        })
-      );
-      setLoading(false);
-    }
-    load();
+    setProjects(nextProjects);
   }, []);
 
-  if (loading) {
-    return (
-      <div className="flex min-h-[200px] items-center justify-center text-[var(--text-muted)]">
-        Loading...
-      </div>
-    );
-  }
-
   return (
-    <ClientsContent
-      clients={clients}
-      projects={projects}
-      onRefresh={refetch}
-    />
+    <ClientsContent clients={clients} projects={projects} onRefresh={refetch} />
   );
 }

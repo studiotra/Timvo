@@ -2,6 +2,12 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  buildSortOrderUpdates,
+  isMissingColumnError,
+  normalizeDueDate,
+} from "@/lib/tasks/fields";
 
 export type ClientOpt = { id: string; name: string; isOrg?: boolean };
 export type ProjectOpt = { id: string; name: string; client_id: string };
@@ -100,22 +106,36 @@ export async function getProjectsByClient(clientId: string): Promise<ProjectOpt[
   return (data ?? []).map((p) => ({ id: p.id, name: p.name, client_id: p.client_id }));
 }
 
-export type TaskOpt = { id: string; name: string; serviceId?: string | null; serviceName?: string | null };
+export type TaskOpt = {
+  id: string;
+  name: string;
+  serviceId?: string | null;
+  serviceName?: string | null;
+  isDone?: boolean;
+  dueDate?: string | null;
+  sortOrder?: number;
+};
 
-export async function getTasksByProject(projectId: string): Promise<TaskOpt[]> {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user || !projectId) return [];
-  const { data } = await supabase
-    .from("tasks")
-    .select("id, name, service_id")
-    .eq("project_id", projectId)
-    .order("name");
-  const tasks = data ?? [];
-  const serviceIds = [...new Set(tasks.map((t) => t.service_id).filter(Boolean))] as string[];
+async function mapTasksWithServices(
+  supabase: SupabaseClient,
+  tasks: Array<{
+    id: string;
+    name: string;
+    service_id?: string | null;
+    is_done?: boolean | null;
+    due_date?: string | null;
+    sort_order?: number | null;
+  }>
+): Promise<TaskOpt[]> {
+  const serviceIds = [
+    ...new Set(tasks.map((t) => t.service_id).filter(Boolean)),
+  ] as string[];
   const servicesMap: Record<string, string> = {};
   if (serviceIds.length > 0) {
-    const { data: svc } = await supabase.from("services").select("id, name").in("id", serviceIds);
+    const { data: svc } = await supabase
+      .from("services")
+      .select("id, name")
+      .in("id", serviceIds);
     for (const s of svc ?? []) servicesMap[s.id] = s.name;
   }
   return tasks.map((t) => ({
@@ -123,7 +143,35 @@ export async function getTasksByProject(projectId: string): Promise<TaskOpt[]> {
     name: t.name,
     serviceId: t.service_id ?? null,
     serviceName: t.service_id ? servicesMap[t.service_id] ?? null : null,
+    isDone: !!t.is_done,
+    dueDate: t.due_date ?? null,
+    sortOrder: t.sort_order ?? 0,
   }));
+}
+
+/** Load tasks; prefer optional columns, fall back if migration not applied. */
+export async function getTasksByProject(projectId: string): Promise<TaskOpt[]> {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user || !projectId) return [];
+
+  const withExtras = await supabase
+    .from("tasks")
+    .select("id, name, service_id, is_done, due_date, sort_order")
+    .eq("project_id", projectId)
+    .order("sort_order")
+    .order("name");
+
+  if (!withExtras.error) {
+    return mapTasksWithServices(supabase, withExtras.data ?? []);
+  }
+
+  const { data } = await supabase
+    .from("tasks")
+    .select("id, name, service_id")
+    .eq("project_id", projectId)
+    .order("name");
+  return mapTasksWithServices(supabase, data ?? []);
 }
 
 export async function getTasksByProjectAndService(
@@ -133,21 +181,27 @@ export async function getTasksByProjectAndService(
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user || !projectId || !serviceId) return [];
-  const { data } = await supabase
+
+  const withExtras = await supabase
     .from("tasks")
-    .select("id, name, service_id")
+    .select("id, name, service_id, is_done, due_date, sort_order")
     .eq("project_id", projectId)
     .eq("service_id", serviceId)
+    .order("sort_order")
     .order("name");
-  const tasks = data ?? [];
-  const { data: svc } = await supabase.from("services").select("id, name").eq("id", serviceId).single();
-  const serviceName = svc?.name ?? null;
-  return tasks.map((t) => ({
-    id: t.id,
-    name: t.name,
-    serviceId: t.service_id ?? null,
-    serviceName,
-  }));
+
+  const rows = withExtras.error
+    ? (
+        await supabase
+          .from("tasks")
+          .select("id, name, service_id")
+          .eq("project_id", projectId)
+          .eq("service_id", serviceId)
+          .order("name")
+      ).data ?? []
+    : withExtras.data ?? [];
+
+  return mapTasksWithServices(supabase, rows);
 }
 
 export async function createTask(projectId: string, serviceId: string, name: string) {
@@ -189,11 +243,53 @@ export async function createTask(projectId: string, serviceId: string, name: str
     .single();
   if (!svc || svc.user_id !== user.id) return { error: "Service not found" };
 
-  const { data, error } = await supabase
+  let nextSort = 0;
+  const existingRes = await supabase
     .from("tasks")
-    .insert({ project_id: projectId, service_id: serviceId, name: name.trim() })
+    .select("sort_order")
+    .eq("project_id", projectId)
+    .order("sort_order", { ascending: false })
+    .limit(1);
+  if (
+    !existingRes.error &&
+    existingRes.data?.[0] &&
+    typeof existingRes.data[0].sort_order === "number"
+  ) {
+    nextSort = existingRes.data[0].sort_order + 1;
+  } else {
+    const { count } = await supabase
+      .from("tasks")
+      .select("id", { count: "exact", head: true })
+      .eq("project_id", projectId);
+    nextSort = count ?? 0;
+  }
+
+  const insertWithSort = {
+    project_id: projectId,
+    service_id: serviceId,
+    name: name.trim(),
+    sort_order: nextSort,
+    is_done: false,
+  };
+  let { data, error } = await supabase
+    .from("tasks")
+    .insert(insertWithSort)
     .select("id, name, service_id")
     .single();
+
+  if (error && isMissingColumnError(error.message)) {
+    const fallback = await supabase
+      .from("tasks")
+      .insert({
+        project_id: projectId,
+        service_id: serviceId,
+        name: name.trim(),
+      })
+      .select("id, name, service_id")
+      .single();
+    data = fallback.data;
+    error = fallback.error;
+  }
 
   if (error) return { error: error.message };
   const taskData = data as { id: string; name: string; service_id?: string };
@@ -208,6 +304,9 @@ export async function createTask(projectId: string, serviceId: string, name: str
       name: taskData.name,
       serviceId: taskData.service_id ?? null,
       serviceName: svcData?.name ?? null,
+      isDone: false,
+      dueDate: null,
+      sortOrder: nextSort,
     },
   };
 }
@@ -215,7 +314,12 @@ export async function createTask(projectId: string, serviceId: string, name: str
 export async function updateTask(
   projectId: string,
   taskId: string,
-  updates: { name?: string; serviceId?: string }
+  updates: {
+    name?: string;
+    serviceId?: string;
+    isDone?: boolean;
+    dueDate?: string | null;
+  }
 ) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -232,21 +336,67 @@ export async function updateTask(
   const c = proj.clients as unknown as { user_id?: string };
   if (c?.user_id !== user.id) return { error: "Unauthorized" };
 
-  const updatePayload: { name?: string; service_id?: string } = {};
+  const updatePayload: {
+    name?: string;
+    service_id?: string;
+    is_done?: boolean;
+    due_date?: string | null;
+  } = {};
   if (updates.name !== undefined) updatePayload.name = updates.name.trim();
   if (updates.serviceId !== undefined) updatePayload.service_id = updates.serviceId;
+  if (updates.isDone !== undefined) updatePayload.is_done = updates.isDone;
+  if (updates.dueDate !== undefined) {
+    const due = normalizeDueDate(updates.dueDate);
+    if (!due.ok) return { error: due.error };
+    updatePayload.due_date = due.dueDate;
+  }
   if (Object.keys(updatePayload).length === 0) return { error: "Nothing to update" };
 
-  const { data, error } = await supabase
+  let data: {
+    id: string;
+    name: string;
+    service_id?: string | null;
+    is_done?: boolean | null;
+    due_date?: string | null;
+    sort_order?: number | null;
+  } | null = null;
+  let error: { message: string } | null = null;
+
+  const primary = await supabase
     .from("tasks")
     .update(updatePayload)
     .eq("id", taskId)
     .eq("project_id", projectId)
-    .select("id, name, service_id")
+    .select("id, name, service_id, is_done, due_date, sort_order")
     .single();
+  data = primary.data;
+  error = primary.error;
+
+  if (error && isMissingColumnError(error.message)) {
+    const baseOnly: { name?: string; service_id?: string } = {};
+    if (updatePayload.name !== undefined) baseOnly.name = updatePayload.name;
+    if (updatePayload.service_id !== undefined)
+      baseOnly.service_id = updatePayload.service_id;
+    if (Object.keys(baseOnly).length === 0) {
+      return {
+        error:
+          "Done, due date, and reorder need a database update. Ask an admin to apply the tasks migration.",
+      };
+    }
+    const fallback = await supabase
+      .from("tasks")
+      .update(baseOnly)
+      .eq("id", taskId)
+      .eq("project_id", projectId)
+      .select("id, name, service_id")
+      .single();
+    data = fallback.data;
+    error = fallback.error;
+  }
 
   if (error) return { error: error.message };
-  const d = data as { id: string; name: string; service_id?: string };
+  if (!data) return { error: "Task not found" };
+  const d = data;
   const svcId = d.service_id;
   const { data: svcData } = svcId
     ? await supabase.from("services").select("name").eq("id", svcId).single()
@@ -266,8 +416,52 @@ export async function updateTask(
       name: d.name,
       serviceId: d.service_id ?? null,
       serviceName: svcData?.name ?? null,
+      isDone: !!d.is_done,
+      dueDate: d.due_date ?? null,
+      sortOrder: d.sort_order ?? 0,
     },
   };
+}
+
+/** Reorder real tasks within a project. orderedIds is top-to-bottom. */
+export async function reorderTasks(projectId: string, orderedIds: string[]) {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Unauthorized" };
+  if (!orderedIds.length) return { error: "Nothing to reorder" };
+
+  const { data: proj } = await supabase
+    .from("projects")
+    .select("id, client_id, clients(user_id)")
+    .eq("id", projectId)
+    .single();
+  if (!proj) return { error: "Project not found" };
+  const c = proj.clients as unknown as { user_id?: string };
+  if (c?.user_id !== user.id) return { error: "Unauthorized" };
+
+  const updates = buildSortOrderUpdates(orderedIds);
+  for (const u of updates) {
+    const { error } = await supabase
+      .from("tasks")
+      .update({ sort_order: u.sortOrder })
+      .eq("id", u.id)
+      .eq("project_id", projectId);
+    if (error) {
+      if (isMissingColumnError(error.message)) {
+        return {
+          error:
+            "Task reordering needs a database update. Ask an admin to apply the tasks migration.",
+        };
+      }
+      return { error: error.message };
+    }
+  }
+
+  if (proj.client_id) {
+    revalidatePath(`/clients/${proj.client_id}`);
+    revalidatePath(`/clients/${proj.client_id}/projects/${projectId}`);
+  }
+  return { success: true };
 }
 
 /** Returns the number of time logs and total minutes for this task. */

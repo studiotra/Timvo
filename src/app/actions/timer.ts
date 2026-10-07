@@ -10,6 +10,7 @@ import {
   type TaskOpt,
 } from "./clients-projects";
 import { getServicesForSelect } from "./services";
+import { formatProjectOptionLabel } from "@/lib/dates";
 
 export type ClientOption = { id: string; name: string };
 export type { TaskOpt };
@@ -25,11 +26,16 @@ export async function getClientsForTimer(): Promise<ClientOption[]> {
   return getClientsForSelect();
 }
 
-export async function getProjectsForTimer(clientId: string): Promise<ProjectOption[]> {
+export async function getProjectsForTimer(
+  clientId: string,
+  clientName = ""
+): Promise<ProjectOption[]> {
   const projs = await getProjectsByClient(clientId);
-  const clients = await getClientsForSelect();
-  const clientName = clients.find((c) => c.id === clientId)?.name ?? "";
-  return projs.map((p) => ({ ...p, clientName, displayName: p.name }));
+  return projs.map((p) => ({
+    ...p,
+    clientName,
+    displayName: formatProjectOptionLabel(p.name, clientName),
+  }));
 }
 
 /** Fetch all projects across clients for the timer bar (no client filter). */
@@ -42,7 +48,7 @@ export async function getAllProjectsForTimer(): Promise<ProjectOption[]> {
       allProjects.push({
         ...p,
         clientName: c.name,
-        displayName: `${p.name} (${c.name})`,
+        displayName: formatProjectOptionLabel(p.name, c.name),
       });
     }
   }
@@ -73,14 +79,34 @@ export type ActiveTimer = {
   startedAt: string;
 } | null;
 
+async function resolveClientLabel(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  clientId: string | null | undefined
+): Promise<string> {
+  if (!clientId) return "";
+  const { data: client } = await supabase
+    .from("clients")
+    .select("id, name, organization_id, organizations(name)")
+    .eq("id", clientId)
+    .maybeSingle();
+  if (!client) return "";
+  if (client.organization_id) {
+    const org = client.organizations as unknown as { name?: string } | null;
+    // Prefer agency/org when present so running timer shows "project · Space Creatorz"
+    return org?.name?.trim() || client.name || "";
+  }
+  return client.name || "";
+}
+
 export async function getActiveTimer(): Promise<ActiveTimer> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
+  // Avoid nested projects→clients joins (can hit RLS recursion); resolve client separately.
   const { data } = await supabase
     .from("time_logs")
-    .select("id, started_at, projects(id, name, clients(name)), tasks(name)")
+    .select("id, started_at, project_id, projects(id, name, client_id), tasks(name)")
     .eq("user_id", user.id)
     .is("ended_at", null)
     .order("started_at", { ascending: false })
@@ -88,13 +114,19 @@ export async function getActiveTimer(): Promise<ActiveTimer> {
     .maybeSingle();
 
   if (!data?.projects) return null;
-  const proj = data.projects as unknown as { id: string; name: string; clients?: { name?: string } };
+  const proj = data.projects as unknown as {
+    id: string;
+    name: string;
+    client_id?: string;
+  };
   const task = data.tasks as unknown as { name?: string } | null;
+  const clientName = await resolveClientLabel(supabase, proj.client_id);
+
   return {
     id: data.id,
     projectId: proj.id,
     projectName: proj.name ?? "",
-    clientName: proj.clients?.name ?? "",
+    clientName,
     taskName: task?.name,
     startedAt: data.started_at,
   };

@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "./theme-toggle";
+import { TimvoLogo } from "./timvo-logo";
 import { SidebarTimerWidget } from "./sidebar-timer-widget";
 import { Menu, X } from "lucide-react";
 import { isDesktopShell } from "@/lib/desktop/shell";
@@ -66,15 +67,10 @@ export function OrgShell({ children, orgName, hasContractorDashboard }: OrgShell
         )}
       >
         <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-4 md:px-5 md:py-6">
-          <Link href="/org" className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-indigo-500 text-sm font-bold text-white">
-              O
-            </div>
-            <div>
-              <div className="text-[15px] font-bold text-[var(--text-primary)]">Timvo</div>
-              <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-                {desktopShell ? "Desktop · Org" : "Organization"}
-              </div>
+          <Link href="/org" className="flex flex-col gap-0.5">
+            <TimvoLogo variant="logo" height={26} />
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+              {desktopShell ? "Desktop · Org" : "Organization"}
             </div>
           </Link>
           <button

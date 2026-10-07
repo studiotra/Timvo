@@ -1,7 +1,27 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
+import {
+  endOfLocalDay,
+  formatInstantAsLocalDate,
+  formatInstantAsLocalTime,
+  getMonthRange,
+  getWeekRange,
+  localToday,
+  resolveLogSchedule,
+  startOfLocalDay,
+  zonedDateTimeToUtc,
+} from "@/lib/dates";
+import { resolveServiceTask } from "@/lib/time-logs/service-task";
+import { fetchUserTimezone } from "@/lib/user-timezone";
+
+/** Invalidate log list routes only — avoid layout-wide `/` refresh after every save. */
+function revalidateTimeLogPaths() {
+  revalidatePath("/logs");
+  revalidatePath("/org/logs");
+}
 
 export type TimeLogRow = {
   id: string;
@@ -9,6 +29,10 @@ export type TimeLogRow = {
   client_id: string;
   client_name: string;
   project_name: string;
+  task_id: string | null;
+  task_name: string | null;
+  service_id: string | null;
+  service_name: string | null;
   started_at: string;
   ended_at: string | null;
   duration_minutes: number;
@@ -16,6 +40,61 @@ export type TimeLogRow = {
   is_billable: boolean;
   is_billed: boolean;
 };
+
+/**
+ * Attach service to a log via task_id (no time_logs.service_id column).
+ * Reuses or creates a project task for the selected service when no task is set.
+ */
+async function resolveTaskIdForService(
+  supabase: SupabaseClient,
+  projectId: string,
+  serviceId: string | null | undefined,
+  taskId: string | null | undefined
+): Promise<{ taskId: string | null; error?: string }> {
+  const explicitTaskId = taskId?.trim() || null;
+  if (explicitTaskId) return { taskId: explicitTaskId };
+
+  const sid = serviceId?.trim() || null;
+  if (!sid) return { taskId: null };
+
+  const { data: service } = await supabase
+    .from("services")
+    .select("name")
+    .eq("id", sid)
+    .maybeSingle();
+
+  const { data: candidates } = await supabase
+    .from("tasks")
+    .select("id, name")
+    .eq("project_id", projectId)
+    .eq("service_id", sid)
+    .order("created_at", { ascending: true });
+
+  const decision = resolveServiceTask({
+    taskId: null,
+    serviceId: sid,
+    serviceName: service?.name ?? null,
+    candidates: (candidates ?? []).map((t) => ({ id: t.id, name: t.name })),
+  });
+
+  if (decision.kind === "task") return { taskId: decision.taskId };
+  if (decision.kind === "none") return { taskId: null };
+
+  const { data: created, error } = await supabase
+    .from("tasks")
+    .insert({
+      project_id: projectId,
+      service_id: sid,
+      name: decision.name,
+    })
+    .select("id")
+    .single();
+
+  if (error || !created) {
+    return { taskId: null, error: error?.message ?? "Could not save service for this log." };
+  }
+  return { taskId: created.id };
+}
 
 export type GetTimeLogsFilters = {
   clientId?: string;
@@ -32,26 +111,21 @@ export async function getTimeLogs(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return [];
 
-  const now = new Date();
+  const timezone = await fetchUserTimezone(supabase, user.id);
   let from: Date;
   let to: Date;
 
   if (filters?.fromDate && filters?.toDate) {
-    from = new Date(filters.fromDate + "T00:00:00");
-    to = new Date(filters.toDate + "T23:59:59");
+    from = startOfLocalDay(filters.fromDate, timezone);
+    to = endOfLocalDay(filters.toDate, timezone);
   } else if (view === "week") {
-    const dayOfWeek = now.getDay();
-    const monday = new Date(now);
-    monday.setDate(now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1));
-    monday.setHours(0, 0, 0, 0);
-    monday.setDate(monday.getDate() + offsetWeeks * 7);
-    from = monday;
-    to = new Date(monday);
-    to.setDate(to.getDate() + 6);
-    to.setHours(23, 59, 59, 999);
+    const range = getWeekRange(timezone, offsetWeeks);
+    from = range.from;
+    to = range.to;
   } else {
-    from = new Date(now.getFullYear(), now.getMonth() + offsetWeeks, 1);
-    to = new Date(from.getFullYear(), from.getMonth() + 1, 0, 23, 59, 59, 999);
+    const range = getMonthRange(timezone, offsetWeeks);
+    from = range.from;
+    to = range.to;
   }
 
   const fromStr = from.toISOString();
@@ -60,9 +134,10 @@ export async function getTimeLogs(
   let query = supabase
     .from("time_logs")
     .select(`
-      id, project_id, started_at, ended_at, duration_minutes,
+      id, project_id, task_id, started_at, ended_at, duration_minutes,
       description, is_billable, is_billed,
-      projects(id, name, client_id, clients(id, name))
+      projects(id, name, client_id, clients(id, name)),
+      tasks(id, name, service_id)
     `)
     .eq("user_id", user.id)
     .gte("started_at", fromStr)
@@ -85,16 +160,48 @@ export async function getTimeLogs(
   const { data } = await query;
 
   if (!data) return [];
+
+  const serviceIds = [
+    ...new Set(
+      data
+        .map((r) => {
+          const task = r.tasks as unknown as { service_id?: string | null } | null;
+          return task?.service_id ?? null;
+        })
+        .filter(Boolean)
+    ),
+  ] as string[];
+  const serviceNameMap: Record<string, string> = {};
+  if (serviceIds.length > 0) {
+    const { data: services } = await supabase
+      .from("services")
+      .select("id, name")
+      .in("id", serviceIds);
+    for (const s of services ?? []) {
+      serviceNameMap[s.id] = s.name;
+    }
+  }
+
   return data
     .filter((r) => r.projects && typeof (r.projects as unknown as { client_id?: string }).client_id === "string")
     .map((r) => {
       const p = r.projects as unknown as { id: string; name: string; client_id: string; clients?: { id: string; name: string } };
+      const task = r.tasks as unknown as {
+        id: string;
+        name: string;
+        service_id: string | null;
+      } | null;
+      const serviceId = task?.service_id ?? null;
       return {
         id: r.id,
         project_id: r.project_id,
         client_id: p.client_id,
         client_name: p.clients?.name ?? "—",
         project_name: p.name ?? "—",
+        task_id: r.task_id ?? task?.id ?? null,
+        task_name: task?.name ?? null,
+        service_id: serviceId,
+        service_name: serviceId ? serviceNameMap[serviceId] ?? null : null,
         started_at: r.started_at,
         ended_at: r.ended_at,
         duration_minutes: r.duration_minutes ?? 0,
@@ -142,10 +249,7 @@ export async function startTimer(projectId: string, options?: { taskId?: string;
     .single();
 
   if (error) return { error: error.message };
-  revalidatePath("/");
-  revalidatePath("/clients");
-  revalidatePath("/logs");
-  revalidatePath("/org/logs");
+  revalidateTimeLogPaths();
   return { success: true, logId: data.id, startedAt: data.started_at };
 }
 
@@ -176,10 +280,7 @@ export async function stopTimer() {
     .eq("id", active.id);
 
   if (error) return { error: error.message };
-  revalidatePath("/");
-  revalidatePath("/clients");
-  revalidatePath("/logs");
-  revalidatePath("/org/logs");
+  revalidateTimeLogPaths();
   return { success: true };
 }
 
@@ -190,6 +291,7 @@ export async function addManualLog(formData: FormData) {
 
   const projectId = formData.get("project_id") as string;
   const taskId = (formData.get("task_id") as string) || null;
+  const serviceId = (formData.get("service_id") as string) || null;
   const date = formData.get("date") as string;
   const startTime = formData.get("start_time") as string;
   const endTime = formData.get("end_time") as string;
@@ -197,34 +299,43 @@ export async function addManualLog(formData: FormData) {
   const description = (formData.get("description") as string)?.trim() || null;
   const isBillable = formData.get("is_billable") === "true";
 
+  if (!projectId || !date)
+    return { error: "Project and date are required" };
+
+  const timezone = await fetchUserTimezone(supabase, user.id);
   let startedAt: Date;
   let endedAt: Date;
   let durationMinutes: number;
 
   if (startTime && endTime) {
-    startedAt = new Date(`${date}T${startTime}`);
-    endedAt = new Date(`${date}T${endTime}`);
-    durationMinutes = Math.round((endedAt.getTime() - startedAt.getTime()) / 60000);
-    if (durationMinutes <= 0) return { error: "End time must be after start time" };
+    const schedule = resolveLogSchedule(date, startTime, endTime, timezone);
+    if (!schedule.ok) return { error: schedule.error };
+    startedAt = schedule.startedAt;
+    endedAt = schedule.endedAt;
+    durationMinutes = schedule.durationMinutes;
   } else if (durationParam) {
     const duration = parseInt(durationParam, 10);
-    if (!date || isNaN(duration) || duration <= 0)
+    if (isNaN(duration) || duration <= 0)
       return { error: "Project, date, and duration are required" };
-    const d = new Date(date);
-    startedAt = new Date(d);
-    endedAt = new Date(d.getTime() + duration * 60 * 1000);
+    startedAt = zonedDateTimeToUtc(date, "09:00", timezone);
+    endedAt = new Date(startedAt.getTime() + duration * 60 * 1000);
     durationMinutes = duration;
   } else {
     return { error: "Project, date, and time range are required" };
   }
 
-  if (!projectId || !date)
-    return { error: "Project and date are required" };
+  const resolvedTask = await resolveTaskIdForService(
+    supabase,
+    projectId,
+    serviceId,
+    taskId
+  );
+  if (resolvedTask.error) return { error: resolvedTask.error };
 
   const { error } = await supabase.from("time_logs").insert({
     project_id: projectId,
     user_id: user.id,
-    task_id: taskId || null,
+    task_id: resolvedTask.taskId,
     started_at: startedAt.toISOString(),
     ended_at: endedAt.toISOString(),
     duration_minutes: durationMinutes,
@@ -233,10 +344,7 @@ export async function addManualLog(formData: FormData) {
   });
 
   if (error) return { error: error.message };
-  revalidatePath("/");
-  revalidatePath("/clients");
-  revalidatePath("/logs");
-  revalidatePath("/org/logs");
+  revalidateTimeLogPaths();
   return { success: true };
 }
 
@@ -244,7 +352,14 @@ export async function addManualLog(formData: FormData) {
 export async function addTimeLogForTask(
   projectId: string,
   taskId: string,
-  data: { date: string; durationMinutes: number; description?: string | null; isBillable?: boolean }
+  data: {
+    date: string;
+    durationMinutes: number;
+    description?: string | null;
+    isBillable?: boolean;
+    startTime?: string;
+    endTime?: string;
+  }
 ) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -252,9 +367,19 @@ export async function addTimeLogForTask(
   if (!projectId || !taskId || !data.date || data.durationMinutes <= 0)
     return { error: "Project, task, date, and duration required" };
 
-  const d = new Date(data.date);
-  const startedAt = new Date(d);
-  const endedAt = new Date(d.getTime() + data.durationMinutes * 60 * 1000);
+  const timezone = await fetchUserTimezone(supabase, user.id);
+  let startedAt: Date;
+  let endedAt: Date;
+
+  if (data.startTime && data.endTime) {
+    const schedule = resolveLogSchedule(data.date, data.startTime, data.endTime, timezone);
+    if (!schedule.ok) return { error: schedule.error };
+    startedAt = schedule.startedAt;
+    endedAt = schedule.endedAt;
+  } else {
+    startedAt = zonedDateTimeToUtc(data.date, "09:00", timezone);
+    endedAt = new Date(startedAt.getTime() + data.durationMinutes * 60 * 1000);
+  }
 
   const { error } = await supabase.from("time_logs").insert({
     project_id: projectId,
@@ -268,10 +393,7 @@ export async function addTimeLogForTask(
   });
 
   if (error) return { error: error.message };
-  revalidatePath("/");
-  revalidatePath("/clients");
-  revalidatePath("/logs");
-  revalidatePath("/org/logs");
+  revalidateTimeLogPaths();
   return { success: true };
 }
 
@@ -279,9 +401,13 @@ export async function updateTimeLog(
   id: string,
   data: {
     project_id?: string;
+    task_id?: string | null;
+    service_id?: string | null;
     description?: string;
     is_billable?: boolean;
     date?: string;
+    start_time?: string;
+    end_time?: string;
     duration_minutes?: number;
   }
 ) {
@@ -289,25 +415,71 @@ export async function updateTimeLog(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Unauthorized" };
 
+  const { data: existing } = await supabase
+    .from("time_logs")
+    .select("project_id, started_at, ended_at, duration_minutes")
+    .eq("id", id)
+    .eq("user_id", user.id)
+    .single();
+
+  if (!existing) return { error: "Time log not found" };
+
   const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (data.project_id !== undefined) update.project_id = data.project_id;
   if (data.description !== undefined) update.description = data.description;
   if (data.is_billable !== undefined) update.is_billable = data.is_billable;
-  if (data.duration_minutes !== undefined) update.duration_minutes = data.duration_minutes;
 
-  if (data.date !== undefined || data.duration_minutes !== undefined) {
-    const { data: existing } = await supabase
-      .from("time_logs")
-      .select("started_at, duration_minutes")
-      .eq("id", id)
-      .eq("user_id", user.id)
-      .single();
+  const touchesTaskOrService =
+    data.task_id !== undefined || data.service_id !== undefined;
+  if (touchesTaskOrService) {
+    const projectId = data.project_id ?? existing.project_id;
+    const resolvedTask = await resolveTaskIdForService(
+      supabase,
+      projectId,
+      data.service_id,
+      data.task_id
+    );
+    if (resolvedTask.error) return { error: resolvedTask.error };
+    update.task_id = resolvedTask.taskId;
+  }
 
-    const dateStr = data.date ?? (existing?.started_at ? new Date(existing.started_at).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10));
-    const mins = data.duration_minutes ?? existing?.duration_minutes ?? 0;
-    const start = new Date(dateStr);
-    update.started_at = start.toISOString();
-    update.ended_at = new Date(start.getTime() + mins * 60 * 1000).toISOString();
+  const touchesSchedule =
+    data.date !== undefined ||
+    data.start_time !== undefined ||
+    data.end_time !== undefined ||
+    data.duration_minutes !== undefined;
+
+  if (touchesSchedule) {
+    const timezone = await fetchUserTimezone(supabase, user.id);
+    const dateStr =
+      data.date ??
+      (existing.started_at
+        ? formatInstantAsLocalDate(existing.started_at, timezone)
+        : localToday(timezone));
+
+    let startedAt: Date;
+    let endedAt: Date;
+    let mins: number;
+
+    if (data.start_time && data.end_time) {
+      const schedule = resolveLogSchedule(dateStr, data.start_time, data.end_time, timezone);
+      if (!schedule.ok) return { error: schedule.error };
+      startedAt = schedule.startedAt;
+      endedAt = schedule.endedAt;
+      mins = schedule.durationMinutes;
+    } else {
+      const startTime =
+        data.start_time ??
+        (existing.started_at
+          ? formatInstantAsLocalTime(existing.started_at, timezone)
+          : "09:00");
+      startedAt = zonedDateTimeToUtc(dateStr, startTime, timezone);
+      mins = data.duration_minutes ?? existing.duration_minutes ?? 0;
+      endedAt = new Date(startedAt.getTime() + mins * 60 * 1000);
+    }
+
+    update.started_at = startedAt.toISOString();
+    update.ended_at = endedAt.toISOString();
     update.duration_minutes = mins;
   }
 
@@ -318,9 +490,7 @@ export async function updateTimeLog(
     .eq("user_id", user.id);
 
   if (error) return { error: error.message };
-  revalidatePath("/");
-  revalidatePath("/logs");
-  revalidatePath("/org/logs");
+  revalidateTimeLogPaths();
   return { success: true };
 }
 
@@ -336,8 +506,6 @@ export async function deleteTimeLog(id: string) {
     .eq("user_id", user.id);
 
   if (error) return { error: error.message };
-  revalidatePath("/");
-  revalidatePath("/logs");
-  revalidatePath("/org/logs");
+  revalidateTimeLogPaths();
   return { success: true };
 }

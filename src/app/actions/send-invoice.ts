@@ -13,6 +13,8 @@ import {
   createInvoiceCheckoutSession,
   stripeClient,
 } from "@/lib/stripe/connect";
+import { computeInvoiceMoney, resolveTaxRate } from "@/lib/invoices/money";
+import { formatInvoiceNumber, normalizeInvoicePrefix } from "@/lib/invoices/number";
 
 type InvoiceBundle = {
   inv: {
@@ -27,7 +29,14 @@ type InvoiceBundle = {
     client_id: string;
     project_id: string | null;
     view_token: string | null;
-    clients: { name?: string; email?: string } | null;
+    invoice_number?: number | null;
+    clients: {
+      name?: string;
+      email?: string;
+      address?: string | null;
+      phone_number?: string | null;
+      business_phone?: string | null;
+    } | null;
     projects: { name?: string; tax_rate?: number | null; billing_type?: string } | null;
   };
   items: Array<{ description: string; quantity: number; unit_rate: number; amount: number }>;
@@ -42,6 +51,7 @@ type InvoiceBundle = {
     subscription_tier: string | null;
     default_invoice_footer: string | null;
     default_invoice_terms: string | null;
+    invoice_prefix?: string | null;
   } | null;
 };
 
@@ -50,14 +60,30 @@ async function loadInvoiceBundle(
   invoiceId: string,
   userId: string
 ): Promise<InvoiceBundle | { error: string }> {
-  const { data: inv } = await supabase
+  let inv: InvoiceBundle["inv"] | null = null;
+  const withNumber = await supabase
     .from("invoices")
     .select(
-      "id, status, total_amount, currency, issued_at, due_at, footer, terms_and_conditions, client_id, project_id, view_token, clients(name, email), projects(name, tax_rate, billing_type)"
+      "id, status, total_amount, currency, issued_at, due_at, footer, terms_and_conditions, client_id, project_id, view_token, invoice_number, clients(name, email, address, phone_number, business_phone), projects(name, tax_rate, billing_type)"
     )
     .eq("id", invoiceId)
     .eq("user_id", userId)
     .single();
+
+  if (withNumber.error) {
+    const base = await supabase
+      .from("invoices")
+      .select(
+        "id, status, total_amount, currency, issued_at, due_at, footer, terms_and_conditions, client_id, project_id, view_token, clients(name, email, address, phone_number, business_phone), projects(name, tax_rate, billing_type)"
+      )
+      .eq("id", invoiceId)
+      .eq("user_id", userId)
+      .single();
+    if (!base.data) return { error: "Invoice not found" };
+    inv = base.data as InvoiceBundle["inv"];
+  } else {
+    inv = withNumber.data as InvoiceBundle["inv"];
+  }
 
   if (!inv) return { error: "Invoice not found" };
 
@@ -70,13 +96,13 @@ async function loadInvoiceBundle(
   const { data: profile } = await supabase
     .from("profiles")
     .select(
-      "business_name, full_name, phone_number, address, tax_rate, stripe_account_id, stripe_connect_charges_enabled, subscription_tier, default_invoice_footer, default_invoice_terms"
+      "business_name, full_name, phone_number, address, tax_rate, stripe_account_id, stripe_connect_charges_enabled, subscription_tier, default_invoice_footer, default_invoice_terms, invoice_prefix"
     )
     .eq("id", userId)
     .single();
 
   return {
-    inv: inv as InvoiceBundle["inv"],
+    inv,
     items: (items ?? []).map((i) => ({
       description: i.description ?? "",
       quantity: Number(i.quantity) ?? 0,
@@ -100,14 +126,11 @@ async function dispatchInvoice(params: {
   if (!clientEmail) return { error: "Client has no email" };
 
   const project = inv.projects;
-  const projectTaxRate =
-    project?.tax_rate != null && project.tax_rate > 0 ? Number(project.tax_rate) : null;
-  const profileTaxRate =
-    profile?.tax_rate != null && profile.tax_rate > 0 ? Number(profile.tax_rate) : null;
-  const taxRate = projectTaxRate ?? profileTaxRate;
-  const subtotal = items.reduce((s, i) => s + Number(i.amount || 0), 0);
-  const taxAmount = taxRate != null ? Math.round(subtotal * (taxRate / 100) * 100) / 100 : 0;
-  const totalWithTax = subtotal + taxAmount;
+  const taxRate = resolveTaxRate(project?.tax_rate, profile?.tax_rate);
+  const money = computeInvoiceMoney(items, taxRate);
+  const subtotal = money.subtotal;
+  const taxAmount = money.taxAmount;
+  const totalWithTax = money.total;
   const isFixedProject = project?.billing_type === "fixed";
   const businessName =
     profile?.business_name?.trim() || profile?.full_name?.trim() || "Your Business";
@@ -172,10 +195,17 @@ async function dispatchInvoice(params: {
 
   if (prepError) return { error: prepError.message };
 
+  const displayNumber =
+    formatInvoiceNumber(
+      normalizeInvoicePrefix(profile?.invoice_prefix),
+      inv.invoice_number
+    ) ?? null;
+
   let pdfBuffer: Buffer | null = null;
   try {
     pdfBuffer = await generateInvoicePdf({
       id: inv.id,
+      displayNumber,
       total_amount: totalWithTax,
       subtotal,
       tax_rate: taxRate ?? undefined,
@@ -186,6 +216,8 @@ async function dispatchInvoice(params: {
       due_at: inv.due_at,
       clientName: client?.name ?? "Client",
       clientEmail,
+      clientAddress: client?.address ?? null,
+      clientPhone: client?.phone_number || client?.business_phone || null,
       projectName: project?.name ?? undefined,
       footer: inv.footer?.trim() || profile?.default_invoice_footer?.trim() || null,
       terms_and_conditions:
@@ -204,6 +236,7 @@ async function dispatchInvoice(params: {
   const emailResult = await sendInvoiceEmail({
     to: clientEmail,
     invoiceId: inv.id,
+    displayNumber,
     businessName,
     clientName: client?.name,
     currency: inv.currency ?? "USD",
@@ -252,7 +285,9 @@ export async function sendInvoice(invoiceId: string) {
   const bundle = await loadInvoiceBundle(supabase, invoiceId, user.id);
   if ("error" in bundle) return bundle;
 
-  if (bundle.inv.status !== "draft") {
+  // "Send" is for invoices that have never been emailed (no view_token),
+  // even if status was changed manually or marked overdue.
+  if (bundle.inv.view_token) {
     return { error: "Invoice already sent. Use Resend to email again." };
   }
 

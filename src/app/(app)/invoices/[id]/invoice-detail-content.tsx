@@ -2,13 +2,16 @@
 
 import { toast } from "sonner";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { PrintInvoiceButton } from "@/components/print-invoice-button";
 import { SendInvoiceButton } from "@/components/send-invoice-button";
 import { EditInvoiceSlideOver } from "@/components/edit-invoice-slide-over";
 import { updateInvoiceStatus, deleteInvoice } from "@/app/actions/invoices";
+import { useTimezone } from "@/contexts/timezone-context";
+import { formatDateOnly, formatInstantAsLocalDate, localToday } from "@/lib/dates";
+import { invoiceNumberLabel } from "@/lib/invoices/number";
 
 const STATUSES = ["draft", "sent", "paid", "overdue"] as const;
 
@@ -27,6 +30,9 @@ type InvoiceData = {
   paid_at?: string | null;
   footer: string;
   terms_and_conditions: string;
+  invoice_number?: number | null;
+  invoice_prefix?: string | null;
+  has_been_emailed?: boolean;
 };
 
 type ItemData = {
@@ -36,6 +42,7 @@ type ItemData = {
   unit_rate: number;
   amount: number;
   sort_order: number;
+  time_log_id?: string | null;
 };
 
 type BusinessInfo = {
@@ -43,6 +50,14 @@ type BusinessInfo = {
   logoUrl: string | null;
   phone: string | null;
   address: string | null;
+};
+
+type ClientInfo = {
+  name?: string;
+  email?: string;
+  address?: string | null;
+  phone_number?: string | null;
+  business_phone?: string | null;
 };
 
 export function InvoiceDetailContent({
@@ -55,22 +70,53 @@ export function InvoiceDetailContent({
 }: {
   businessInfo: BusinessInfo;
   invoice: InvoiceData;
-  client: { name?: string; email?: string } | null;
+  client: ClientInfo | null;
   project: { name?: string } | null;
   items: ItemData[];
   isFixedProject?: boolean;
 }) {
   const router = useRouter();
+  const timezone = useTimezone();
   const [editOpen, setEditOpen] = useState(false);
   const [status, setStatus] = useState(invoice.status);
   const [statusUpdating, setStatusUpdating] = useState(false);
+  // H10: ignore status changes until client hydration finishes
+  const [statusReady, setStatusReady] = useState(false);
+
+  useEffect(() => {
+    setStatusReady(true);
+  }, []);
+
+  useEffect(() => {
+    setStatus(invoice.status);
+  }, [invoice.status]);
 
   async function handleStatusChange(newStatus: string) {
+    if (!statusReady || statusUpdating) return;
+    if (newStatus === status) return;
+
+    if (newStatus === "overdue" && invoice.due_at) {
+      const today = localToday(timezone);
+      if (invoice.due_at > today) {
+        toast.error("Cannot mark overdue while the due date is still in the future.");
+        return;
+      }
+    }
+
+    const ok = window.confirm(
+      `Change status from ${status} to ${newStatus}?`
+    );
+    if (!ok) return;
+
     setStatusUpdating(true);
     const r = await updateInvoiceStatus(invoice.id, newStatus);
     setStatusUpdating(false);
-    if (r?.error) return;
+    if (r?.error) {
+      toast.error(r.error);
+      return;
+    }
     setStatus(newStatus);
+    toast.success(`Status updated to ${newStatus}`);
     router.refresh();
   }
 
@@ -83,7 +129,6 @@ export function InvoiceDetailContent({
     }
     toast.success("Invoice deleted");
     router.push("/invoices");
-    router.refresh();
   }
 
   const statusStyles: Record<string, { backgroundColor: string; color: string }> = {
@@ -95,6 +140,12 @@ export function InvoiceDetailContent({
   const statusStyle = statusStyles[status] ?? statusStyles.draft;
   const footerText = invoice.footer?.trim() ?? "";
   const termsText = invoice.terms_and_conditions?.trim() ?? "";
+  const displayNumber = invoiceNumberLabel(
+    invoice.invoice_prefix,
+    invoice.invoice_number
+  );
+  const clientPhone = client?.phone_number || client?.business_phone || null;
+  const dateOpts = { year: "numeric" as const, month: "short" as const, day: "numeric" as const };
 
   return (
     <>
@@ -121,13 +172,20 @@ export function InvoiceDetailContent({
           </div>
           <div className="text-right">
             <p className="text-xs uppercase tracking-wider text-[var(--text-secondary)]">
-              Invoice #{invoice.id.slice(0, 8)}
+              Invoice {displayNumber}
             </p>
             <select
               value={status}
               onChange={(e) => handleStatusChange(e.target.value)}
-              disabled={statusUpdating}
-              className="no-print mt-1 block rounded px-2 py-0.5 text-xs font-semibold uppercase border-0 cursor-pointer focus:ring-2 focus:ring-accent/50 focus:outline-none"
+              disabled={!statusReady || statusUpdating}
+              title={
+                !statusReady
+                  ? "Loading invoice…"
+                  : statusUpdating
+                    ? "Saving…"
+                    : undefined
+              }
+              className="no-print mt-1 block rounded px-2 py-0.5 text-xs font-semibold uppercase border-0 cursor-pointer focus:ring-2 focus:ring-accent/50 focus:outline-none disabled:opacity-60 disabled:cursor-wait"
               style={{
                 backgroundColor: statusStyle.backgroundColor,
                 color: statusStyle.color,
@@ -139,6 +197,15 @@ export function InvoiceDetailContent({
                 </option>
               ))}
             </select>
+            <span
+              className="print-only mt-1 inline-block rounded px-2 py-0.5 text-xs font-semibold uppercase"
+              style={{
+                backgroundColor: statusStyle.backgroundColor,
+                color: statusStyle.color,
+              }}
+            >
+              {status}
+            </span>
           </div>
         </div>
 
@@ -150,7 +217,9 @@ export function InvoiceDetailContent({
             <p className="font-semibold text-[var(--text-primary)]">{businessInfo.name}</p>
             {(businessInfo.address || businessInfo.phone) && (
               <div className="mt-1 text-sm text-[var(--text-secondary)] space-y-0.5">
-                {businessInfo.address && <p>{businessInfo.address}</p>}
+                {businessInfo.address && (
+                  <p className="whitespace-pre-wrap">{businessInfo.address}</p>
+                )}
                 {businessInfo.phone && <p>{businessInfo.phone}</p>}
               </div>
             )}
@@ -160,41 +229,48 @@ export function InvoiceDetailContent({
               Bill To
             </p>
             <p className="font-semibold text-[var(--text-primary)]">{client?.name ?? "—"}</p>
-            {client?.email && (
-              <p className="text-sm text-[var(--text-secondary)]">{client.email}</p>
-            )}
+            <div className="mt-1 text-sm text-[var(--text-secondary)] space-y-0.5">
+              {client?.email && <p>{client.email}</p>}
+              {client?.address && (
+                <p className="whitespace-pre-wrap">{client.address}</p>
+              )}
+              {clientPhone && <p>{clientPhone}</p>}
+            </div>
           </div>
         </div>
         <div className="flex justify-end gap-8 mb-8 text-sm text-[var(--text-secondary)]">
-          <span>Issued: {invoice.issued_at || "—"}</span>
-          <span>Due: {invoice.due_at || "—"}</span>
+          <span>Issued: {formatDateOnly(invoice.issued_at, dateOpts)}</span>
+          <span>Due: {formatDateOnly(invoice.due_at, dateOpts)}</span>
           {invoice.paid_at && (
-            <span>Paid: {new Date(invoice.paid_at).toLocaleDateString()}</span>
+            <span>
+              Paid:{" "}
+              {formatDateOnly(formatInstantAsLocalDate(invoice.paid_at, timezone), dateOpts)}
+            </span>
           )}
           {project?.name && <span>Project: {project.name}</span>}
         </div>
 
-        <table className="w-full text-sm">
+        <table className="w-full text-sm table-fixed">
           <thead>
             <tr className="border-b border-[var(--border-strong)]">
-              <th className="text-left py-3 font-semibold text-[var(--text-secondary)]">
+              <th className="text-left py-3 font-semibold text-[var(--text-secondary)] w-auto">
                 Description
               </th>
               {!isFixedProject && (
                 <>
-                  <th className="text-right py-3 font-semibold text-[var(--text-secondary)]">
+                  <th className="text-right py-3 font-semibold text-[var(--text-secondary)] w-16 whitespace-nowrap">
                     Qty
                   </th>
-                  <th className="text-right py-3 font-semibold text-[var(--text-secondary)]">
+                  <th className="text-right py-3 font-semibold text-[var(--text-secondary)] w-24 whitespace-nowrap">
                     Rate
                   </th>
-                  <th className="text-right py-3 font-semibold text-[var(--text-secondary)]">
+                  <th className="text-right py-3 font-semibold text-[var(--text-secondary)] w-28 whitespace-nowrap">
                     Amount
                   </th>
                 </>
               )}
               {isFixedProject && (
-                <th className="text-right py-3 font-semibold text-[var(--text-secondary)]">
+                <th className="text-right py-3 font-semibold text-[var(--text-secondary)] w-28 whitespace-nowrap">
                   Amount
                 </th>
               )}
@@ -203,20 +279,24 @@ export function InvoiceDetailContent({
           <tbody>
             {items.map((row) => (
               <tr key={row.id} className="border-b border-[var(--border)]">
-                <td className="py-3 text-[var(--text-primary)]">{row.description}</td>
+                <td className="py-3 text-[var(--text-primary)] break-words pr-3 align-top">
+                  {row.description}
+                </td>
                 {!isFixedProject && (
                   <>
-                    <td className="py-3 text-right font-mono text-[var(--text-primary)]">{row.quantity}</td>
-                    <td className="py-3 text-right font-mono text-[var(--text-primary)]">
+                    <td className="py-3 text-right font-mono text-[var(--text-primary)] whitespace-nowrap align-top">
+                      {row.quantity}
+                    </td>
+                    <td className="py-3 text-right font-mono text-[var(--text-primary)] whitespace-nowrap align-top">
                       {row.unit_rate != null ? `$${row.unit_rate.toFixed(2)}` : "—"}
                     </td>
-                    <td className="py-3 text-right font-mono text-[var(--text-primary)]">
+                    <td className="py-3 text-right font-mono text-[var(--text-primary)] whitespace-nowrap align-top">
                       ${row.amount.toFixed(2)}
                     </td>
                   </>
                 )}
                 {isFixedProject && (
-                  <td className="py-3 text-right font-mono text-[var(--text-primary)]">
+                  <td className="py-3 text-right font-mono text-[var(--text-primary)] whitespace-nowrap align-top">
                     {row.amount > 0 ? `$${row.amount.toFixed(2)}` : "—"}
                   </td>
                 )}
@@ -238,6 +318,11 @@ export function InvoiceDetailContent({
           )}
           <p className="text-xl font-bold font-serif text-[var(--text-primary)]">
             Total: {invoice.currency} ${invoice.total_amount.toFixed(2)}
+            {invoice.tax_rate != null && invoice.tax_rate > 0 && (
+              <span className="ml-2 text-xs font-sans font-normal text-[var(--text-muted)]">
+                incl. tax
+              </span>
+            )}
           </p>
         </div>
 
@@ -269,6 +354,7 @@ export function InvoiceDetailContent({
           invoiceId={invoice.id}
           status={status as "draft" | "sent" | "paid" | "overdue"}
           paymentUrl={invoice.stripe_payment_url}
+          hasBeenEmailed={!!invoice.has_been_emailed}
         />
         <button
           type="button"
@@ -295,6 +381,7 @@ export function InvoiceDetailContent({
         items={items}
         onSaved={() => {
           setEditOpen(false);
+          toast.success("Invoice saved");
           router.refresh();
         }}
       />

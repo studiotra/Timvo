@@ -48,7 +48,23 @@ export type Service = {
   name: string;
   default_rate: number | null;
   billing_type: "hourly" | "fixed";
+  status?: "active" | "archived";
   created_at: string;
 };
 
-export type ServiceListItem = Pick<Service, "id" | "name" | "default_rate" | "billing_type">;
+export type ServiceListItem = Pick<
+  Service,
+  "id" | "name" | "default_rate" | "billing_type"
+> & { status?: "active" | "archived" };
+
+export type Task = {
+  id: string;
+  project_id: string;
+  name: string;
+  service_id: string | null;
+  is_done?: boolean;
+  due_date?: string | null;
+  sort_order?: number;
+  created_at: string;
+  updated_at: string;
+};

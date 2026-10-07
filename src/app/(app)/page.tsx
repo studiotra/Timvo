@@ -5,6 +5,16 @@ import {
   getClientEffectiveRates,
 } from "@/app/actions/effective-rates";
 import { getIncomeSummary, getProjectedAnnual } from "@/app/actions/income-summary";
+import {
+  formatDateOnly,
+  formatLogDisplayTitle,
+  getMonthRange,
+  getWeekRange,
+} from "@/lib/dates";
+import { buildWeekDayHours } from "@/lib/dashboard/week-activity";
+import { resolveInvoiceDisplayStatus } from "@/lib/invoices/status";
+import { hourlyLogAmount, resolveHourlyRate } from "@/lib/rates";
+import { fetchUserTimezone } from "@/lib/user-timezone";
 import { DashboardContent } from "./dashboard-content";
 
 const PROJECT_COLORS: Record<string, string> = {
@@ -19,62 +29,82 @@ export default async function DashboardPage() {
     redirect("/login");
   }
 
-  // Unbilled total
+  const timezone = await fetchUserTimezone(supabase, user.id);
+
+  // Unbilled total — project rate → service rate (via task)
   const { data: unbilledLogs } = await supabase
     .from("time_logs")
-    .select("duration_minutes, projects(hourly_rate)")
+    .select(
+      "id, duration_minutes, task_id, projects(hourly_rate), tasks(service_id)"
+    )
     .eq("user_id", user.id)
     .eq("is_billable", true)
     .eq("is_billed", false);
 
-  let unbilledTotal = 0;
-  if (unbilledLogs) {
-    for (const log of unbilledLogs) {
-      const proj = log.projects as { hourly_rate?: number } | null | undefined;
-      const rate = Number(proj?.hourly_rate) || 0;
-      const hours = (log.duration_minutes ?? 0) / 60;
-      unbilledTotal += hours * rate;
+  const serviceIds = [
+    ...new Set(
+      (unbilledLogs ?? [])
+        .map((l) => {
+          const task = l.tasks as { service_id?: string | null } | null;
+          return task?.service_id ?? null;
+        })
+        .filter(Boolean)
+    ),
+  ] as string[];
+
+  const servicesRateMap: Record<string, number | null> = {};
+  if (serviceIds.length > 0) {
+    const { data: services } = await supabase
+      .from("services")
+      .select("id, default_rate")
+      .in("id", serviceIds);
+    for (const s of services ?? []) {
+      servicesRateMap[s.id] =
+        s.default_rate != null ? Number(s.default_rate) : null;
     }
   }
 
-  // Week stats
-  const weekStart = new Date();
-  weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-  weekStart.setHours(0, 0, 0, 0);
-  const weekEnd = new Date(weekStart);
-  weekEnd.setDate(weekEnd.getDate() + 7);
+  let unbilledTotal = 0;
+  let unbilledLogCount = 0;
+  let unbilledMissingRateCount = 0;
+  if (unbilledLogs) {
+    for (const log of unbilledLogs) {
+      unbilledLogCount += 1;
+      const proj = log.projects as { hourly_rate?: number | null } | null;
+      const task = log.tasks as { service_id?: string | null } | null;
+      const serviceId = task?.service_id ?? null;
+      const resolved = resolveHourlyRate({
+        projectRate: proj?.hourly_rate,
+        serviceRate: serviceId ? servicesRateMap[serviceId] : null,
+      });
+      if (resolved.missing) unbilledMissingRateCount += 1;
+      unbilledTotal += hourlyLogAmount(log.duration_minutes ?? 0, resolved);
+    }
+  }
 
+  // Week stats (Mon–Sun in user's timezone — matches Logs)
+  const weekRange = getWeekRange(timezone);
   const { data: weekLogs } = await supabase
     .from("time_logs")
     .select("started_at, duration_minutes")
     .eq("user_id", user.id)
-    .gte("started_at", weekStart.toISOString())
-    .lt("started_at", weekEnd.toISOString());
+    .gte("started_at", weekRange.from.toISOString())
+    .lte("started_at", weekRange.to.toISOString());
 
   const weekMinutes =
     weekLogs?.reduce((s, l) => s + (l.duration_minutes ?? 0), 0) ?? 0;
 
-  const dayMinutes = [0, 0, 0, 0, 0, 0, 0];
-  if (weekLogs) {
-    for (const log of weekLogs) {
-      const d = new Date(log.started_at);
-      const dayIdx = (d.getDay() + 6) % 7;
-      dayMinutes[dayIdx] += log.duration_minutes ?? 0;
-    }
-  }
-  const maxDay = Math.max(...dayMinutes, 1);
-  const heatmapData = dayMinutes.map((m) => m / maxDay);
+  const weekDayHours = buildWeekDayHours(weekLogs ?? [], timezone);
 
-  // Received this month
-  const monthStart = new Date();
-  monthStart.setDate(1);
-  monthStart.setHours(0, 0, 0, 0);
+  // Received this month (local calendar month)
+  const monthRange = getMonthRange(timezone);
   const { data: paidInvoices } = await supabase
     .from("invoices")
     .select("total_amount")
     .eq("user_id", user.id)
     .eq("status", "paid")
-    .gte("created_at", monthStart.toISOString());
+    .gte("created_at", monthRange.from.toISOString())
+    .lte("created_at", monthRange.to.toISOString());
 
   const receivedTotal =
     paidInvoices?.reduce((s, i) => s + (Number(i.total_amount) ?? 0), 0) ?? 0;
@@ -82,24 +112,65 @@ export default async function DashboardPage() {
   // Recent logs
   const { data: recentLogsRaw } = await supabase
     .from("time_logs")
-    .select("id, description, duration_minutes, is_billed, projects(name, hourly_rate)")
+    .select(
+      "id, description, duration_minutes, is_billed, projects(name, hourly_rate), tasks(name, service_id)"
+    )
     .eq("user_id", user.id)
     .order("started_at", { ascending: false })
     .limit(10);
 
+  const recentServiceIds = [
+    ...new Set(
+      (recentLogsRaw ?? [])
+        .map((l) => {
+          const task = l.tasks as { service_id?: string | null } | null;
+          return task?.service_id ?? null;
+        })
+        .filter(Boolean)
+    ),
+  ] as string[];
+  const recentServicesMap: Record<string, number | null> = { ...servicesRateMap };
+  const missingRecent = recentServiceIds.filter((id) => !(id in recentServicesMap));
+  if (missingRecent.length > 0) {
+    const { data: services } = await supabase
+      .from("services")
+      .select("id, default_rate")
+      .in("id", missingRecent);
+    for (const s of services ?? []) {
+      recentServicesMap[s.id] =
+        s.default_rate != null ? Number(s.default_rate) : null;
+    }
+  }
+
   const recentLogs =
     recentLogsRaw?.map((l) => {
-      const proj = l.projects as { name?: string; hourly_rate?: number } | null;
-      const rate = Number(proj?.hourly_rate) || 0;
-      const hours = (l.duration_minutes ?? 0) / 60;
-      const amount = hours * rate;
+      const proj = l.projects as {
+        name?: string;
+        hourly_rate?: number | null;
+      } | null;
+      const task = l.tasks as {
+        name?: string;
+        service_id?: string | null;
+      } | null;
+      const serviceId = task?.service_id ?? null;
+      const resolved = resolveHourlyRate({
+        projectRate: proj?.hourly_rate,
+        serviceRate: serviceId ? recentServicesMap[serviceId] : null,
+      });
+      const amount = hourlyLogAmount(l.duration_minutes ?? 0, resolved);
       const projectName = proj?.name ?? "Unknown";
       const colorKeys = Object.keys(PROJECT_COLORS).filter((k) => k !== "default");
       return {
         id: l.id,
         description: l.description,
+        title: formatLogDisplayTitle({
+          description: l.description,
+          taskName: task?.name,
+          projectName,
+        }),
         duration_minutes: l.duration_minutes ?? 0,
         amount,
+        missingRate: resolved.missing && (l.is_billed === false),
         projectName,
         projectColor: colorKeys.includes(projectName)
           ? PROJECT_COLORS[projectName]
@@ -108,10 +179,10 @@ export default async function DashboardPage() {
       };
     }) ?? [];
 
-  // Recent invoices
+  // Recent invoices — same display status rules as Invoices list
   const { data: recentInvoicesRaw } = await supabase
     .from("invoices")
-    .select("id, total_amount, status, issued_at, clients(name)")
+    .select("id, total_amount, status, issued_at, due_at, clients(name)")
     .eq("user_id", user.id)
     .order("created_at", { ascending: false })
     .limit(5);
@@ -121,13 +192,15 @@ export default async function DashboardPage() {
       id: inv.id,
       clientName: (inv.clients as { name?: string } | null)?.name ?? "Unknown",
       total_amount: inv.total_amount ?? 0,
-      status: inv.status ?? "draft",
-      date: inv.issued_at
-        ? new Date(inv.issued_at).toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-          })
-        : "—",
+      status: resolveInvoiceDisplayStatus(
+        {
+          status: inv.status ?? "draft",
+          due_at: inv.due_at,
+          total_amount: inv.total_amount,
+        },
+        timezone
+      ),
+      date: inv.issued_at ? formatDateOnly(inv.issued_at) : "—",
     })) ?? [];
 
   const [businessRate, clientRates, incomeSummary, projected] = await Promise.all([
@@ -144,9 +217,11 @@ export default async function DashboardPage() {
   return (
     <DashboardContent
       unbilledTotal={unbilledTotal}
+      unbilledLogCount={unbilledLogCount}
+      unbilledMissingRateCount={unbilledMissingRateCount}
       weekMinutes={weekMinutes}
       receivedTotal={receivedTotal}
-      heatmapData={heatmapData}
+      weekDayHours={weekDayHours}
       recentLogs={recentLogs}
       recentInvoices={recentInvoices}
       effectiveRate={businessRate.effectiveRate}

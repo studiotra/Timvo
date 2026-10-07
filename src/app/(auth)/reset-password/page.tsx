@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
+import { TimvoLogo } from "@/components/timvo-logo";
 
 export default function ResetPasswordPage() {
   const router = useRouter();
@@ -38,7 +39,10 @@ export default function ResetPasswordPage() {
     <div className="min-h-screen flex items-center justify-center bg-charcoal px-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-white">Reset password</h1>
+          <Link href="/welcome" className="inline-flex justify-center hover:opacity-90">
+            <TimvoLogo variant="logo" surface="dark" height={40} priority />
+          </Link>
+          <h1 className="mt-4 text-2xl font-bold text-white">Reset password</h1>
           <p className="text-gray-400 text-sm mt-1">Enter your new password</p>
         </div>
         <div className="bg-[var(--bg-card)] backdrop-blur-xl border border-[var(--border)] rounded-xl p-6 shadow-xl">

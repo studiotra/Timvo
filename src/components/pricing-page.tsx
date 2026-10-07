@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Fragment, useState } from "react";
 import { MarketingNav } from "@/components/marketing-nav";
 import { MarketingIntegrationsSection, marketingIntegrationComparisonRows } from "@/components/marketing-integrations";
+import { TimvoLogo } from "@/components/timvo-logo";
 
 type Billing = "monthly" | "annual";
 
@@ -474,8 +475,8 @@ export function PricingPageContent() {
 
       <footer className="relative z-10 border-t border-white/5 px-5 py-8 md:px-10">
         <div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-4 text-sm text-white/35 sm:flex-row">
-          <Link href="/welcome" style={{ fontFamily: "var(--font-serif)" }} className="text-white/50">
-            Timvo
+          <Link href="/welcome" className="opacity-70 hover:opacity-100">
+            <TimvoLogo variant="wordmark" surface="dark" height={18} />
           </Link>
           <div className="flex gap-6">
             <Link href="/welcome" className="hover:text-white/70">

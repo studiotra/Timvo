@@ -9,6 +9,8 @@ type BusinessInfo = {
 
 type InvoiceData = {
   id: string;
+  /** Human display number e.g. INV-0001 — never a raw UUID. */
+  displayNumber?: string | null;
   total_amount: number;
   subtotal?: number;
   tax_rate?: number;
@@ -19,6 +21,8 @@ type InvoiceData = {
   due_at: string | null;
   clientName: string;
   clientEmail?: string;
+  clientAddress?: string | null;
+  clientPhone?: string | null;
   projectName?: string;
   footer?: string | null;
   terms_and_conditions?: string | null;
@@ -81,8 +85,9 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
 
   // Invoice # and dates (right column) - use fixed positions for this row
   const invoiceNumY = PAGE_HEIGHT - MARGIN - 14;
-  page.drawText(`Invoice #${data.id.slice(0, 8)}`, {
-    x: PAGE_WIDTH - MARGIN - 80,
+  const numberLabel = data.displayNumber?.trim() || "Invoice";
+  page.drawText(numberLabel.slice(0, 20), {
+    x: PAGE_WIDTH - MARGIN - Math.min(120, numberLabel.length * 7),
     y: invoiceNumY,
     size: 11,
     font: fontBold,
@@ -113,22 +118,44 @@ export async function generateInvoicePdf(data: InvoiceData): Promise<Buffer> {
 
   page.drawText("Bill To", { x: col2X, y: infoBlockY, size: 9, font: fontBold, color: rgb(0.4, 0.4, 0.4) });
   page.drawText(data.clientName.slice(0, 35), { x: col2X, y: infoBlockY - 12, size: 10, font });
+  let ty = infoBlockY - 24;
   if (data.clientEmail) {
-    page.drawText(data.clientEmail.slice(0, 45), { x: col2X, y: infoBlockY - 24, size: 9, font });
+    page.drawText(data.clientEmail.slice(0, 45), { x: col2X, y: ty, size: 9, font });
+    ty -= 12;
   }
+  if (data.clientAddress) {
+    const addrLines = wrapText(data.clientAddress, 35);
+    for (const line of addrLines.slice(0, 3)) {
+      page.drawText(line.slice(0, 45), { x: col2X, y: ty, size: 9, font });
+      ty -= 12;
+    }
+  }
+  if (data.clientPhone) {
+    page.drawText(data.clientPhone.slice(0, 30), { x: col2X, y: ty, size: 9, font });
+    ty -= 12;
+  }
+
+  const formatPdfDate = (raw: string | null | undefined) => {
+    if (!raw) return "—";
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw);
+    if (!m) return raw.slice(0, 12);
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const month = months[Number(m[2]) - 1] ?? m[2];
+    return `${month} ${Number(m[3])}, ${m[1]}`;
+  };
 
   const datesY = infoBlockY;
   page.drawText("Issued:", { x: col3X, y: datesY, size: 9, font, color: rgb(0.4, 0.4, 0.4) });
-  page.drawText((data.issued_at ?? "—").slice(0, 12), { x: col3X + 45, y: datesY, size: 9, font });
+  page.drawText(formatPdfDate(data.issued_at), { x: col3X + 45, y: datesY, size: 9, font });
   page.drawText("Due:", { x: col3X, y: datesY - 14, size: 9, font, color: rgb(0.4, 0.4, 0.4) });
-  page.drawText((data.due_at ?? "—").slice(0, 12), { x: col3X + 45, y: datesY - 14, size: 9, font });
+  page.drawText(formatPdfDate(data.due_at), { x: col3X + 45, y: datesY - 14, size: 9, font });
   if (data.projectName) {
     page.drawText("Project:", { x: col3X, y: datesY - 28, size: 9, font, color: rgb(0.4, 0.4, 0.4) });
     page.drawText(data.projectName.slice(0, 15), { x: col3X + 45, y: datesY - 28, size: 9, font });
   }
 
   // Move y below the info block (lowest point)
-  const lowestInfo = Math.min(by, infoBlockY - 42);
+  const lowestInfo = Math.min(by, ty, infoBlockY - 42);
   y = lowestInfo - sectionGap;
 
   // Table

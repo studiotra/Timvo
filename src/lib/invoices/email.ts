@@ -38,6 +38,8 @@ export function buildInvoiceEmailHtml(params: {
 export async function sendInvoiceEmail(params: {
   to: string;
   invoiceId: string;
+  /** Human number e.g. INV-0001 — preferred over raw id in subject/filename. */
+  displayNumber?: string | null;
   businessName: string;
   clientName?: string;
   currency: string;
@@ -52,15 +54,20 @@ export async function sendInvoiceEmail(params: {
     return { error: "Email not configured. Add RESEND_API_KEY and EMAIL_FROM to .env.local." };
   }
 
+  const label = params.displayNumber?.trim() || "Invoice";
+  const fileStub = (params.displayNumber ?? "invoice")
+    .replace(/[^a-zA-Z0-9-_]/g, "-")
+    .replace(/-+/g, "-");
+
   const resend = new Resend(resendKey);
   await resend.emails.send({
     from: fromEmail,
     to: params.to,
-    subject: `Invoice #${params.invoiceId.slice(0, 8)} from ${params.businessName}`,
+    subject: `${label} from ${params.businessName}`,
     ...(params.pdfBuffer && {
       attachments: [
         {
-          filename: `invoice-${params.invoiceId.slice(0, 8)}.pdf`,
+          filename: `${fileStub}.pdf`,
           content: params.pdfBuffer,
         },
       ],

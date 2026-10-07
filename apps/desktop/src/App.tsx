@@ -476,7 +476,7 @@ export default function App() {
   if (booting) {
     return (
       <div className="app">
-        <div className="brand">Timvo</div>
+        <img className="brand-logo" src="/brand/timvo-logo-primary.svg" alt="Timvo" width={140} height={38} />
         <p className="sub">Loading…</p>
       </div>
     );
@@ -486,7 +486,7 @@ export default function App() {
     return (
       <div className="app">
         <div>
-          <div className="brand">Timvo</div>
+          <img className="brand-logo" src="/brand/timvo-logo-primary.svg" alt="Timvo" width={140} height={38} />
           <p className="sub">Desktop timer — same clock as the web app</p>
         </div>
         <form className="panel stack" onSubmit={onSignIn}>
@@ -523,7 +523,7 @@ export default function App() {
   return (
     <div className="app">
       <div>
-        <div className="brand">Timvo</div>
+        <img className="brand-logo" src="/brand/timvo-logo-primary.svg" alt="Timvo" width={140} height={38} />
         <p className="sub">
           {userLabel}
           {orgLabel ? ` · ${orgLabel}` : ""} · {syncLabel}

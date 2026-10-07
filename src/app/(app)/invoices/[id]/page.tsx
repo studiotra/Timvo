@@ -3,8 +3,11 @@ import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { InvoiceDetailContent } from "./invoice-detail-content";
 import { markOverdueInvoices, resolveInvoiceDisplayStatus } from "@/lib/invoices/status";
+import { resolveDisplayMoney, resolveTaxRate } from "@/lib/invoices/money";
 import { fetchInvoiceOptionalFields } from "@/lib/invoices/optional-fields";
+import { normalizeInvoicePrefix } from "@/lib/invoices/number";
 import { publicInvoiceUrl } from "@/lib/app-url";
+import { fetchUserTimezone } from "@/lib/user-timezone";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +23,7 @@ export default async function InvoiceDetailPage({
   if (!user) redirect("/login");
 
   await markOverdueInvoices(supabase, user.id);
+  const timezone = await fetchUserTimezone(supabase, user.id);
 
   // Base columns only — optional fields fetched separately if migrations exist
   const { data: inv, error: invError } = await supabase
@@ -33,13 +37,19 @@ export default async function InvoiceDetailPage({
 
   const extras = await fetchInvoiceOptionalFields(supabase, id);
 
-  let client: { name?: string; email?: string } | null = null;
+  let client: {
+    name?: string;
+    email?: string;
+    address?: string | null;
+    phone_number?: string | null;
+    business_phone?: string | null;
+  } | null = null;
   let project: { name?: string } | null = null;
 
   if (inv.client_id) {
     const { data: c } = await supabase
       .from("clients")
-      .select("name, email")
+      .select("name, email, address, phone_number, business_phone")
       .eq("id", inv.client_id)
       .single();
     client = c;
@@ -57,26 +67,27 @@ export default async function InvoiceDetailPage({
 
   const { data: items } = await supabase
     .from("invoice_items")
-    .select("id, description, quantity, unit_rate, amount, sort_order")
+    .select("id, description, quantity, unit_rate, amount, sort_order, time_log_id")
     .eq("invoice_id", id)
     .order("sort_order");
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("business_name, logo_url, full_name, phone_number, address, tax_rate, default_invoice_footer, default_invoice_terms")
+    .select(
+      "business_name, logo_url, full_name, phone_number, address, tax_rate, default_invoice_footer, default_invoice_terms, invoice_prefix"
+    )
     .eq("id", user.id)
     .single();
 
-  const projectTaxRate = (project as { tax_rate?: number | null })?.tax_rate;
-  const profileTaxRate = profile?.tax_rate;
-  const taxRate = projectTaxRate != null && projectTaxRate > 0
-    ? Number(projectTaxRate)
-    : profileTaxRate != null && profileTaxRate > 0
-      ? Number(profileTaxRate)
-      : null;
-  const subtotal = (items ?? []).reduce((s, i) => s + Number(i.amount || 0), 0);
-  const taxAmount = taxRate != null ? Math.round(subtotal * (taxRate / 100) * 100) / 100 : 0;
-  const totalWithTax = inv.status === "draft" ? subtotal + taxAmount : Number(inv.total_amount) ?? subtotal;
+  const taxRate = resolveTaxRate(
+    (project as { tax_rate?: number | null })?.tax_rate,
+    profile?.tax_rate
+  );
+  const money = resolveDisplayMoney(
+    (items ?? []).map((i) => ({ amount: Number(i.amount) ?? 0 })),
+    inv.total_amount,
+    taxRate
+  );
 
   const businessName = profile?.business_name?.trim() || profile?.full_name?.trim() || "Your Business";
   const businessInfo = {
@@ -86,10 +97,14 @@ export default async function InvoiceDetailPage({
     address: profile?.address ?? null,
   };
 
-  const displayStatus = resolveInvoiceDisplayStatus({
-    status: inv.status ?? "draft",
-    due_at: inv.due_at,
-  });
+  const displayStatus = resolveInvoiceDisplayStatus(
+    {
+      status: inv.status ?? "draft",
+      due_at: inv.due_at,
+      total_amount: money.total,
+    },
+    timezone
+  );
 
   const clientViewUrl =
     extras.viewToken &&
@@ -120,10 +135,10 @@ export default async function InvoiceDetailPage({
         invoice={{
           id: inv.id,
           status: displayStatus,
-          total_amount: totalWithTax,
-          subtotal: taxRate != null ? subtotal : undefined,
-          tax_rate: taxRate ?? undefined,
-          tax_amount: taxRate != null ? taxAmount : undefined,
+          total_amount: money.total,
+          subtotal: money.taxRate != null ? money.subtotal : undefined,
+          tax_rate: money.taxRate ?? undefined,
+          tax_amount: money.taxRate != null ? money.taxAmount : undefined,
           currency: inv.currency ?? "USD",
           issued_at: inv.issued_at ?? "",
           due_at: inv.due_at ?? "",
@@ -132,6 +147,11 @@ export default async function InvoiceDetailPage({
           paid_at: extras.paidAt,
           footer: extras.footer.trim() || profile?.default_invoice_footer?.trim() || "",
           terms_and_conditions: extras.terms.trim() || profile?.default_invoice_terms?.trim() || "",
+          invoice_number: extras.invoiceNumber,
+          invoice_prefix: normalizeInvoicePrefix(
+            (profile as { invoice_prefix?: string | null } | null)?.invoice_prefix
+          ),
+          has_been_emailed: !!extras.viewToken,
         }}
         client={client}
         project={project}
@@ -142,6 +162,7 @@ export default async function InvoiceDetailPage({
           unit_rate: Number(i.unit_rate) ?? 0,
           amount: Number(i.amount) ?? 0,
           sort_order: i.sort_order ?? 0,
+          time_log_id: (i as { time_log_id?: string | null }).time_log_id ?? null,
         }))}
         isFixedProject={isFixedProject}
       />
