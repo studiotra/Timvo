@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "desktop:dev": "npm run tauri --prefix apps/desktop -- dev",
     "desktop:build": "npm run tauri --prefix apps/desktop -- build"
   },
@@ -53,6 +55,7 @@
     "eslint-config-next": "^15.0.0",
     "postcss": "^8.4.0",
     "tailwindcss": "^3.4.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "vitest": "^3.2.7"
   }
 }
