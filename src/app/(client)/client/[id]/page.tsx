@@ -1,6 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
+import { formatDateOnly, formatInstantAsLocalDate } from "@/lib/dates";
+import { fetchUserTimezone } from "@/lib/user-timezone";
 
 export default async function ClientPortalDetailPage({
   params,
@@ -11,6 +13,8 @@ export default async function ClientPortalDetailPage({
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
+
+  const timezone = await fetchUserTimezone(supabase, user.id);
 
   const { data: access } = await supabase
     .from("client_portal_access")
@@ -244,7 +248,10 @@ export default async function ClientPortalDetailPage({
                     >
                       <td className="px-4 py-3 text-[var(--text-primary)]">
                         {log.started_at
-                          ? new Date(log.started_at).toLocaleDateString("en-US")
+                          ? formatDateOnly(
+                              formatInstantAsLocalDate(log.started_at, timezone),
+                              { year: "numeric" }
+                            )
                           : "—"}
                       </td>
                       <td className="px-4 py-3 text-[var(--text-primary)]">

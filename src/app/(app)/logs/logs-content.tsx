@@ -10,27 +10,30 @@ import { EditLogSlideOver } from "@/components/edit-log-slide-over";
 import { ManualLogSlideOver } from "@/components/manual-log-slide-over";
 import { SubmitToOrgBar } from "@/components/submit-to-org-bar";
 import type { ContractorOrgOption } from "@/app/actions/organizations";
+import { useTimezone } from "@/contexts/timezone-context";
+import {
+  addDaysToDateString,
+  formatDateOnly,
+  formatInstantAsLocalDate,
+  getMonthRange,
+  getWeekRange,
+} from "@/lib/dates";
 
 type ViewMode = "week" | "month";
 type DisplayMode = "list" | "calendar" | "map";
 type MapGroup = "all" | "client" | "project";
 type ClientOpt = { id: string; name: string };
 
-function formatWeekLabel(offsetWeeks: number): string {
-  const now = new Date();
-  const dayOfWeek = now.getDay();
-  const monday = new Date(now);
-  monday.setDate(now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1));
-  monday.setDate(monday.getDate() + offsetWeeks * 7);
-  const weekEnd = new Date(monday);
-  weekEnd.setDate(weekEnd.getDate() + 6);
-  return `${monday.toLocaleDateString("en-US", { month: "short", day: "numeric" })} – ${weekEnd.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
+function formatWeekLabel(timezone: string, offsetWeeks: number): string {
+  const { mondayDate, sundayDate } = getWeekRange(timezone, offsetWeeks);
+  return `${formatDateOnly(mondayDate)} – ${formatDateOnly(sundayDate, { year: "numeric" })}`;
 }
 
-function formatMonthLabel(offsetMonths: number): string {
-  const now = new Date();
-  const d = new Date(now.getFullYear(), now.getMonth() + offsetMonths, 1);
-  return d.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+function formatMonthLabel(timezone: string, offsetMonths: number): string {
+  const { monthDate } = getMonthRange(timezone, offsetMonths);
+  const [y, m] = monthDate.split("-").map(Number);
+  const d = new Date(Date.UTC(y, m - 1, 1, 12, 0, 0));
+  return d.toLocaleDateString("en-US", { timeZone: "UTC", month: "long", year: "numeric" });
 }
 
 export function LogsContent({
@@ -52,6 +55,7 @@ export function LogsContent({
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const timezone = useTimezone();
   const displayMode = (["list", "calendar", "map"].includes(searchParams.get("display") || "")
     ? searchParams.get("display")
     : initialDisplayMode) as DisplayMode;
@@ -77,8 +81,8 @@ export function LogsContent({
     fromDate && toDate
       ? `${fromDate} – ${toDate}`
       : view === "week"
-        ? formatWeekLabel(offset)
-        : formatMonthLabel(offset);
+        ? formatWeekLabel(timezone, offset)
+        : formatMonthLabel(timezone, offset);
 
   function updateParams(updates: Record<string, string>) {
     const params = new URLSearchParams(searchParams);
@@ -129,27 +133,20 @@ export function LogsContent({
 
   const totalMins = logs.reduce((s, l) => s + (l.duration_minutes ?? 0), 0);
 
-  const weekStart = useMemo(() => {
-    const now = new Date();
-    const dayOfWeek = now.getDay();
-    const monday = new Date(now);
-    monday.setDate(now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1));
-    monday.setDate(monday.getDate() + offset * 7);
-    monday.setHours(0, 0, 0, 0);
-    return monday;
-  }, [offset]);
+  const weekRange = useMemo(
+    () => getWeekRange(timezone, offset),
+    [timezone, offset]
+  );
   const logsByDay = useMemo(() => {
     const map: Record<string, TimeLogRow[]> = {};
     for (const log of logs) {
-      const d = log.started_at ? new Date(log.started_at) : null;
-      if (d) {
-        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-        if (!map[key]) map[key] = [];
-        map[key].push(log);
-      }
+      if (!log.started_at) continue;
+      const key = formatInstantAsLocalDate(log.started_at, timezone);
+      if (!map[key]) map[key] = [];
+      map[key].push(log);
     }
     return map;
-  }, [logs]);
+  }, [logs, timezone]);
 
   const hoursByClient = useMemo(() => {
     const map: Record<string, number> = {};
@@ -166,12 +163,10 @@ export function LogsContent({
 
   const weekDays = useMemo(() => {
     return Array.from({ length: 7 }, (_, i) => {
-      const d = new Date(weekStart);
-      d.setDate(weekStart.getDate() + i);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-      return { date: d, key };
+      const key = addDaysToDateString(weekRange.mondayDate, i);
+      return { key, label: formatDateOnly(key) };
     });
-  }, [weekStart]);
+  }, [weekRange.mondayDate]);
 
   const showSelection = organizations.length > 0;
 
@@ -330,7 +325,7 @@ export function LogsContent({
             <div>
               <div className="text-[11px] font-bold uppercase tracking-wide text-[var(--text-muted)]">By day</div>
               <div className="mt-2 flex gap-2">
-                {weekDays.map(({ key, date }) => {
+                {weekDays.map(({ key }, i) => {
                   const dayLogs = logsByDay[key] ?? [];
                   const mins = dayLogs.reduce((s, l) => s + (l.duration_minutes ?? 0), 0);
                   return (
@@ -339,7 +334,7 @@ export function LogsContent({
                       className="flex flex-col items-center rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 min-w-[48px]"
                     >
                       <span className="text-[10px] font-medium text-[var(--text-muted)]">
-                        {dayLabels[(date.getDay() + 6) % 7]}
+                        {dayLabels[i]}
                       </span>
                       <span className="font-mono text-sm font-bold text-[var(--text-primary)]">
                         {(mins / 60).toFixed(1)}h
@@ -386,7 +381,7 @@ export function LogsContent({
         <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden">
           <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3 sm:px-5 sm:py-4">
             <h2 className="text-base font-bold text-[var(--text-primary)] sm:text-lg">
-              {formatWeekLabel(offset)}
+              {formatWeekLabel(timezone, offset)}
             </h2>
             <div className="flex items-center gap-1">
               <button
@@ -412,23 +407,24 @@ export function LogsContent({
             </div>
           </div>
           <div className="grid grid-cols-7 border-b border-[var(--border)]">
-            {weekDays.map(({ date, key }) => (
+            {weekDays.map(({ key }, i) => (
               <div key={key} className="px-1 py-2 text-center text-[9px] font-bold uppercase text-[var(--text-muted)] sm:px-2 sm:text-[10px]">
-                {date.toLocaleDateString("en-US", { weekday: "short" })}
+                {dayLabels[i]}
               </div>
             ))}
           </div>
           <div className="grid grid-cols-7">
-            {weekDays.map(({ date, key }) => {
+            {weekDays.map(({ key }) => {
               const dayLogs = logsByDay[key] ?? [];
               const dayMins = dayLogs.reduce((s, l) => s + (l.duration_minutes ?? 0), 0);
+              const dayNum = Number(key.slice(8, 10));
               return (
                 <div
                   key={key}
                   className="aspect-[1.6/1] border-b border-r border-[var(--border)] p-1.5 last:border-r-0 sm:p-2"
                 >
                   <div className="text-[10px] font-semibold text-[var(--text-muted)] mb-0.5 sm:text-[11px] sm:mb-1">
-                    {date.getDate()}
+                    {dayNum}
                   </div>
                   <div className="space-y-0.5 sm:space-y-1">
                     {dayLogs.slice(0, 3).map((log) => (
@@ -516,7 +512,11 @@ export function LogsContent({
                     </td>
                     <td className="hidden px-4 py-3 text-[var(--text-primary)] sm:table-cell">{log.project_name}</td>
                     <td className="px-2 py-2 text-xs text-[var(--text-secondary)] sm:px-4 sm:py-3 sm:text-sm">
-                      {log.started_at ? new Date(log.started_at).toLocaleDateString("en-US") : "—"}
+                      {log.started_at
+                        ? formatDateOnly(formatInstantAsLocalDate(log.started_at, timezone), {
+                            year: "numeric",
+                          })
+                        : "—"}
                     </td>
                     <td className="px-2 py-2 text-right font-mono text-xs text-[var(--text-primary)] sm:px-4 sm:py-3 sm:text-sm">
                       {log.duration_minutes} min
@@ -755,6 +755,7 @@ function MapLogCard({
   onDelete: (id: string) => void;
   deletingId: string | null;
 }) {
+  const timezone = useTimezone();
   return (
     <div className="flex items-center justify-between gap-3 rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2">
       <button type="button" onClick={() => onEdit(log)} className="min-w-0 flex-1 text-left">
@@ -762,7 +763,11 @@ function MapLogCard({
           {log.description || log.project_name}
         </div>
         <div className="text-xs text-[var(--text-muted)]">
-          {log.started_at ? new Date(log.started_at).toLocaleDateString("en-US") : "—"}
+          {log.started_at
+            ? formatDateOnly(formatInstantAsLocalDate(log.started_at, timezone), {
+                year: "numeric",
+              })
+            : "—"}
           {" · "}
           {log.duration_minutes} min
           {log.is_billed ? " · billed" : log.is_billable ? " · billable" : " · non-billable"}

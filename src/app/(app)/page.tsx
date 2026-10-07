@@ -5,6 +5,8 @@ import {
   getClientEffectiveRates,
 } from "@/app/actions/effective-rates";
 import { getIncomeSummary, getProjectedAnnual } from "@/app/actions/income-summary";
+import { formatDateOnly, getMonthRange, getWeekRange, localMondayBasedDayIndex } from "@/lib/dates";
+import { fetchUserTimezone } from "@/lib/user-timezone";
 import { DashboardContent } from "./dashboard-content";
 
 const PROJECT_COLORS: Record<string, string> = {
@@ -18,6 +20,8 @@ export default async function DashboardPage() {
   if (!user) {
     redirect("/login");
   }
+
+  const timezone = await fetchUserTimezone(supabase, user.id);
 
   // Unbilled total
   const { data: unbilledLogs } = await supabase
@@ -37,19 +41,14 @@ export default async function DashboardPage() {
     }
   }
 
-  // Week stats
-  const weekStart = new Date();
-  weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-  weekStart.setHours(0, 0, 0, 0);
-  const weekEnd = new Date(weekStart);
-  weekEnd.setDate(weekEnd.getDate() + 7);
-
+  // Week stats (Mon–Sun in user's timezone — matches Logs)
+  const weekRange = getWeekRange(timezone);
   const { data: weekLogs } = await supabase
     .from("time_logs")
     .select("started_at, duration_minutes")
     .eq("user_id", user.id)
-    .gte("started_at", weekStart.toISOString())
-    .lt("started_at", weekEnd.toISOString());
+    .gte("started_at", weekRange.from.toISOString())
+    .lte("started_at", weekRange.to.toISOString());
 
   const weekMinutes =
     weekLogs?.reduce((s, l) => s + (l.duration_minutes ?? 0), 0) ?? 0;
@@ -57,24 +56,22 @@ export default async function DashboardPage() {
   const dayMinutes = [0, 0, 0, 0, 0, 0, 0];
   if (weekLogs) {
     for (const log of weekLogs) {
-      const d = new Date(log.started_at);
-      const dayIdx = (d.getDay() + 6) % 7;
+      const dayIdx = localMondayBasedDayIndex(log.started_at, timezone);
       dayMinutes[dayIdx] += log.duration_minutes ?? 0;
     }
   }
   const maxDay = Math.max(...dayMinutes, 1);
   const heatmapData = dayMinutes.map((m) => m / maxDay);
 
-  // Received this month
-  const monthStart = new Date();
-  monthStart.setDate(1);
-  monthStart.setHours(0, 0, 0, 0);
+  // Received this month (local calendar month)
+  const monthRange = getMonthRange(timezone);
   const { data: paidInvoices } = await supabase
     .from("invoices")
     .select("total_amount")
     .eq("user_id", user.id)
     .eq("status", "paid")
-    .gte("created_at", monthStart.toISOString());
+    .gte("created_at", monthRange.from.toISOString())
+    .lte("created_at", monthRange.to.toISOString());
 
   const receivedTotal =
     paidInvoices?.reduce((s, i) => s + (Number(i.total_amount) ?? 0), 0) ?? 0;
@@ -122,12 +119,7 @@ export default async function DashboardPage() {
       clientName: (inv.clients as { name?: string } | null)?.name ?? "Unknown",
       total_amount: inv.total_amount ?? 0,
       status: inv.status ?? "draft",
-      date: inv.issued_at
-        ? new Date(inv.issued_at).toLocaleDateString("en-US", {
-            month: "short",
-            day: "numeric",
-          })
-        : "—",
+      date: inv.issued_at ? formatDateOnly(inv.issued_at) : "—",
     })) ?? [];
 
   const [businessRate, clientRates, incomeSummary, projected] = await Promise.all([
