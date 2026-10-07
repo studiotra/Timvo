@@ -2,6 +2,17 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import {
+  endOfLocalDay,
+  formatInstantAsLocalDate,
+  formatInstantAsLocalTime,
+  getMonthRange,
+  getWeekRange,
+  localToday,
+  startOfLocalDay,
+  zonedDateTimeToUtc,
+} from "@/lib/dates";
+import { fetchUserTimezone } from "@/lib/user-timezone";
 
 export type TimeLogRow = {
   id: string;
@@ -32,26 +43,21 @@ export async function getTimeLogs(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return [];
 
-  const now = new Date();
+  const timezone = await fetchUserTimezone(supabase, user.id);
   let from: Date;
   let to: Date;
 
   if (filters?.fromDate && filters?.toDate) {
-    from = new Date(filters.fromDate + "T00:00:00");
-    to = new Date(filters.toDate + "T23:59:59");
+    from = startOfLocalDay(filters.fromDate, timezone);
+    to = endOfLocalDay(filters.toDate, timezone);
   } else if (view === "week") {
-    const dayOfWeek = now.getDay();
-    const monday = new Date(now);
-    monday.setDate(now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1));
-    monday.setHours(0, 0, 0, 0);
-    monday.setDate(monday.getDate() + offsetWeeks * 7);
-    from = monday;
-    to = new Date(monday);
-    to.setDate(to.getDate() + 6);
-    to.setHours(23, 59, 59, 999);
+    const range = getWeekRange(timezone, offsetWeeks);
+    from = range.from;
+    to = range.to;
   } else {
-    from = new Date(now.getFullYear(), now.getMonth() + offsetWeeks, 1);
-    to = new Date(from.getFullYear(), from.getMonth() + 1, 0, 23, 59, 59, 999);
+    const range = getMonthRange(timezone, offsetWeeks);
+    from = range.from;
+    to = range.to;
   }
 
   const fromStr = from.toISOString();
@@ -197,29 +203,29 @@ export async function addManualLog(formData: FormData) {
   const description = (formData.get("description") as string)?.trim() || null;
   const isBillable = formData.get("is_billable") === "true";
 
+  if (!projectId || !date)
+    return { error: "Project and date are required" };
+
+  const timezone = await fetchUserTimezone(supabase, user.id);
   let startedAt: Date;
   let endedAt: Date;
   let durationMinutes: number;
 
   if (startTime && endTime) {
-    startedAt = new Date(`${date}T${startTime}`);
-    endedAt = new Date(`${date}T${endTime}`);
+    startedAt = zonedDateTimeToUtc(date, startTime, timezone);
+    endedAt = zonedDateTimeToUtc(date, endTime, timezone);
     durationMinutes = Math.round((endedAt.getTime() - startedAt.getTime()) / 60000);
     if (durationMinutes <= 0) return { error: "End time must be after start time" };
   } else if (durationParam) {
     const duration = parseInt(durationParam, 10);
-    if (!date || isNaN(duration) || duration <= 0)
+    if (isNaN(duration) || duration <= 0)
       return { error: "Project, date, and duration are required" };
-    const d = new Date(date);
-    startedAt = new Date(d);
-    endedAt = new Date(d.getTime() + duration * 60 * 1000);
+    startedAt = zonedDateTimeToUtc(date, "09:00", timezone);
+    endedAt = new Date(startedAt.getTime() + duration * 60 * 1000);
     durationMinutes = duration;
   } else {
     return { error: "Project, date, and time range are required" };
   }
-
-  if (!projectId || !date)
-    return { error: "Project and date are required" };
 
   const { error } = await supabase.from("time_logs").insert({
     project_id: projectId,
@@ -244,7 +250,14 @@ export async function addManualLog(formData: FormData) {
 export async function addTimeLogForTask(
   projectId: string,
   taskId: string,
-  data: { date: string; durationMinutes: number; description?: string | null; isBillable?: boolean }
+  data: {
+    date: string;
+    durationMinutes: number;
+    description?: string | null;
+    isBillable?: boolean;
+    startTime?: string;
+    endTime?: string;
+  }
 ) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -252,9 +265,17 @@ export async function addTimeLogForTask(
   if (!projectId || !taskId || !data.date || data.durationMinutes <= 0)
     return { error: "Project, task, date, and duration required" };
 
-  const d = new Date(data.date);
-  const startedAt = new Date(d);
-  const endedAt = new Date(d.getTime() + data.durationMinutes * 60 * 1000);
+  const timezone = await fetchUserTimezone(supabase, user.id);
+  let startedAt: Date;
+  let endedAt: Date;
+
+  if (data.startTime && data.endTime) {
+    startedAt = zonedDateTimeToUtc(data.date, data.startTime, timezone);
+    endedAt = zonedDateTimeToUtc(data.date, data.endTime, timezone);
+  } else {
+    startedAt = zonedDateTimeToUtc(data.date, "09:00", timezone);
+    endedAt = new Date(startedAt.getTime() + data.durationMinutes * 60 * 1000);
+  }
 
   const { error } = await supabase.from("time_logs").insert({
     project_id: projectId,
@@ -282,6 +303,8 @@ export async function updateTimeLog(
     description?: string;
     is_billable?: boolean;
     date?: string;
+    start_time?: string;
+    end_time?: string;
     duration_minutes?: number;
   }
 ) {
@@ -293,21 +316,50 @@ export async function updateTimeLog(
   if (data.project_id !== undefined) update.project_id = data.project_id;
   if (data.description !== undefined) update.description = data.description;
   if (data.is_billable !== undefined) update.is_billable = data.is_billable;
-  if (data.duration_minutes !== undefined) update.duration_minutes = data.duration_minutes;
 
-  if (data.date !== undefined || data.duration_minutes !== undefined) {
+  const touchesSchedule =
+    data.date !== undefined ||
+    data.start_time !== undefined ||
+    data.end_time !== undefined ||
+    data.duration_minutes !== undefined;
+
+  if (touchesSchedule) {
     const { data: existing } = await supabase
       .from("time_logs")
-      .select("started_at, duration_minutes")
+      .select("started_at, ended_at, duration_minutes")
       .eq("id", id)
       .eq("user_id", user.id)
       .single();
 
-    const dateStr = data.date ?? (existing?.started_at ? new Date(existing.started_at).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10));
-    const mins = data.duration_minutes ?? existing?.duration_minutes ?? 0;
-    const start = new Date(dateStr);
-    update.started_at = start.toISOString();
-    update.ended_at = new Date(start.getTime() + mins * 60 * 1000).toISOString();
+    const timezone = await fetchUserTimezone(supabase, user.id);
+    const dateStr =
+      data.date ??
+      (existing?.started_at
+        ? formatInstantAsLocalDate(existing.started_at, timezone)
+        : localToday(timezone));
+
+    let startedAt: Date;
+    let endedAt: Date;
+    let mins: number;
+
+    if (data.start_time && data.end_time) {
+      startedAt = zonedDateTimeToUtc(dateStr, data.start_time, timezone);
+      endedAt = zonedDateTimeToUtc(dateStr, data.end_time, timezone);
+      mins = Math.round((endedAt.getTime() - startedAt.getTime()) / 60000);
+      if (mins <= 0) return { error: "End time must be after start time" };
+    } else {
+      const startTime =
+        data.start_time ??
+        (existing?.started_at
+          ? formatInstantAsLocalTime(existing.started_at, timezone)
+          : "09:00");
+      startedAt = zonedDateTimeToUtc(dateStr, startTime, timezone);
+      mins = data.duration_minutes ?? existing?.duration_minutes ?? 0;
+      endedAt = new Date(startedAt.getTime() + mins * 60 * 1000);
+    }
+
+    update.started_at = startedAt.toISOString();
+    update.ended_at = endedAt.toISOString();
     update.duration_minutes = mins;
   }
 

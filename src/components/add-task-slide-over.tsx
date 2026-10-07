@@ -5,6 +5,8 @@ import { SlideOver } from "./slide-over";
 import { createTask } from "@/app/actions/clients-projects";
 import { addTimeLogForTask } from "@/app/actions/time-logs";
 import { getServicesForSelect } from "@/app/actions/services";
+import { useTimezone } from "@/contexts/timezone-context";
+import { localToday } from "@/lib/dates";
 
 type ServiceOpt = { id: string; name: string };
 
@@ -22,6 +24,7 @@ export function AddTaskSlideOver({
   onSuccess,
   projectId,
 }: AddTaskSlideOverProps) {
+  const timezone = useTimezone();
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [taskName, setTaskName] = useState("");
@@ -39,14 +42,13 @@ export function AddTaskSlideOver({
 
   useEffect(() => {
     if (open) {
-      const today = new Date().toISOString().slice(0, 10);
-      setDate(today);
+      setDate(localToday(timezone));
       setStartTime("09:00");
       setEndTime("17:00");
       setDescription("");
       setIsBillable(true);
     }
-  }, [open]);
+  }, [open, timezone]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -66,10 +68,11 @@ export function AddTaskSlideOver({
 
     const addTimeEntry = startTime && endTime;
     if (addTimeEntry && taskResult?.task?.id) {
-      const d = date || new Date().toISOString().slice(0, 10);
-      const start = new Date(`${d}T${startTime}`);
-      const end = new Date(`${d}T${endTime}`);
-      const durationMinutes = Math.round((end.getTime() - start.getTime()) / 60000);
+      const d = date || localToday(timezone);
+      // Duration for validation only; server builds instants in user timezone
+      const [sh, sm] = startTime.split(":").map(Number);
+      const [eh, em] = endTime.split(":").map(Number);
+      const durationMinutes = eh * 60 + em - (sh * 60 + sm);
       if (durationMinutes <= 0) {
         setError("End time must be after start time.");
         setSaving(false);
@@ -78,6 +81,8 @@ export function AddTaskSlideOver({
       const logResult = await addTimeLogForTask(projectId, taskResult.task.id, {
         date: d,
         durationMinutes,
+        startTime,
+        endTime,
         description: description.trim() || null,
         isBillable: isBillable,
       });

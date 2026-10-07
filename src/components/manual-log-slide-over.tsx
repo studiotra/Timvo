@@ -12,6 +12,8 @@ import {
   createOrgTask,
 } from "@/app/actions/org-tracking";
 import { getServicesForSelect } from "@/app/actions/services";
+import { useTimezone } from "@/contexts/timezone-context";
+import { localToday } from "@/lib/dates";
 
 type TrackingScope = "contractor" | "org";
 
@@ -45,6 +47,7 @@ export function ManualLogSlideOver({
   initialProjectId?: string;
   scope?: TrackingScope;
 }) {
+  const timezone = useTimezone();
   const storagePrefix = scope === "org" ? "orgManualLog" : "manualLog";
   const [error, setError] = useState<string | null>(null);
   const [clients, setClients] = useState<ClientOpt[]>([]);
@@ -182,7 +185,7 @@ export function ManualLogSlideOver({
     onClose();
   }
 
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localToday(timezone);
 
   return (
     <SlideOver open={open} onClose={onClose} title="Add Manual Log">

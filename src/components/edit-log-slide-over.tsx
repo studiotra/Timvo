@@ -7,6 +7,12 @@ import { updateTimeLog } from "@/app/actions/time-logs";
 import { type TimeLogRow } from "@/app/actions/time-logs";
 import { getClientsForSelect, getProjectsByClient } from "@/app/actions/clients-projects";
 import { getOrgClientsForSelect, getOrgProjectsByClient } from "@/app/actions/org-tracking";
+import { useTimezone } from "@/contexts/timezone-context";
+import {
+  formatInstantAsLocalDate,
+  formatInstantAsLocalTime,
+  localToday,
+} from "@/lib/dates";
 
 type TrackingScope = "contractor" | "org";
 
@@ -37,10 +43,12 @@ export function EditLogSlideOver({
   onClose: () => void;
   scope?: TrackingScope;
 }) {
+  const timezone = useTimezone();
   const [error, setError] = useState<string | null>(null);
   const [clients, setClients] = useState<ClientOpt[]>([]);
   const [projects, setProjects] = useState<ProjectOpt[]>([]);
   const [clientId, setClientId] = useState(log?.client_id ?? "");
+  const [projectId, setProjectId] = useState(log?.project_id ?? "");
 
   useEffect(() => {
     if (!open) return;
@@ -60,14 +68,23 @@ export function EditLogSlideOver({
   useEffect(() => {
     if (log && open) {
       setClientId(log.client_id);
+      setProjectId(log.project_id);
       setError(null);
     }
   }, [log, open]);
 
+  // Keep project selected once options load (controlled value)
+  useEffect(() => {
+    if (!log || !open) return;
+    if (projects.some((p) => p.id === log.project_id)) {
+      setProjectId(log.project_id);
+    }
+  }, [projects, log, open]);
+
   async function handleSubmit(formData: FormData) {
     if (!log) return;
-    const projectId = formData.get("project_id") as string;
-    if (!projectId) {
+    const selectedProjectId = (formData.get("project_id") as string) || projectId;
+    if (!selectedProjectId) {
       setError("Select client and project.");
       return;
     }
@@ -78,18 +95,16 @@ export function EditLogSlideOver({
     const description = (formData.get("description") as string)?.trim() || null;
     const isBillable = formData.get("is_billable") === "true";
 
-    const startedAt = new Date(`${date}T${startTime}`);
-    const endedAt = new Date(`${date}T${endTime}`);
-    const durationMinutes = Math.round((endedAt.getTime() - startedAt.getTime()) / 60000);
-    if (durationMinutes <= 0) {
-      setError("End time must be after start time.");
+    if (!date || !startTime || !endTime) {
+      setError("Date and time are required.");
       return;
     }
 
     const result = await updateTimeLog(log.id, {
-      project_id: projectId,
+      project_id: selectedProjectId,
       date,
-      duration_minutes: durationMinutes,
+      start_time: startTime,
+      end_time: endTime,
       description: description ?? undefined,
       is_billable: isBillable,
     });
@@ -102,11 +117,20 @@ export function EditLogSlideOver({
 
   if (!log) return null;
 
-  const dateStr = log.started_at ? new Date(log.started_at).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
-  const startDate = log.started_at ? new Date(log.started_at) : new Date();
-  const endDate = log.ended_at ? new Date(log.ended_at) : new Date(startDate.getTime() + (log.duration_minutes ?? 0) * 60000);
-  const startTimeStr = startDate.toTimeString().slice(0, 5);
-  const endTimeStr = endDate.toTimeString().slice(0, 5);
+  const dateStr = log.started_at
+    ? formatInstantAsLocalDate(log.started_at, timezone)
+    : localToday(timezone);
+  const startTimeStr = log.started_at
+    ? formatInstantAsLocalTime(log.started_at, timezone)
+    : "09:00";
+  const endTimeStr = log.ended_at
+    ? formatInstantAsLocalTime(log.ended_at, timezone)
+    : formatInstantAsLocalTime(
+        new Date(
+          new Date(log.started_at).getTime() + (log.duration_minutes ?? 0) * 60000
+        ).toISOString(),
+        timezone
+      );
 
   return (
     <SlideOver open={open} onClose={onClose} title="Edit Log">
@@ -118,7 +142,10 @@ export function EditLogSlideOver({
             </label>
             <select
               value={clientId}
-              onChange={(e) => setClientId(e.target.value)}
+              onChange={(e) => {
+                setClientId(e.target.value);
+                setProjectId("");
+              }}
               required
               className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-[var(--text-primary)] focus:ring-2 focus:ring-accent"
             >
@@ -138,7 +165,8 @@ export function EditLogSlideOver({
               name="project_id"
               required
               disabled={!clientId}
-              defaultValue={log.project_id}
+              value={projectId}
+              onChange={(e) => setProjectId(e.target.value)}
               className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-[var(--text-primary)] focus:ring-2 focus:ring-accent disabled:opacity-50"
             >
               <option value="">Select project</option>
@@ -158,6 +186,7 @@ export function EditLogSlideOver({
               type="date"
               required
               defaultValue={dateStr}
+              key={`date-${log.id}-${dateStr}`}
               className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-[var(--text-primary)] focus:ring-2 focus:ring-accent"
             />
           </div>
@@ -171,6 +200,7 @@ export function EditLogSlideOver({
                 type="time"
                 required
                 defaultValue={startTimeStr}
+                key={`start-${log.id}-${startTimeStr}`}
                 className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 font-mono text-[var(--text-primary)] focus:ring-2 focus:ring-accent"
               />
               <span className="text-[var(--text-muted)]">–</span>
@@ -179,6 +209,7 @@ export function EditLogSlideOver({
                 type="time"
                 required
                 defaultValue={endTimeStr}
+                key={`end-${log.id}-${endTimeStr}`}
                 className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 font-mono text-[var(--text-primary)] focus:ring-2 focus:ring-accent"
               />
             </div>
