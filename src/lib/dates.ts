@@ -1,21 +1,19 @@
 /**
  * Timezone-aware date helpers.
- * Prefer the user's Settings timezone; fall back to browser/runtime timezone.
+ * Prefer the user's Settings timezone; fall back to DEFAULT_TIMEZONE
+ * (stable on server and client — avoids React hydration mismatches).
  */
 
 export const DEFAULT_TIMEZONE = "America/New_York";
 
-/** Resolve a usable IANA timezone, falling back sensibly. */
+/**
+ * Resolve a usable IANA timezone.
+ * Prefer Settings; otherwise a stable default (same on server and client)
+ * so date labels do not hydrate-mismatch. Do not use the runtime Intl zone
+ * here — that differs between Vercel and the browser.
+ */
 export function resolveTimezone(preferred?: string | null): string {
   if (preferred && isValidTimezone(preferred)) return preferred;
-  if (typeof Intl !== "undefined") {
-    try {
-      const detected = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      if (detected && isValidTimezone(detected)) return detected;
-    } catch {
-      /* ignore */
-    }
-  }
   return DEFAULT_TIMEZONE;
 }
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   addDaysToDateString,
+  DEFAULT_TIMEZONE,
   formatInstantAsLocalDate,
   formatInstantAsLocalTime,
   formatLogDisplayTitle,
@@ -8,10 +9,23 @@ import {
   isOverdueByDate,
   localToday,
   resolveLogSchedule,
+  resolveTimezone,
   zonedDateTimeToUtc,
 } from "./dates";
 
 const TZ = "America/New_York";
+
+describe("resolveTimezone", () => {
+  it("keeps a valid preferred timezone", () => {
+    expect(resolveTimezone("America/Toronto")).toBe("America/Toronto");
+  });
+
+  it("falls back to a stable default when unset (SSR-safe)", () => {
+    expect(resolveTimezone(null)).toBe(DEFAULT_TIMEZONE);
+    expect(resolveTimezone(undefined)).toBe(DEFAULT_TIMEZONE);
+    expect(resolveTimezone("Not/AZone")).toBe(DEFAULT_TIMEZONE);
+  });
+});
 
 describe("localToday", () => {
   it("2026-10-06 22:00 Eastern is still 2026-10-06", () => {

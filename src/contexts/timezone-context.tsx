@@ -30,7 +30,7 @@ export function TimezoneProvider({
   );
 }
 
-/** User Settings timezone, or browser/runtime fallback. */
+/** User Settings timezone, or stable default when unset. */
 export function useTimezone(): string {
   const ctx = useContext(TimezoneContext);
   return ctx?.timezone ?? resolveTimezone(null);
