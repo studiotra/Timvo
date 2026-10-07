@@ -318,3 +318,82 @@ export function formatLocalTodayLabel(
     .format(now)
     .toUpperCase();
 }
+
+/** Parse "HH:mm" or "HH:mm:ss" to minutes from midnight. */
+export function timeStringToMinutes(time: string): number | null {
+  const m = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(time);
+  if (!m) return null;
+  const hour = Number(m[1]);
+  const minute = Number(m[2]);
+  if (hour > 23 || minute > 59) return null;
+  return hour * 60 + minute;
+}
+
+export type LogScheduleResult =
+  | { ok: true; startedAt: Date; endedAt: Date; durationMinutes: number; overnight: boolean }
+  | { ok: false; error: string };
+
+/**
+ * Build started/ended UTC instants for a manual log.
+ * When end time is earlier than start (e.g. 23:00–01:00), the end falls on the next local day.
+ * Zero-length ranges (same start and end) are rejected.
+ */
+export function resolveLogSchedule(
+  dateStr: string,
+  startTime: string,
+  endTime: string,
+  timeZone: string
+): LogScheduleResult {
+  const startMins = timeStringToMinutes(startTime);
+  const endMins = timeStringToMinutes(endTime);
+  if (startMins == null || endMins == null) {
+    return { ok: false, error: "Invalid start or end time" };
+  }
+  if (endMins === startMins) {
+    return { ok: false, error: "End time must be after start time" };
+  }
+
+  const overnight = endMins < startMins;
+  const endDateStr = overnight ? addDaysToDateString(dateStr, 1) : dateStr;
+
+  let startedAt: Date;
+  let endedAt: Date;
+  try {
+    startedAt = zonedDateTimeToUtc(dateStr, startTime, timeZone);
+    endedAt = zonedDateTimeToUtc(endDateStr, endTime, timeZone);
+  } catch {
+    return { ok: false, error: "Invalid date or time" };
+  }
+
+  const durationMinutes = Math.round((endedAt.getTime() - startedAt.getTime()) / 60000);
+  if (durationMinutes <= 0) {
+    return { ok: false, error: "End time must be after start time" };
+  }
+
+  return { ok: true, startedAt, endedAt, durationMinutes, overnight };
+}
+
+/** Label for project dropdowns when the same name may appear under different clients. */
+export function formatProjectOptionLabel(
+  projectName: string,
+  clientName?: string | null
+): string {
+  const project = projectName.trim() || "Untitled project";
+  const client = clientName?.trim();
+  return client ? `${project} · ${client}` : project;
+}
+
+/** Prefer description, then task, then project — never a bare "Time" when context exists. */
+export function formatLogDisplayTitle(input: {
+  description?: string | null;
+  taskName?: string | null;
+  projectName?: string | null;
+}): string {
+  const description = input.description?.trim();
+  if (description) return description;
+  const taskName = input.taskName?.trim();
+  if (taskName) return taskName;
+  const projectName = input.projectName?.trim();
+  if (projectName) return projectName;
+  return "Time";
+}

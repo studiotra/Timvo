@@ -3,8 +3,11 @@ import {
   addDaysToDateString,
   formatInstantAsLocalDate,
   formatInstantAsLocalTime,
+  formatLogDisplayTitle,
+  formatProjectOptionLabel,
   isOverdueByDate,
   localToday,
+  resolveLogSchedule,
   zonedDateTimeToUtc,
 } from "./dates";
 
@@ -62,5 +65,74 @@ describe("isOverdueByDate", () => {
 describe("addDaysToDateString", () => {
   it("adds calendar days without timezone shift", () => {
     expect(addDaysToDateString("2026-10-06", 30)).toBe("2026-11-05");
+  });
+});
+
+describe("resolveLogSchedule", () => {
+  it("keeps same-day ranges on one local day", () => {
+    const result = resolveLogSchedule("2026-10-06", "13:00", "14:00", TZ);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.overnight).toBe(false);
+    expect(result.durationMinutes).toBe(60);
+    expect(formatInstantAsLocalDate(result.startedAt, TZ)).toBe("2026-10-06");
+    expect(formatInstantAsLocalDate(result.endedAt, TZ)).toBe("2026-10-06");
+  });
+
+  it("allows overnight 23:00–01:00 ending the next local day", () => {
+    const result = resolveLogSchedule("2026-10-06", "23:00", "01:00", TZ);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.overnight).toBe(true);
+    expect(result.durationMinutes).toBe(120);
+    expect(formatInstantAsLocalDate(result.startedAt, TZ)).toBe("2026-10-06");
+    expect(formatInstantAsLocalTime(result.startedAt, TZ)).toBe("23:00");
+    expect(formatInstantAsLocalDate(result.endedAt, TZ)).toBe("2026-10-07");
+    expect(formatInstantAsLocalTime(result.endedAt, TZ)).toBe("01:00");
+  });
+
+  it("rejects zero-length logs", () => {
+    const result = resolveLogSchedule("2026-10-06", "09:00", "09:00", TZ);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toMatch(/after start/i);
+  });
+});
+
+describe("formatProjectOptionLabel", () => {
+  it("appends client name when present", () => {
+    expect(formatProjectOptionLabel("Branding", "Space Creatorz")).toBe(
+      "Branding · Space Creatorz"
+    );
+  });
+
+  it("falls back to project name alone", () => {
+    expect(formatProjectOptionLabel("Branding")).toBe("Branding");
+  });
+});
+
+describe("formatLogDisplayTitle", () => {
+  it("prefers description, then task, then project", () => {
+    expect(
+      formatLogDisplayTitle({
+        description: "Logo concepts",
+        taskName: "Design",
+        projectName: "Branding",
+      })
+    ).toBe("Logo concepts");
+    expect(
+      formatLogDisplayTitle({
+        description: "  ",
+        taskName: "Design",
+        projectName: "Branding",
+      })
+    ).toBe("Design");
+    expect(
+      formatLogDisplayTitle({
+        description: null,
+        taskName: null,
+        projectName: "Branding",
+      })
+    ).toBe("Branding");
   });
 });

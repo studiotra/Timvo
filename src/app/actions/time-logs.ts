@@ -9,6 +9,7 @@ import {
   getMonthRange,
   getWeekRange,
   localToday,
+  resolveLogSchedule,
   startOfLocalDay,
   zonedDateTimeToUtc,
 } from "@/lib/dates";
@@ -20,6 +21,9 @@ export type TimeLogRow = {
   client_id: string;
   client_name: string;
   project_name: string;
+  task_id: string | null;
+  task_name: string | null;
+  service_id: string | null;
   started_at: string;
   ended_at: string | null;
   duration_minutes: number;
@@ -66,9 +70,10 @@ export async function getTimeLogs(
   let query = supabase
     .from("time_logs")
     .select(`
-      id, project_id, started_at, ended_at, duration_minutes,
+      id, project_id, task_id, started_at, ended_at, duration_minutes,
       description, is_billable, is_billed,
-      projects(id, name, client_id, clients(id, name))
+      projects(id, name, client_id, clients(id, name)),
+      tasks(id, name, service_id)
     `)
     .eq("user_id", user.id)
     .gte("started_at", fromStr)
@@ -95,12 +100,16 @@ export async function getTimeLogs(
     .filter((r) => r.projects && typeof (r.projects as unknown as { client_id?: string }).client_id === "string")
     .map((r) => {
       const p = r.projects as unknown as { id: string; name: string; client_id: string; clients?: { id: string; name: string } };
+      const task = r.tasks as unknown as { id: string; name: string; service_id: string | null } | null;
       return {
         id: r.id,
         project_id: r.project_id,
         client_id: p.client_id,
         client_name: p.clients?.name ?? "—",
         project_name: p.name ?? "—",
+        task_id: r.task_id ?? task?.id ?? null,
+        task_name: task?.name ?? null,
+        service_id: task?.service_id ?? null,
         started_at: r.started_at,
         ended_at: r.ended_at,
         duration_minutes: r.duration_minutes ?? 0,
@@ -212,10 +221,11 @@ export async function addManualLog(formData: FormData) {
   let durationMinutes: number;
 
   if (startTime && endTime) {
-    startedAt = zonedDateTimeToUtc(date, startTime, timezone);
-    endedAt = zonedDateTimeToUtc(date, endTime, timezone);
-    durationMinutes = Math.round((endedAt.getTime() - startedAt.getTime()) / 60000);
-    if (durationMinutes <= 0) return { error: "End time must be after start time" };
+    const schedule = resolveLogSchedule(date, startTime, endTime, timezone);
+    if (!schedule.ok) return { error: schedule.error };
+    startedAt = schedule.startedAt;
+    endedAt = schedule.endedAt;
+    durationMinutes = schedule.durationMinutes;
   } else if (durationParam) {
     const duration = parseInt(durationParam, 10);
     if (isNaN(duration) || duration <= 0)
@@ -270,8 +280,10 @@ export async function addTimeLogForTask(
   let endedAt: Date;
 
   if (data.startTime && data.endTime) {
-    startedAt = zonedDateTimeToUtc(data.date, data.startTime, timezone);
-    endedAt = zonedDateTimeToUtc(data.date, data.endTime, timezone);
+    const schedule = resolveLogSchedule(data.date, data.startTime, data.endTime, timezone);
+    if (!schedule.ok) return { error: schedule.error };
+    startedAt = schedule.startedAt;
+    endedAt = schedule.endedAt;
   } else {
     startedAt = zonedDateTimeToUtc(data.date, "09:00", timezone);
     endedAt = new Date(startedAt.getTime() + data.durationMinutes * 60 * 1000);
@@ -300,6 +312,7 @@ export async function updateTimeLog(
   id: string,
   data: {
     project_id?: string;
+    task_id?: string | null;
     description?: string;
     is_billable?: boolean;
     date?: string;
@@ -314,6 +327,7 @@ export async function updateTimeLog(
 
   const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (data.project_id !== undefined) update.project_id = data.project_id;
+  if (data.task_id !== undefined) update.task_id = data.task_id || null;
   if (data.description !== undefined) update.description = data.description;
   if (data.is_billable !== undefined) update.is_billable = data.is_billable;
 
@@ -343,10 +357,11 @@ export async function updateTimeLog(
     let mins: number;
 
     if (data.start_time && data.end_time) {
-      startedAt = zonedDateTimeToUtc(dateStr, data.start_time, timezone);
-      endedAt = zonedDateTimeToUtc(dateStr, data.end_time, timezone);
-      mins = Math.round((endedAt.getTime() - startedAt.getTime()) / 60000);
-      if (mins <= 0) return { error: "End time must be after start time" };
+      const schedule = resolveLogSchedule(dateStr, data.start_time, data.end_time, timezone);
+      if (!schedule.ok) return { error: schedule.error };
+      startedAt = schedule.startedAt;
+      endedAt = schedule.endedAt;
+      mins = schedule.durationMinutes;
     } else {
       const startTime =
         data.start_time ??
