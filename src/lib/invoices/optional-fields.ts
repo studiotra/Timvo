@@ -7,6 +7,8 @@ export type InvoiceOptionalFields = {
   stripeSessionId: string | null;
   viewToken: string | null;
   paidAt: string | null;
+  invoiceNumber: number | null;
+  isLocked: boolean;
 };
 
 /** Fetch invoice columns that may not exist until later migrations are applied. */
@@ -21,6 +23,8 @@ export async function fetchInvoiceOptionalFields(
     stripeSessionId: null,
     viewToken: null,
     paidAt: null,
+    invoiceNumber: null,
+    isLocked: false,
   };
 
   const { data: base } = await supabase
@@ -54,6 +58,26 @@ export async function fetchInvoiceOptionalFields(
     result.stripeSessionId =
       (paymentRow as { stripe_session_id?: string | null }).stripe_session_id ?? null;
     result.paidAt = (paymentRow as { paid_at?: string | null }).paid_at ?? null;
+  }
+
+  const { data: numberRow } = await supabase
+    .from("invoices")
+    .select("invoice_number")
+    .eq("id", invoiceId)
+    .maybeSingle();
+  if (numberRow) {
+    const n = (numberRow as { invoice_number?: number | null }).invoice_number;
+    result.invoiceNumber =
+      n != null && Number.isFinite(Number(n)) ? Math.floor(Number(n)) : null;
+  }
+
+  const { data: lockRow } = await supabase
+    .from("invoices")
+    .select("is_locked")
+    .eq("id", invoiceId)
+    .maybeSingle();
+  if (lockRow) {
+    result.isLocked = !!(lockRow as { is_locked?: boolean | null }).is_locked;
   }
 
   return result;
