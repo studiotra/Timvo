@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { TimvoLogo } from "@/components/timvo-logo";
 
 export type MarketingNavActive = "product" | "guide" | "pricing" | "download";
 
@@ -12,16 +13,8 @@ const NAV_LINKS: { id: MarketingNavActive; href: string; label: string }[] = [
 export function MarketingNav({ active }: { active?: MarketingNavActive }) {
   return (
     <header className="relative z-20 flex items-center justify-between px-5 py-5 md:px-10">
-      <Link href="/welcome" className="flex items-center gap-2.5">
-        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-400 to-indigo-600 text-sm font-bold text-white shadow-lg shadow-indigo-500/30">
-          T
-        </span>
-        <span
-          className="text-xl font-semibold tracking-tight text-white"
-          style={{ fontFamily: "var(--font-serif)" }}
-        >
-          Timvo
-        </span>
+      <Link href="/welcome" className="flex items-center">
+        <TimvoLogo variant="logo" surface="dark" height={32} priority />
       </Link>
       <nav className="flex items-center gap-4 md:gap-6">
         {NAV_LINKS.map(({ id, href, label }) => (

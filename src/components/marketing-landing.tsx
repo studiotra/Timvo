@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { MarketingNav } from "@/components/marketing-nav";
 import { MarketingProductDemo } from "@/components/marketing-product-demo";
 import { MarketingIntegrationsSection } from "@/components/marketing-integrations";
+import { TimvoLogo } from "@/components/timvo-logo";
 
 const steps = [
   {
@@ -54,12 +55,9 @@ export function MarketingLanding() {
         <div
           className={`transition duration-700 ${mounted ? "translate-y-0 opacity-100" : "translate-y-4 opacity-0"}`}
         >
-          <p
-            className="mb-4 text-4xl font-bold tracking-tight text-white sm:text-5xl md:text-6xl"
-            style={{ fontFamily: "var(--font-serif)" }}
-          >
-            Timvo
-          </p>
+          <div className="mb-4">
+            <TimvoLogo variant="logo" surface="dark" height={64} priority />
+          </div>
           <h1 className="max-w-xl text-2xl font-semibold leading-snug tracking-tight text-white/95 sm:text-3xl md:text-[2rem] md:leading-snug">
             Time tracking that respects how freelancers and agencies actually work.
           </h1>
@@ -269,9 +267,7 @@ export function MarketingLanding() {
 
       <footer className="relative z-10 border-t border-white/5 px-5 py-8 md:px-10">
         <div className="mx-auto flex max-w-5xl flex-col items-center justify-between gap-4 text-sm text-white/35 sm:flex-row">
-          <span style={{ fontFamily: "var(--font-serif)" }} className="text-white/50">
-            Timvo
-          </span>
+          <TimvoLogo variant="wordmark" surface="dark" height={18} className="opacity-70" />
           <div className="flex gap-6">
             <Link href="/login" className="hover:text-white/70">
               Sign in

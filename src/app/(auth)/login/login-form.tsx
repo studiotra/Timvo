@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { TimvoLogo } from "@/components/timvo-logo";
 
 const ERROR_MESSAGES: Record<string, string> = {
   invalid_invite: "Invalid invite link.",
@@ -105,10 +106,10 @@ export function LoginForm({
     <div className="min-h-screen flex items-center justify-center bg-charcoal px-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <a href="/welcome" className="inline-block text-2xl font-bold text-white hover:opacity-90">
-            Timvo
+          <a href="/welcome" className="inline-flex justify-center hover:opacity-90">
+            <TimvoLogo variant="logo" surface="dark" height={40} priority />
           </a>
-          <p className="text-gray-400 text-sm mt-1">See what your time is really worth — not just how long you worked.</p>
+          <p className="text-gray-400 text-sm mt-3">See what your time is really worth — not just how long you worked.</p>
         </div>
 
         <div className="mb-6 grid grid-cols-2 gap-3">

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { getInviteByToken, acceptInvite } from "@/app/actions/client-invites";
 import { AcceptInviteForm } from "./accept-invite-form";
+import { TimvoLogo } from "@/components/timvo-logo";
 
 type Props = { searchParams: Promise<{ token?: string }> };
 
@@ -65,8 +66,10 @@ export default async function AcceptInvitePage({ searchParams }: Props) {
     <div className="min-h-screen flex items-center justify-center bg-[var(--bg-app)] px-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-[var(--text-primary)]">Timvo</h1>
-          <p className="text-[var(--text-secondary)] text-sm mt-1">
+          <div className="flex justify-center">
+            <TimvoLogo variant="logo" height={40} />
+          </div>
+          <p className="text-[var(--text-secondary)] text-sm mt-3">
             Set up your account to view time records for {invite.clientName}
           </p>
         </div>

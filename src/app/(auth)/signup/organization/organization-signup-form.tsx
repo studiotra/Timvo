@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { signUpOrganization } from "@/app/actions/organizations";
+import { TimvoLogo } from "@/components/timvo-logo";
 
 export function OrganizationSignupForm({
   inviteToken,
@@ -57,8 +58,8 @@ export function OrganizationSignupForm({
     <div className="min-h-screen flex items-center justify-center bg-charcoal px-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <Link href="/welcome" className="inline-block text-2xl font-bold text-white hover:opacity-90">
-            Timvo
+          <Link href="/welcome" className="inline-flex justify-center hover:opacity-90">
+            <TimvoLogo variant="logo" surface="dark" height={40} priority />
           </Link>
           <h1 className="mt-4 text-xl font-bold text-white">Sign up as Agency</h1>
           <p className="text-gray-400 text-sm mt-2">

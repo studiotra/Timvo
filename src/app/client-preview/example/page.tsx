@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { TimvoLogo } from "@/components/timvo-logo";
 
 /** Dummy client detail preview — no auth required. */
 export default function ClientDetailPreviewPage() {
@@ -44,9 +45,7 @@ export default function ClientDetailPreviewPage() {
     <div className="min-h-screen bg-[var(--bg-app)]">
       <header className="flex h-14 items-center justify-between border-b border-[var(--border)] bg-[var(--bg-sidebar)] px-6">
         <Link href="/client-preview" className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-accent to-indigo-400 text-sm font-bold text-white">
-            {invitorBusinessName.charAt(0).toUpperCase()}
-          </div>
+          <TimvoLogo variant="mark" height={28} />
           <span className="font-bold text-[var(--text-primary)]">{invitorBusinessName}</span>
           <span className="text-sm text-[var(--text-muted)]">— Client Portal</span>
         </Link>

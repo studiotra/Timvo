@@ -12,6 +12,7 @@ import { useTimezone } from "@/contexts/timezone-context";
 import { formatLocalTodayLabel } from "@/lib/dates";
 import { SidebarTimerWidget } from "./sidebar-timer-widget";
 import { ThemeToggle } from "./theme-toggle";
+import { TimvoLogo } from "./timvo-logo";
 import { isDesktopShell } from "@/lib/desktop/shell";
 import { Menu, X } from "lucide-react";
 
@@ -79,17 +80,10 @@ export function AppShell({ children, logoUrl, displayName = "?" }: AppShellProps
         )}
       >
         <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-4 md:justify-start md:px-5 md:py-6">
-          <Link href="/" className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-accent to-indigo-400 text-sm font-bold text-white shadow-lg shadow-indigo-500/40">
-              T
-            </div>
-            <div>
-              <div className="text-[15px] font-bold tracking-tight text-[var(--text-primary)]">
-                Timvo
-              </div>
-              <div className="text-[10px] font-medium uppercase tracking-widest text-[var(--text-muted)]">
-                {desktopShell ? "Desktop" : "Freelance OS"}
-              </div>
+          <Link href="/" className="flex flex-col gap-0.5">
+            <TimvoLogo variant="logo" height={26} />
+            <div className="text-[10px] font-medium uppercase tracking-widest text-[var(--text-muted)]">
+              {desktopShell ? "Desktop" : "Freelance OS"}
             </div>
           </Link>
           <button
