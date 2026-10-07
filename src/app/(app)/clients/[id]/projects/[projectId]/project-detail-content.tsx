@@ -112,15 +112,20 @@ export function ProjectDetailContent({
         <span>/</span>
         <span className="text-[var(--text-primary)] font-medium">{project.name}</span>
       </nav>
-      <header className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-[var(--text-primary)]">{project.name}</h1>
-          <p className="text-[var(--text-secondary)] text-sm mt-1">
+      <header className="mb-6 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+        <div className="min-w-0">
+          <h1
+            className="text-2xl font-bold text-[var(--text-primary)] truncate"
+            title={project.name}
+          >
+            {project.name}
+          </h1>
+          <p className="text-[var(--text-secondary)] text-sm mt-1 truncate">
             {client.name}
             {client.email && ` · ${client.email}`}
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2 shrink-0">
           <button
             onClick={() => setManualLogOpen(true)}
             className="px-4 py-2 bg-accent hover:bg-accent-hover text-white rounded-lg text-sm font-semibold"
@@ -147,6 +152,79 @@ export function ProjectDetailContent({
           </button>
         </div>
       </header>
+
+      <div className="mb-6 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-4">
+        <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-[var(--text-muted)]">
+          Billing
+        </h3>
+        <dl className="grid gap-2 text-sm sm:grid-cols-2">
+          <div>
+            <dt className="text-[var(--text-muted)] text-xs">Type</dt>
+            <dd className="text-[var(--text-primary)] capitalize">
+              {project.billing_type === "fixed" ? "Fixed price" : "Hourly"}
+            </dd>
+          </div>
+          {project.billing_type === "hourly" && (
+            <div>
+              <dt className="text-[var(--text-muted)] text-xs">Hourly rate</dt>
+              <dd className="text-[var(--text-primary)]">
+                {project.hourly_rate != null && Number(project.hourly_rate) > 0
+                  ? `$${Number(project.hourly_rate)}/hr`
+                  : (
+                    <>
+                      From{" "}
+                      <Link href="/services" className="text-accent hover:underline">
+                        Services
+                      </Link>
+                    </>
+                  )}
+              </dd>
+            </div>
+          )}
+          {project.billing_type === "fixed" && project.agreed_fee != null && (
+            <div>
+              <dt className="text-[var(--text-muted)] text-xs">Fixed fee</dt>
+              <dd className="text-[var(--text-primary)] font-mono">
+                ${Number(project.agreed_fee).toLocaleString("en-CA", {
+                  minimumFractionDigits: 2,
+                })}
+              </dd>
+            </div>
+          )}
+          {project.tax_rate != null && Number(project.tax_rate) > 0 && (
+            <div>
+              <dt className="text-[var(--text-muted)] text-xs">Tax</dt>
+              <dd className="text-[var(--text-primary)]">{Number(project.tax_rate)}%</dd>
+            </div>
+          )}
+          {(project.retainer_amount != null || project.retainer_hours != null) && (
+            <div>
+              <dt className="text-[var(--text-muted)] text-xs">Retainer</dt>
+              <dd className="text-[var(--text-primary)]">
+                {project.retainer_amount != null &&
+                  `$${Number(project.retainer_amount).toLocaleString("en-CA")}/mo`}
+                {project.retainer_amount != null &&
+                  project.retainer_hours != null &&
+                  " · "}
+                {project.retainer_hours != null &&
+                  `${Number(project.retainer_hours)}h/mo`}
+              </dd>
+            </div>
+          )}
+          <div>
+            <dt className="text-[var(--text-muted)] text-xs">Status</dt>
+            <dd
+              className={
+                project.status === "active"
+                  ? "text-success capitalize"
+                  : "text-[var(--text-muted)] capitalize"
+              }
+            >
+              {project.status}
+            </dd>
+          </div>
+        </dl>
+      </div>
 
       <div className="mb-6 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-4">
         <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-[var(--text-muted)]">Hours spent</h3>
@@ -191,6 +269,7 @@ export function ProjectDetailContent({
         }}
         clientId={client.id}
         project={project}
+        existingNames={[project.name]}
       />
 
       <AddTaskSlideOver
