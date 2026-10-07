@@ -33,6 +33,16 @@ describe("resolveInvoiceDisplayStatus", () => {
     ).toBe("sent");
   });
 
+  it("maps DB overdue $0 invoices to sent (Dashboard and list must match)", () => {
+    expect(
+      resolveInvoiceDisplayStatus(
+        { status: "overdue", due_at: "2026-08-01", total_amount: 0.0 },
+        TZ,
+        new Date("2026-10-07T16:00:00.000Z")
+      )
+    ).toBe("sent");
+  });
+
   it("keeps paid as paid even when past due", () => {
     expect(
       resolveInvoiceDisplayStatus(

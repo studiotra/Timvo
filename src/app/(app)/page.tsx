@@ -10,8 +10,9 @@ import {
   formatLogDisplayTitle,
   getMonthRange,
   getWeekRange,
-  localMondayBasedDayIndex,
 } from "@/lib/dates";
+import { buildWeekDayHours } from "@/lib/dashboard/week-activity";
+import { resolveInvoiceDisplayStatus } from "@/lib/invoices/status";
 import { hourlyLogAmount, resolveHourlyRate } from "@/lib/rates";
 import { fetchUserTimezone } from "@/lib/user-timezone";
 import { DashboardContent } from "./dashboard-content";
@@ -93,15 +94,7 @@ export default async function DashboardPage() {
   const weekMinutes =
     weekLogs?.reduce((s, l) => s + (l.duration_minutes ?? 0), 0) ?? 0;
 
-  const dayMinutes = [0, 0, 0, 0, 0, 0, 0];
-  if (weekLogs) {
-    for (const log of weekLogs) {
-      const dayIdx = localMondayBasedDayIndex(log.started_at, timezone);
-      dayMinutes[dayIdx] += log.duration_minutes ?? 0;
-    }
-  }
-  const maxDay = Math.max(...dayMinutes, 1);
-  const heatmapData = dayMinutes.map((m) => m / maxDay);
+  const weekDayHours = buildWeekDayHours(weekLogs ?? [], timezone);
 
   // Received this month (local calendar month)
   const monthRange = getMonthRange(timezone);
@@ -186,10 +179,10 @@ export default async function DashboardPage() {
       };
     }) ?? [];
 
-  // Recent invoices
+  // Recent invoices — same display status rules as Invoices list
   const { data: recentInvoicesRaw } = await supabase
     .from("invoices")
-    .select("id, total_amount, status, issued_at, clients(name)")
+    .select("id, total_amount, status, issued_at, due_at, clients(name)")
     .eq("user_id", user.id)
     .order("created_at", { ascending: false })
     .limit(5);
@@ -199,7 +192,14 @@ export default async function DashboardPage() {
       id: inv.id,
       clientName: (inv.clients as { name?: string } | null)?.name ?? "Unknown",
       total_amount: inv.total_amount ?? 0,
-      status: inv.status ?? "draft",
+      status: resolveInvoiceDisplayStatus(
+        {
+          status: inv.status ?? "draft",
+          due_at: inv.due_at,
+          total_amount: inv.total_amount,
+        },
+        timezone
+      ),
       date: inv.issued_at ? formatDateOnly(inv.issued_at) : "—",
     })) ?? [];
 
@@ -221,7 +221,7 @@ export default async function DashboardPage() {
       unbilledMissingRateCount={unbilledMissingRateCount}
       weekMinutes={weekMinutes}
       receivedTotal={receivedTotal}
-      heatmapData={heatmapData}
+      weekDayHours={weekDayHours}
       recentLogs={recentLogs}
       recentInvoices={recentInvoices}
       effectiveRate={businessRate.effectiveRate}

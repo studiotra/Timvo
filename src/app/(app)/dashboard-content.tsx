@@ -18,7 +18,8 @@ type DashboardContentProps = {
   unbilledMissingRateCount?: number;
   weekMinutes: number;
   receivedTotal: number;
-  heatmapData?: number[];
+  /** Absolute hours per day Mon–Sun (same source as weekMinutes / Logs). */
+  weekDayHours?: number[];
   effectiveRate?: number | null;
   targetRate?: number | null;
   mostProfitableClient?: { name: string; effectiveRate: number } | null;
@@ -97,7 +98,7 @@ export function DashboardContent({
   unbilledMissingRateCount = 0,
   weekMinutes,
   receivedTotal,
-  heatmapData = [0.45, 0.7, 0.85, 0.6, 0.9, 0.3, 0.1],
+  weekDayHours = [0, 0, 0, 0, 0, 0, 0],
   effectiveRate = null,
   targetRate = null,
   mostProfitableClient = null,
@@ -112,7 +113,7 @@ export function DashboardContent({
   const t = useTranslations();
 
   const weekHours = (weekMinutes / 60).toFixed(1);
-  const maxHeat = Math.max(...heatmapData, 0.01);
+  const maxDayHours = Math.max(...weekDayHours, 0.01);
   const gapToGoal =
     annualGoal != null && projectedAnnual > 0 ? annualGoal - projectedAnnual : null;
   const unbilledSub =
@@ -252,18 +253,18 @@ export function DashboardContent({
             </div>
             <div className="p-5">
               <div className="mb-2 flex h-[120px] items-end gap-3">
-                {heatmapData.map((val, i) => (
+                {weekDayHours.map((hours, i) => (
                   <div
                     key={i}
                     className="flex flex-1 flex-col items-center gap-1.5"
                   >
                     <span className="font-mono text-[10px] font-medium text-[var(--text-muted)]">
-                      {((val || 0) * 8).toFixed(1)}h
+                      {(hours || 0).toFixed(1)}h
                     </span>
                     <div
                       className="relative w-full rounded-t-md bg-gradient-to-t from-indigo-500/60 to-indigo-500/30"
                       style={{
-                        height: `${Math.max(((val || 0) / maxHeat) * 100, 8)}px`,
+                        height: `${Math.max(((hours || 0) / maxDayHours) * 100, hours > 0 ? 8 : 2)}px`,
                       }}
                     />
                   </div>
