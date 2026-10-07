@@ -67,9 +67,13 @@ export function ProjectDetailContent({
 
   async function handleDeleteProject() {
     if (!confirm("Delete this project?")) return;
-    await deleteProject(project.id, client.id);
+    const result = await deleteProject(project.id, client.id);
+    if (result?.error) {
+      toast.error(result.error);
+      return;
+    }
+    toast.success("Project deleted");
     router.push(`/clients/${client.id}`);
-    router.refresh();
   }
 
   function openEdit() {
@@ -114,6 +118,7 @@ export function ProjectDetailContent({
       toast.error(r.error);
       return;
     }
+    toast.success("Task saved");
     clearEditState();
     router.refresh();
   }
@@ -325,10 +330,8 @@ export function ProjectDetailContent({
 
       <ProjectSlideOver
         open={slideOpen}
-        onClose={() => {
-          setSlideOpen(false);
-          router.refresh();
-        }}
+        onClose={() => setSlideOpen(false)}
+        onSuccess={() => router.refresh()}
         clientId={client.id}
         project={project}
         existingNames={[project.name]}
@@ -344,20 +347,15 @@ export function ProjectDetailContent({
 
       <ManualLogSlideOver
         open={manualLogOpen}
-        onClose={() => {
-          setManualLogOpen(false);
-          router.refresh();
-        }}
+        onClose={() => setManualLogOpen(false)}
+        onSuccess={() => router.refresh()}
         initialClientId={client.id}
         initialProjectId={project.id}
       />
 
       <CreateInvoiceSlideOver
         open={createInvoiceOpen}
-        onClose={() => {
-          setCreateInvoiceOpen(false);
-          router.refresh();
-        }}
+        onClose={() => setCreateInvoiceOpen(false)}
         initialClientId={client.id}
         initialProjectId={project.id}
       />

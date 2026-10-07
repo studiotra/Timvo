@@ -43,12 +43,14 @@ function SubmitButton() {
 export function ManualLogSlideOver({
   open,
   onClose,
+  onSuccess,
   initialClientId,
   initialProjectId,
   scope = "contractor",
 }: {
   open: boolean;
   onClose: () => void;
+  onSuccess?: () => void;
   initialClientId?: string;
   initialProjectId?: string;
   scope?: TrackingScope;
@@ -226,6 +228,7 @@ export function ManualLogSlideOver({
     const result = await addManualLog(formData);
     if (result.error) {
       setError(result.error);
+      toast.error(result.error);
       return;
     }
     if (typeof window !== "undefined" && clientId) {
@@ -237,6 +240,7 @@ export function ManualLogSlideOver({
       }
     }
     toast.success("Time log added");
+    onSuccess?.();
     onClose();
   }
 
@@ -327,6 +331,7 @@ export function ManualLogSlideOver({
                       value={newTaskName}
                       onChange={(e) => setNewTaskName(e.target.value)}
                       placeholder="Task name"
+                      aria-label="New task name"
                       className="flex-1 rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-2 py-1.5 text-sm text-[var(--text-primary)]"
                     />
                     <button
@@ -386,6 +391,7 @@ export function ManualLogSlideOver({
                 required
                 value={startTime}
                 onChange={(e) => setStartTime(e.target.value)}
+                aria-label="Start time"
                 className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 font-mono text-[var(--text-primary)] focus:ring-2 focus:ring-accent"
               />
               <span className="text-[var(--text-muted)]">–</span>
@@ -395,6 +401,7 @@ export function ManualLogSlideOver({
                 required
                 value={endTime}
                 onChange={(e) => setEndTime(e.target.value)}
+                aria-label="End time"
                 className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 font-mono text-[var(--text-primary)] focus:ring-2 focus:ring-accent"
               />
             </div>

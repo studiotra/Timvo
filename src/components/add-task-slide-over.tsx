@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { toast } from "sonner";
 import { SlideOver } from "./slide-over";
 import { createTask } from "@/app/actions/clients-projects";
 import { addTimeLogForTask } from "@/app/actions/time-logs";
@@ -96,6 +97,7 @@ export function AddTaskSlideOver({
     setSaving(false);
     setTaskName("");
     setServiceId("");
+    toast.success("Task added");
     onSuccess?.();
     onClose();
   }
@@ -161,6 +163,7 @@ export function AddTaskSlideOver({
                     type="time"
                     value={startTime}
                     onChange={(e) => setStartTime(e.target.value)}
+                    aria-label="Start time"
                     className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 font-mono text-[var(--text-primary)] focus:ring-2 focus:ring-accent"
                   />
                   <span className="text-[var(--text-muted)]">–</span>
@@ -168,6 +171,7 @@ export function AddTaskSlideOver({
                     type="time"
                     value={endTime}
                     onChange={(e) => setEndTime(e.target.value)}
+                    aria-label="End time"
                     className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 font-mono text-[var(--text-primary)] focus:ring-2 focus:ring-accent"
                   />
                 </div>

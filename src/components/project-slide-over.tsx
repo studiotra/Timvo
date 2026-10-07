@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useFormStatus } from "react-dom";
 import Link from "next/link";
+import { toast } from "sonner";
 import { SlideOver } from "./slide-over";
 import { RichTextEditor } from "./rich-text-editor";
 import { addProject, updateProject } from "@/app/actions/projects";
@@ -29,6 +30,7 @@ function SubmitButton() {
 type ProjectSlideOverProps = {
   open: boolean;
   onClose: () => void;
+  onSuccess?: () => void;
   clientId: string;
   project?: ProjectListItem | null;
   /** Other project names on this client (for duplicate warning). */
@@ -85,6 +87,7 @@ function formFromProject(project: ProjectListItem): FormState {
 export function ProjectSlideOver({
   open,
   onClose,
+  onSuccess,
   clientId,
   project,
   existingNames = [],
@@ -146,8 +149,11 @@ export function ProjectSlideOver({
       : await addProject(clientId, formData);
     if (result.error) {
       setError(result.error);
+      toast.error(result.error);
       return;
     }
+    toast.success(project ? "Project saved" : "Project added");
+    onSuccess?.();
     onClose();
   }
 
@@ -251,6 +257,7 @@ export function ProjectSlideOver({
                   min="0"
                   step="0.01"
                   placeholder="Monthly $"
+                  aria-label="Retainer monthly amount"
                   value={form.retainerAmount}
                   onChange={(e) =>
                     updateField("retainerAmount", e.target.value)
@@ -265,6 +272,7 @@ export function ProjectSlideOver({
                   min="0"
                   step="0.1"
                   placeholder="Hours/mo"
+                  aria-label="Retainer hours per month"
                   value={form.retainerHours}
                   onChange={(e) =>
                     updateField("retainerHours", e.target.value)
@@ -308,6 +316,7 @@ export function ProjectSlideOver({
                   min="0"
                   step="0.01"
                   placeholder="Fixed $ (if fixed)"
+                  aria-label="Agreed fee"
                   value={form.agreedFee}
                   onChange={(e) => updateField("agreedFee", e.target.value)}
                   className="w-full px-3 py-2 bg-[var(--bg-app)] border border-[var(--border)] rounded-lg text-[var(--text-primary)]"
@@ -321,6 +330,7 @@ export function ProjectSlideOver({
                   max={ESTIMATED_HOURS_MAX}
                   step="0.1"
                   placeholder="Est. hours"
+                  aria-label="Estimated hours"
                   value={form.estimatedHours}
                   onChange={(e) =>
                     updateField("estimatedHours", e.target.value)

@@ -136,8 +136,8 @@ export function ServicesSection({
         onClose={() => {
           setSlideOpen(false);
           setEditing(null);
-          router.refresh();
         }}
+        onSuccess={() => router.refresh()}
         service={editing}
       />
       {visible.length === 0 ? (

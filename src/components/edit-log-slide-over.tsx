@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useFormStatus } from "react-dom";
+import { toast } from "sonner";
 import { SlideOver } from "./slide-over";
 import { updateTimeLog } from "@/app/actions/time-logs";
 import { type TimeLogRow } from "@/app/actions/time-logs";
@@ -46,11 +47,13 @@ export function EditLogSlideOver({
   log,
   open,
   onClose,
+  onSuccess,
   scope = "contractor",
 }: {
   log: TimeLogRow | null;
   open: boolean;
   onClose: () => void;
+  onSuccess?: () => void;
   scope?: TrackingScope;
 }) {
   const timezone = useTimezone();
@@ -190,8 +193,11 @@ export function EditLogSlideOver({
     });
     if (result.error) {
       setError(result.error);
+      toast.error(result.error);
       return;
     }
+    toast.success("Time log saved");
+    onSuccess?.();
     onClose();
   }
 
@@ -296,6 +302,7 @@ export function EditLogSlideOver({
                       value={newTaskName}
                       onChange={(e) => setNewTaskName(e.target.value)}
                       placeholder="Task name"
+                      aria-label="New task name"
                       className="flex-1 rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-2 py-1.5 text-sm text-[var(--text-primary)]"
                     />
                     <button
@@ -355,6 +362,7 @@ export function EditLogSlideOver({
                 required
                 value={startTime}
                 onChange={(e) => setStartTime(e.target.value)}
+                aria-label="Start time"
                 className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 font-mono text-[var(--text-primary)] focus:ring-2 focus:ring-accent"
               />
               <span className="text-[var(--text-muted)]">–</span>
@@ -364,6 +372,7 @@ export function EditLogSlideOver({
                 required
                 value={endTime}
                 onChange={(e) => setEndTime(e.target.value)}
+                aria-label="End time"
                 className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 font-mono text-[var(--text-primary)] focus:ring-2 focus:ring-accent"
               />
             </div>

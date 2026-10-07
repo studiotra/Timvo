@@ -255,12 +255,15 @@ export function CreateInvoiceSlideOver({
     setError(null);
     const polishedDescriptions: Record<string, string> = {};
     if (aiPolish) {
-      for (const log of logs) {
-        if (selected.has(log.id)) {
-          polishedDescriptions[log.id] = await polishDescription(
-            log.description ?? "Time"
-          );
-        }
+      const selectedLogs = logs.filter((log) => selected.has(log.id));
+      const polished = await Promise.all(
+        selectedLogs.map(async (log) => ({
+          id: log.id,
+          text: await polishDescription(log.description ?? "Time"),
+        }))
+      );
+      for (const row of polished) {
+        polishedDescriptions[row.id] = row.text;
       }
     }
     const formData = new FormData();

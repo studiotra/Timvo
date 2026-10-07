@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { toast } from "sonner";
 import { ClientSlideOver } from "@/components/client-slide-over";
 import { deleteClient } from "@/app/actions/clients";
 import { useTranslations } from "@/contexts/locale-context";
@@ -41,6 +42,7 @@ export function ClientsContent({
   const [editing, setEditing] = useState<ClientListItem | null>(null);
   const [clientSearch, setClientSearch] = useState("");
   const [projectSearch, setProjectSearch] = useState("");
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const t = useTranslations();
 
   const filteredClients = clientSearch.trim()
@@ -56,7 +58,15 @@ export function ClientsContent({
 
   async function handleDelete(id: string) {
     if (!confirm("Delete this client and all their projects?")) return;
-    await deleteClient(id);
+    setDeletingId(id);
+    const result = await deleteClient(id);
+    setDeletingId(null);
+    if (result?.error) {
+      toast.error(result.error);
+      return;
+    }
+    toast.success("Client deleted");
+    onRefresh?.();
   }
 
   function openAdd() {
@@ -81,6 +91,7 @@ export function ClientsContent({
             value={clientSearch}
             onChange={(e) => setClientSearch(e.target.value)}
             placeholder="Search clients…"
+            aria-label="Search clients"
             className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-3 py-1.5 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
           />
         </div>
@@ -151,9 +162,10 @@ export function ClientsContent({
                   e.preventDefault();
                   handleDelete(client.id);
                 }}
-                className="text-[11px] font-semibold text-red-400 hover:underline"
+                disabled={deletingId === client.id}
+                className="text-[11px] font-semibold text-red-400 hover:underline disabled:opacity-50"
               >
-                {t("common.delete")}
+                {deletingId === client.id ? "Deleting…" : t("common.delete")}
               </button>
             </div>
           </Link>
@@ -176,6 +188,7 @@ export function ClientsContent({
           value={projectSearch}
           onChange={(e) => setProjectSearch(e.target.value)}
           placeholder="Search projects…"
+          aria-label="Search projects"
           className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-3 py-1.5 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)]"
         />
       </div>

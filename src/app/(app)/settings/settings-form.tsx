@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { updateProfile } from "@/app/actions/settings";
 import { useTranslations } from "@/contexts/locale-context";
 import { CURRENCIES } from "@/lib/currencies";
@@ -53,8 +54,10 @@ export function SettingsForm({ profile }: { profile: Profile | null }) {
     setSaving(false);
     if (result?.error) {
       setMessage(result.error);
+      toast.error(result.error);
     } else {
       setMessage(t("common.saved"));
+      toast.success(t("common.saved"));
       router.refresh();
     }
   }

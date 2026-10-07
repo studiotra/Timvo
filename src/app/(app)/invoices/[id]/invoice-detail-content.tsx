@@ -129,7 +129,6 @@ export function InvoiceDetailContent({
     }
     toast.success("Invoice deleted");
     router.push("/invoices");
-    router.refresh();
   }
 
   const statusStyles: Record<string, { backgroundColor: string; color: string }> = {

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useFormStatus } from "react-dom";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { SlideOver } from "./slide-over";
 import { addClient, updateClient } from "@/app/actions/clients";
 import type { ClientListItem } from "@/types/database";
@@ -40,8 +41,10 @@ export function ClientSlideOver({ open, onClose, onSuccess, client }: ClientSlid
       : await addClient(formData);
     if (result.error) {
       setError(result.error);
+      toast.error(result.error);
       return;
     }
+    toast.success(client ? "Client saved" : "Client added");
     onSuccess?.();
     router.refresh();
     onClose();

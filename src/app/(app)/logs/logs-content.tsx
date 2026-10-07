@@ -128,7 +128,10 @@ export function LogsContent({
     setDeletingId(null);
     if (result.error) {
       toast.error(result.error);
+      return;
     }
+    toast.success("Time log deleted");
+    router.refresh();
   }
 
   const totalMins = logs.reduce((s, l) => s + (l.duration_minutes ?? 0), 0);
@@ -208,6 +211,7 @@ export function LogsContent({
             <select
               value={clientFilter}
               onChange={(e) => setClientFilter(e.target.value)}
+              aria-label="Filter by client"
               className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)]"
             >
               <option value="">All clients</option>
@@ -219,6 +223,7 @@ export function LogsContent({
               type="date"
               value={fromDate}
               onChange={(e) => setFromDate(e.target.value)}
+              aria-label="From date"
               className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)]"
               placeholder="From"
             />
@@ -226,6 +231,7 @@ export function LogsContent({
               type="date"
               value={toDate}
               onChange={(e) => setToDate(e.target.value)}
+              aria-label="To date"
               className="rounded-lg border border-[var(--border)] bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)]"
               placeholder="To"
             />
@@ -577,19 +583,15 @@ export function LogsContent({
           log={editingLog}
           open={!!editingLog}
           scope={basePath.startsWith("/org") ? "org" : "contractor"}
-          onClose={() => {
-            setEditingLog(null);
-            router.refresh();
-          }}
+          onClose={() => setEditingLog(null)}
+          onSuccess={() => router.refresh()}
         />
       )}
       <ManualLogSlideOver
         open={addLogOpen}
         scope={basePath.startsWith("/org") ? "org" : "contractor"}
-        onClose={() => {
-          setAddLogOpen(false);
-          router.refresh();
-        }}
+        onClose={() => setAddLogOpen(false)}
+        onSuccess={() => router.refresh()}
       />
     </div>
   );

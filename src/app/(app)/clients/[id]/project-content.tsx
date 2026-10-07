@@ -3,6 +3,7 @@
 import { useState, useMemo, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { ProjectSlideOver } from "@/components/project-slide-over";
 import { ClientSlideOver } from "@/components/client-slide-over";
 import { ShareProjectToOrgButton } from "@/components/share-project-to-org-button";
@@ -115,7 +116,12 @@ export function ProjectContent({
 
   async function handleDelete(projectId: string) {
     if (!confirm("Delete this project?")) return;
-    await deleteProject(projectId, client.id);
+    const result = await deleteProject(projectId, client.id);
+    if (result?.error) {
+      toast.error(result.error);
+      return;
+    }
+    toast.success("Project deleted");
     router.refresh();
   }
 
@@ -204,10 +210,8 @@ export function ProjectContent({
 
       <ClientSlideOver
         open={clientEditOpen}
-        onClose={() => {
-          setClientEditOpen(false);
-          router.refresh();
-        }}
+        onClose={() => setClientEditOpen(false)}
+        onSuccess={() => router.refresh()}
         client={{
           id: client.id,
           name: client.name,
@@ -229,8 +233,8 @@ export function ProjectContent({
         onClose={() => {
           setSlideOpen(false);
           setEditing(null);
-          router.refresh();
         }}
+        onSuccess={() => router.refresh()}
         clientId={client.id}
         project={editing}
         existingNames={existingNames}

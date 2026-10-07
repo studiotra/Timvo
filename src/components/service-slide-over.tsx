@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useFormStatus } from "react-dom";
+import { toast } from "sonner";
 import { SlideOver } from "./slide-over";
 import { addService, updateService } from "@/app/actions/services";
 import type { ServiceListItem } from "@/types/database";
@@ -22,12 +23,14 @@ function SubmitButton() {
 type ServiceSlideOverProps = {
   open: boolean;
   onClose: () => void;
+  onSuccess?: () => void;
   service?: ServiceListItem | null;
 };
 
 export function ServiceSlideOver({
   open,
   onClose,
+  onSuccess,
   service,
 }: ServiceSlideOverProps) {
   const [error, setError] = useState<string | null>(null);
@@ -39,8 +42,11 @@ export function ServiceSlideOver({
       : await addService(formData);
     if (result.error) {
       setError(result.error);
+      toast.error(result.error);
       return;
     }
+    toast.success(service ? "Service saved" : "Service added");
+    onSuccess?.();
     onClose();
   }
 

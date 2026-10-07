@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { CreateInvoiceSlideOver } from "@/components/create-invoice-slide-over";
 import { ManualLogSlideOver } from "@/components/manual-log-slide-over";
 import { useTranslations } from "@/contexts/locale-context";
@@ -107,6 +108,7 @@ export function DashboardContent({
   recentLogs = [],
   recentInvoices = [],
 }: DashboardContentProps) {
+  const router = useRouter();
   const [invoiceOpen, setInvoiceOpen] = useState(false);
   const [manualLogOpen, setManualLogOpen] = useState(false);
   const t = useTranslations();
@@ -457,6 +459,7 @@ export function DashboardContent({
       <ManualLogSlideOver
         open={manualLogOpen}
         onClose={() => setManualLogOpen(false)}
+        onSuccess={() => router.refresh()}
       />
     </>
   );
