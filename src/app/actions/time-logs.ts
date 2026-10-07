@@ -1,6 +1,7 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
 import {
   endOfLocalDay,
@@ -13,6 +14,7 @@ import {
   startOfLocalDay,
   zonedDateTimeToUtc,
 } from "@/lib/dates";
+import { resolveServiceTask } from "@/lib/time-logs/service-task";
 import { fetchUserTimezone } from "@/lib/user-timezone";
 
 /** Invalidate log list routes only — avoid layout-wide `/` refresh after every save. */
@@ -30,6 +32,7 @@ export type TimeLogRow = {
   task_id: string | null;
   task_name: string | null;
   service_id: string | null;
+  service_name: string | null;
   started_at: string;
   ended_at: string | null;
   duration_minutes: number;
@@ -37,6 +40,61 @@ export type TimeLogRow = {
   is_billable: boolean;
   is_billed: boolean;
 };
+
+/**
+ * Attach service to a log via task_id (no time_logs.service_id column).
+ * Reuses or creates a project task for the selected service when no task is set.
+ */
+async function resolveTaskIdForService(
+  supabase: SupabaseClient,
+  projectId: string,
+  serviceId: string | null | undefined,
+  taskId: string | null | undefined
+): Promise<{ taskId: string | null; error?: string }> {
+  const explicitTaskId = taskId?.trim() || null;
+  if (explicitTaskId) return { taskId: explicitTaskId };
+
+  const sid = serviceId?.trim() || null;
+  if (!sid) return { taskId: null };
+
+  const { data: service } = await supabase
+    .from("services")
+    .select("name")
+    .eq("id", sid)
+    .maybeSingle();
+
+  const { data: candidates } = await supabase
+    .from("tasks")
+    .select("id, name")
+    .eq("project_id", projectId)
+    .eq("service_id", sid)
+    .order("created_at", { ascending: true });
+
+  const decision = resolveServiceTask({
+    taskId: null,
+    serviceId: sid,
+    serviceName: service?.name ?? null,
+    candidates: (candidates ?? []).map((t) => ({ id: t.id, name: t.name })),
+  });
+
+  if (decision.kind === "task") return { taskId: decision.taskId };
+  if (decision.kind === "none") return { taskId: null };
+
+  const { data: created, error } = await supabase
+    .from("tasks")
+    .insert({
+      project_id: projectId,
+      service_id: sid,
+      name: decision.name,
+    })
+    .select("id")
+    .single();
+
+  if (error || !created) {
+    return { taskId: null, error: error?.message ?? "Could not save service for this log." };
+  }
+  return { taskId: created.id };
+}
 
 export type GetTimeLogsFilters = {
   clientId?: string;
@@ -102,11 +160,38 @@ export async function getTimeLogs(
   const { data } = await query;
 
   if (!data) return [];
+
+  const serviceIds = [
+    ...new Set(
+      data
+        .map((r) => {
+          const task = r.tasks as unknown as { service_id?: string | null } | null;
+          return task?.service_id ?? null;
+        })
+        .filter(Boolean)
+    ),
+  ] as string[];
+  const serviceNameMap: Record<string, string> = {};
+  if (serviceIds.length > 0) {
+    const { data: services } = await supabase
+      .from("services")
+      .select("id, name")
+      .in("id", serviceIds);
+    for (const s of services ?? []) {
+      serviceNameMap[s.id] = s.name;
+    }
+  }
+
   return data
     .filter((r) => r.projects && typeof (r.projects as unknown as { client_id?: string }).client_id === "string")
     .map((r) => {
       const p = r.projects as unknown as { id: string; name: string; client_id: string; clients?: { id: string; name: string } };
-      const task = r.tasks as unknown as { id: string; name: string; service_id: string | null } | null;
+      const task = r.tasks as unknown as {
+        id: string;
+        name: string;
+        service_id: string | null;
+      } | null;
+      const serviceId = task?.service_id ?? null;
       return {
         id: r.id,
         project_id: r.project_id,
@@ -115,7 +200,8 @@ export async function getTimeLogs(
         project_name: p.name ?? "—",
         task_id: r.task_id ?? task?.id ?? null,
         task_name: task?.name ?? null,
-        service_id: task?.service_id ?? null,
+        service_id: serviceId,
+        service_name: serviceId ? serviceNameMap[serviceId] ?? null : null,
         started_at: r.started_at,
         ended_at: r.ended_at,
         duration_minutes: r.duration_minutes ?? 0,
@@ -205,6 +291,7 @@ export async function addManualLog(formData: FormData) {
 
   const projectId = formData.get("project_id") as string;
   const taskId = (formData.get("task_id") as string) || null;
+  const serviceId = (formData.get("service_id") as string) || null;
   const date = formData.get("date") as string;
   const startTime = formData.get("start_time") as string;
   const endTime = formData.get("end_time") as string;
@@ -237,10 +324,18 @@ export async function addManualLog(formData: FormData) {
     return { error: "Project, date, and time range are required" };
   }
 
+  const resolvedTask = await resolveTaskIdForService(
+    supabase,
+    projectId,
+    serviceId,
+    taskId
+  );
+  if (resolvedTask.error) return { error: resolvedTask.error };
+
   const { error } = await supabase.from("time_logs").insert({
     project_id: projectId,
     user_id: user.id,
-    task_id: taskId || null,
+    task_id: resolvedTask.taskId,
     started_at: startedAt.toISOString(),
     ended_at: endedAt.toISOString(),
     duration_minutes: durationMinutes,
@@ -307,6 +402,7 @@ export async function updateTimeLog(
   data: {
     project_id?: string;
     task_id?: string | null;
+    service_id?: string | null;
     description?: string;
     is_billable?: boolean;
     date?: string;
@@ -319,11 +415,33 @@ export async function updateTimeLog(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Unauthorized" };
 
+  const { data: existing } = await supabase
+    .from("time_logs")
+    .select("project_id, started_at, ended_at, duration_minutes")
+    .eq("id", id)
+    .eq("user_id", user.id)
+    .single();
+
+  if (!existing) return { error: "Time log not found" };
+
   const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
   if (data.project_id !== undefined) update.project_id = data.project_id;
-  if (data.task_id !== undefined) update.task_id = data.task_id || null;
   if (data.description !== undefined) update.description = data.description;
   if (data.is_billable !== undefined) update.is_billable = data.is_billable;
+
+  const touchesTaskOrService =
+    data.task_id !== undefined || data.service_id !== undefined;
+  if (touchesTaskOrService) {
+    const projectId = data.project_id ?? existing.project_id;
+    const resolvedTask = await resolveTaskIdForService(
+      supabase,
+      projectId,
+      data.service_id,
+      data.task_id
+    );
+    if (resolvedTask.error) return { error: resolvedTask.error };
+    update.task_id = resolvedTask.taskId;
+  }
 
   const touchesSchedule =
     data.date !== undefined ||
@@ -332,17 +450,10 @@ export async function updateTimeLog(
     data.duration_minutes !== undefined;
 
   if (touchesSchedule) {
-    const { data: existing } = await supabase
-      .from("time_logs")
-      .select("started_at, ended_at, duration_minutes")
-      .eq("id", id)
-      .eq("user_id", user.id)
-      .single();
-
     const timezone = await fetchUserTimezone(supabase, user.id);
     const dateStr =
       data.date ??
-      (existing?.started_at
+      (existing.started_at
         ? formatInstantAsLocalDate(existing.started_at, timezone)
         : localToday(timezone));
 
@@ -359,11 +470,11 @@ export async function updateTimeLog(
     } else {
       const startTime =
         data.start_time ??
-        (existing?.started_at
+        (existing.started_at
           ? formatInstantAsLocalTime(existing.started_at, timezone)
           : "09:00");
       startedAt = zonedDateTimeToUtc(dateStr, startTime, timezone);
-      mins = data.duration_minutes ?? existing?.duration_minutes ?? 0;
+      mins = data.duration_minutes ?? existing.duration_minutes ?? 0;
       endedAt = new Date(startedAt.getTime() + mins * 60 * 1000);
     }
 

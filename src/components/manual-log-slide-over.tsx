@@ -218,6 +218,7 @@ export function ManualLogSlideOver({
     const formData = new FormData();
     formData.set("project_id", projectId);
     if (taskId) formData.set("task_id", taskId);
+    if (serviceId) formData.set("service_id", serviceId);
     formData.set("date", date);
     formData.set("start_time", startTime);
     formData.set("end_time", endTime);

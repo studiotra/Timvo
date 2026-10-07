@@ -89,8 +89,21 @@ export function EditLogSlideOver({
     if (!open) return;
     const load = scope === "org" ? getOrgClientsForSelect : getClientsForSelect;
     load().then(setClients);
-    getServicesForSelect().then((s) => setServices(s.map((x) => ({ id: x.id, name: x.name }))));
-  }, [open, scope]);
+    getServicesForSelect().then((s) => {
+      const opts = s.map((x) => ({ id: x.id, name: x.name }));
+      // Keep the log's service visible even if options load later or it was archived
+      if (
+        log?.service_id &&
+        !opts.some((o) => o.id === log.service_id)
+      ) {
+        opts.unshift({
+          id: log.service_id,
+          name: log.service_name ?? "Current service",
+        });
+      }
+      setServices(opts);
+    });
+  }, [open, scope, log]);
 
   useEffect(() => {
     if (!log || !open) return;
@@ -185,6 +198,7 @@ export function EditLogSlideOver({
     const result = await updateTimeLog(log.id, {
       project_id: selectedProjectId,
       task_id: taskId || null,
+      service_id: serviceId || null,
       date,
       start_time: startTime,
       end_time: endTime,
@@ -268,6 +282,11 @@ export function EditLogSlideOver({
               className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-[var(--text-primary)] focus:ring-2 focus:ring-accent disabled:opacity-50"
             >
               <option value="">Select service</option>
+              {serviceId && !services.some((s) => s.id === serviceId) && (
+                <option value={serviceId}>
+                  {log.service_name ?? "Current service"}
+                </option>
+              )}
               {services.map((s) => (
                 <option key={s.id} value={s.id}>
                   {s.name}
