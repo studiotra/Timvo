@@ -62,14 +62,11 @@ export async function getOrgClientsForTimer(): Promise<ClientOpt[]> {
   return getOrgClientsForSelect();
 }
 
-export async function getOrgProjectsForTimer(clientId: string): Promise<
-  (ProjectOpt & { clientName?: string; displayName?: string })[]
-> {
-  const [projs, clients] = await Promise.all([
-    getOrgProjectsByClient(clientId),
-    getOrgClientsForSelect(),
-  ]);
-  const clientName = clients.find((c) => c.id === clientId)?.name ?? "";
+export async function getOrgProjectsForTimer(
+  clientId: string,
+  clientName = ""
+): Promise<(ProjectOpt & { clientName?: string; displayName?: string })[]> {
+  const projs = await getOrgProjectsByClient(clientId);
   return projs.map((p) => ({
     ...p,
     clientName,

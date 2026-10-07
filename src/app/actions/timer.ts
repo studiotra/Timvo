@@ -26,10 +26,11 @@ export async function getClientsForTimer(): Promise<ClientOption[]> {
   return getClientsForSelect();
 }
 
-export async function getProjectsForTimer(clientId: string): Promise<ProjectOption[]> {
+export async function getProjectsForTimer(
+  clientId: string,
+  clientName = ""
+): Promise<ProjectOption[]> {
   const projs = await getProjectsByClient(clientId);
-  const clients = await getClientsForSelect();
-  const clientName = clients.find((c) => c.id === clientId)?.name ?? "";
   return projs.map((p) => ({
     ...p,
     clientName,
