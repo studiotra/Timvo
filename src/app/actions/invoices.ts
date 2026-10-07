@@ -12,6 +12,7 @@ import {
   resolveTaxRate,
   roundCents,
 } from "@/lib/invoices/money";
+import { resolveHourlyRate } from "@/lib/rates";
 import { fetchUserTimezone } from "@/lib/user-timezone";
 
 export type DefaultInvoiceSettings = {
@@ -83,13 +84,15 @@ export async function createInvoice(formData: FormData) {
 
   const { data: project } = await supabase
     .from("projects")
-    .select("id, name, billing_type, agreed_fee, tax_rate")
+    .select("id, name, billing_type, agreed_fee, tax_rate, hourly_rate")
     .eq("id", projectId)
     .eq("client_id", clientId)
     .single();
   if (!project) return { error: "Project not found" };
   const isFixedProject = project.billing_type === "fixed" && project.agreed_fee != null && Number(project.agreed_fee) > 0;
   const fixedPrice = isFixedProject ? Number(project.agreed_fee) : 0;
+  const projectRate =
+    project.hourly_rate != null ? Number(project.hourly_rate) : null;
 
   const { data: client } = await supabase
     .from("clients")
@@ -104,7 +107,7 @@ export async function createInvoice(formData: FormData) {
   if (logIds.length > 0) {
     let logQuery = supabase
       .from("time_logs")
-      .select("id, duration_minutes, description, task_id, task:task_id(name), projects(hourly_rate)")
+      .select("id, duration_minutes, description, task_id, task:task_id(name)")
       .eq("user_id", user.id)
       .eq("is_billed", false)
       .in("id", logIds)
@@ -183,24 +186,29 @@ export async function createInvoice(formData: FormData) {
         arr.push(entry);
         byService.set(serviceId, arr);
       } else {
-        const projRate = Number((log.projects as { hourly_rate?: number })?.hourly_rate) || 0;
+        const resolved = resolveHourlyRate({ projectRate });
         const hours = roundCents(mins / 60);
         items.push({
           time_log_ids: [log.id],
           description: taskName,
           quantity: hours,
-          unit_rate: projRate,
-          amount: lineAmount(hours, projRate),
+          unit_rate: resolved.rate,
+          amount: lineAmount(hours, resolved.rate),
         });
       }
     }
 
-    const projRateFallback = Number((logs[0]?.projects as { hourly_rate?: number })?.hourly_rate) || 0;
-
     for (const [svcId, entries] of byService) {
       const svc = servicesMap[svcId];
-      const rate = (svc?.default_rate ?? 0) > 0 ? svc!.default_rate : projRateFallback;
       const isFixed = svc?.billing_type === "fixed";
+      const serviceRate = svc?.default_rate ?? 0;
+      // Fixed services always bill the service flat fee; hourly uses project → service.
+      const rate = isFixed
+        ? serviceRate
+        : resolveHourlyRate({
+            projectRate,
+            serviceRate,
+          }).rate;
       const totalMins = entries.reduce((s, e) => s + e.mins, 0);
       const allIds = entries.map((e) => e.id);
 

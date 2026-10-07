@@ -14,6 +14,8 @@ const PROJECT_COLORS: Record<string, string> = {
 
 type DashboardContentProps = {
   unbilledTotal: number;
+  unbilledLogCount?: number;
+  unbilledMissingRateCount?: number;
   weekMinutes: number;
   receivedTotal: number;
   heatmapData?: number[];
@@ -29,6 +31,7 @@ type DashboardContentProps = {
     title?: string;
     duration_minutes: number;
     amount: number;
+    missingRate?: boolean;
     projectName: string;
     projectColor?: string;
     isBilled: boolean;
@@ -90,6 +93,8 @@ function MetricCard({
 
 export function DashboardContent({
   unbilledTotal,
+  unbilledLogCount = 0,
+  unbilledMissingRateCount = 0,
   weekMinutes,
   receivedTotal,
   heatmapData = [0.45, 0.7, 0.85, 0.6, 0.9, 0.3, 0.1],
@@ -110,6 +115,10 @@ export function DashboardContent({
   const maxHeat = Math.max(...heatmapData, 0.01);
   const gapToGoal =
     annualGoal != null && projectedAnnual > 0 ? annualGoal - projectedAnnual : null;
+  const unbilledSub =
+    unbilledMissingRateCount > 0
+      ? `${unbilledLogCount} ${t("dashboard.logsReady")} · ${unbilledMissingRateCount} missing rate`
+      : `${unbilledLogCount} ${t("dashboard.logsReady")}`;
 
   return (
     <>
@@ -199,7 +208,8 @@ export function DashboardContent({
         <MetricCard
           label={t("dashboard.unbilled")}
           value={`$${unbilledTotal.toLocaleString("en-US", { minimumFractionDigits: 0 })}`}
-          sub={`${recentLogs.filter((l) => !l.isBilled).length} ${t("dashboard.logsReady")}`}
+          sub={unbilledSub}
+          subClass={unbilledMissingRateCount > 0 ? "text-amber-400" : ""}
           icon="⏳"
           iconBg="rgba(245,158,11,0.1)"
           highlight
@@ -281,7 +291,17 @@ export function DashboardContent({
                   </div>
                   <div className="mt-0.5 text-[11px] font-medium text-[var(--text-muted)]">
                     {t("dashboard.unbilled")}
+                    {unbilledLogCount > 0 && (
+                      <span className="ml-1">· {unbilledLogCount} logs</span>
+                    )}
                   </div>
+                  {unbilledMissingRateCount > 0 && (
+                    <div className="mt-1 text-[11px] font-medium text-amber-400">
+                      {unbilledMissingRateCount} log
+                      {unbilledMissingRateCount === 1 ? "" : "s"} have no project or
+                      service rate — set a rate before invoicing.
+                    </div>
+                  )}
                 </div>
                 <div className="h-10 w-px bg-white/10" />
                 <div>

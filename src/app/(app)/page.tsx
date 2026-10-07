@@ -12,6 +12,7 @@ import {
   getWeekRange,
   localMondayBasedDayIndex,
 } from "@/lib/dates";
+import { hourlyLogAmount, resolveHourlyRate } from "@/lib/rates";
 import { fetchUserTimezone } from "@/lib/user-timezone";
 import { DashboardContent } from "./dashboard-content";
 
@@ -29,21 +30,54 @@ export default async function DashboardPage() {
 
   const timezone = await fetchUserTimezone(supabase, user.id);
 
-  // Unbilled total
+  // Unbilled total — project rate → service rate (via task)
   const { data: unbilledLogs } = await supabase
     .from("time_logs")
-    .select("duration_minutes, projects(hourly_rate)")
+    .select(
+      "id, duration_minutes, task_id, projects(hourly_rate), tasks(service_id)"
+    )
     .eq("user_id", user.id)
     .eq("is_billable", true)
     .eq("is_billed", false);
 
+  const serviceIds = [
+    ...new Set(
+      (unbilledLogs ?? [])
+        .map((l) => {
+          const task = l.tasks as { service_id?: string | null } | null;
+          return task?.service_id ?? null;
+        })
+        .filter(Boolean)
+    ),
+  ] as string[];
+
+  const servicesRateMap: Record<string, number | null> = {};
+  if (serviceIds.length > 0) {
+    const { data: services } = await supabase
+      .from("services")
+      .select("id, default_rate")
+      .in("id", serviceIds);
+    for (const s of services ?? []) {
+      servicesRateMap[s.id] =
+        s.default_rate != null ? Number(s.default_rate) : null;
+    }
+  }
+
   let unbilledTotal = 0;
+  let unbilledLogCount = 0;
+  let unbilledMissingRateCount = 0;
   if (unbilledLogs) {
     for (const log of unbilledLogs) {
-      const proj = log.projects as { hourly_rate?: number } | null | undefined;
-      const rate = Number(proj?.hourly_rate) || 0;
-      const hours = (log.duration_minutes ?? 0) / 60;
-      unbilledTotal += hours * rate;
+      unbilledLogCount += 1;
+      const proj = log.projects as { hourly_rate?: number | null } | null;
+      const task = log.tasks as { service_id?: string | null } | null;
+      const serviceId = task?.service_id ?? null;
+      const resolved = resolveHourlyRate({
+        projectRate: proj?.hourly_rate,
+        serviceRate: serviceId ? servicesRateMap[serviceId] : null,
+      });
+      if (resolved.missing) unbilledMissingRateCount += 1;
+      unbilledTotal += hourlyLogAmount(log.duration_minutes ?? 0, resolved);
     }
   }
 
@@ -86,19 +120,51 @@ export default async function DashboardPage() {
   const { data: recentLogsRaw } = await supabase
     .from("time_logs")
     .select(
-      "id, description, duration_minutes, is_billed, projects(name, hourly_rate), tasks(name)"
+      "id, description, duration_minutes, is_billed, projects(name, hourly_rate), tasks(name, service_id)"
     )
     .eq("user_id", user.id)
     .order("started_at", { ascending: false })
     .limit(10);
 
+  const recentServiceIds = [
+    ...new Set(
+      (recentLogsRaw ?? [])
+        .map((l) => {
+          const task = l.tasks as { service_id?: string | null } | null;
+          return task?.service_id ?? null;
+        })
+        .filter(Boolean)
+    ),
+  ] as string[];
+  const recentServicesMap: Record<string, number | null> = { ...servicesRateMap };
+  const missingRecent = recentServiceIds.filter((id) => !(id in recentServicesMap));
+  if (missingRecent.length > 0) {
+    const { data: services } = await supabase
+      .from("services")
+      .select("id, default_rate")
+      .in("id", missingRecent);
+    for (const s of services ?? []) {
+      recentServicesMap[s.id] =
+        s.default_rate != null ? Number(s.default_rate) : null;
+    }
+  }
+
   const recentLogs =
     recentLogsRaw?.map((l) => {
-      const proj = l.projects as { name?: string; hourly_rate?: number } | null;
-      const task = l.tasks as { name?: string } | null;
-      const rate = Number(proj?.hourly_rate) || 0;
-      const hours = (l.duration_minutes ?? 0) / 60;
-      const amount = hours * rate;
+      const proj = l.projects as {
+        name?: string;
+        hourly_rate?: number | null;
+      } | null;
+      const task = l.tasks as {
+        name?: string;
+        service_id?: string | null;
+      } | null;
+      const serviceId = task?.service_id ?? null;
+      const resolved = resolveHourlyRate({
+        projectRate: proj?.hourly_rate,
+        serviceRate: serviceId ? recentServicesMap[serviceId] : null,
+      });
+      const amount = hourlyLogAmount(l.duration_minutes ?? 0, resolved);
       const projectName = proj?.name ?? "Unknown";
       const colorKeys = Object.keys(PROJECT_COLORS).filter((k) => k !== "default");
       return {
@@ -111,6 +177,7 @@ export default async function DashboardPage() {
         }),
         duration_minutes: l.duration_minutes ?? 0,
         amount,
+        missingRate: resolved.missing && (l.is_billed === false),
         projectName,
         projectColor: colorKeys.includes(projectName)
           ? PROJECT_COLORS[projectName]
@@ -150,6 +217,8 @@ export default async function DashboardPage() {
   return (
     <DashboardContent
       unbilledTotal={unbilledTotal}
+      unbilledLogCount={unbilledLogCount}
+      unbilledMissingRateCount={unbilledMissingRateCount}
       weekMinutes={weekMinutes}
       receivedTotal={receivedTotal}
       heatmapData={heatmapData}

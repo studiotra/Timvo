@@ -159,7 +159,15 @@ export function CreateInvoiceSlideOver({
   }
 
   const groupedLogs = (() => {
-    const byKey = new Map<string, { logs: UnbilledLog[]; totalMins: number; totalAmount: number }>();
+    const byKey = new Map<
+      string,
+      {
+        logs: UnbilledLog[];
+        totalMins: number;
+        totalAmount: number;
+        missingRate: boolean;
+      }
+    >();
     for (const log of logs) {
       const taskName = log.task_name ?? (log.description?.trim() || "Uncategorized");
       const key = `${taskName}::${log.service_id ?? ""}`;
@@ -170,8 +178,14 @@ export function CreateInvoiceSlideOver({
         existing.logs.push(log);
         existing.totalMins += mins;
         existing.totalAmount += amt;
+        existing.missingRate = existing.missingRate || !!log.missing_rate;
       } else {
-        byKey.set(key, { logs: [log], totalMins: mins, totalAmount: amt });
+        byKey.set(key, {
+          logs: [log],
+          totalMins: mins,
+          totalAmount: amt,
+          missingRate: !!log.missing_rate,
+        });
       }
     }
     return Array.from(byKey.entries()).map(([key, v]) => {
@@ -183,12 +197,16 @@ export function CreateInvoiceSlideOver({
         logIds: v.logs.map((l) => l.id),
         totalMins: v.totalMins,
         totalAmount: roundCents(v.totalAmount),
+        missingRate: v.missingRate,
       };
     });
   })();
 
   const isFixedProject = selectedProject?.billing_type === "fixed" && (selectedProject?.agreed_fee ?? 0) > 0;
   const fixedPrice = selectedProject?.agreed_fee ?? 0;
+  const selectedMissingRateCount = isFixedProject
+    ? 0
+    : logs.filter((l) => selected.has(l.id) && l.missing_rate).length;
 
   const parsedTaxRate = (() => {
     const n = parseFloat(taxRateInput);
@@ -482,13 +500,29 @@ export function CreateInvoiceSlideOver({
                         )}
                       </span>
                       {!isFixedProject && (
-                        <span className="font-mono text-xs text-[var(--text-secondary)]">
-                          {(group.totalMins / 60).toFixed(1)}h · ${group.totalAmount.toFixed(2)}
+                        <span
+                          className={`font-mono text-xs ${
+                            group.missingRate
+                              ? "text-amber-400"
+                              : "text-[var(--text-secondary)]"
+                          }`}
+                        >
+                          {(group.totalMins / 60).toFixed(1)}h · $
+                          {group.totalAmount.toFixed(2)}
+                          {group.missingRate ? " · no rate" : ""}
                         </span>
                       )}
                     </label>
                   );
                 })}
+              </div>
+            )}
+            {!isFixedProject && selectedMissingRateCount > 0 && (
+              <div className="mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-300">
+                {selectedMissingRateCount} selected log
+                {selectedMissingRateCount === 1 ? "" : "s"} have no project or
+                service rate and will bill at $0.00. Set a project rate or link a
+                service before creating the invoice.
               </div>
             )}
           </div>
