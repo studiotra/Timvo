@@ -13,7 +13,7 @@ import {
   type UnbilledLog,
 } from "@/app/actions/invoice-data";
 import { polishDescription } from "@/app/actions/ai-polish";
-import { addDaysToDateString, localToday } from "@/lib/dates";
+import { addDaysToDateString, formatInstantAsLocalDate, localToday } from "@/lib/dates";
 import { useTimezone } from "@/contexts/timezone-context";
 import {
   computeInvoiceMoney,
@@ -22,6 +22,7 @@ import {
   resolveTaxRate,
   roundCents,
 } from "@/lib/invoices/money";
+import { formatInvoiceNumber, normalizeInvoicePrefix } from "@/lib/invoices/number";
 
 export function CreateInvoiceSlideOver({
   open,
@@ -48,11 +49,15 @@ export function CreateInvoiceSlideOver({
   const [manualItems, setManualItems] = useState<ManualItem[]>([]);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [issuedAt, setIssuedAt] = useState("");
   const [dueAt, setDueAt] = useState("");
   const [footer, setFooter] = useState("");
   const [terms, setTerms] = useState("");
   const [taxRateInput, setTaxRateInput] = useState("");
   const [profileTaxRate, setProfileTaxRate] = useState<number | null>(null);
+  const [invoicePrefix, setInvoicePrefix] = useState("INV-");
+  const [nextInvoiceNumber, setNextInvoiceNumber] = useState<number | null>(null);
+  const [groupByTask, setGroupByTask] = useState(true);
   const timezone = useTimezone();
 
   const loadClients = useCallback(async () => {
@@ -76,13 +81,18 @@ export function CreateInvoiceSlideOver({
       setSelected(new Set());
       setManualItems([]);
       setError(null);
+      setGroupByTask(true);
       getDefaultInvoiceSettings().then((s) => {
         setFooter(s.default_footer ?? "");
         setTerms(s.default_terms ?? "");
         const tz = s.timezone || timezone;
-        setDueAt(addDaysToDateString(localToday(tz), s.default_due_days));
+        const today = localToday(tz);
+        setIssuedAt(today);
+        setDueAt(addDaysToDateString(today, s.default_due_days));
         setProfileTaxRate(s.default_tax_rate);
         setTaxRateInput(s.default_tax_rate != null ? String(s.default_tax_rate) : "");
+        setInvoicePrefix(normalizeInvoicePrefix(s.invoice_prefix));
+        setNextInvoiceNumber(s.next_invoice_number);
       });
     }
   }, [open, loadClients, initialClientId, initialProjectId, timezone]);
@@ -145,63 +155,6 @@ export function CreateInvoiceSlideOver({
     });
   }
 
-  function toggleGroup(ids: string[]) {
-    setSelected((s) => {
-      const next = new Set(s);
-      const allSelected = ids.every((id) => next.has(id));
-      if (allSelected) {
-        ids.forEach((id) => next.delete(id));
-      } else {
-        ids.forEach((id) => next.add(id));
-      }
-      return next;
-    });
-  }
-
-  const groupedLogs = (() => {
-    const byKey = new Map<
-      string,
-      {
-        logs: UnbilledLog[];
-        totalMins: number;
-        totalAmount: number;
-        missingRate: boolean;
-      }
-    >();
-    for (const log of logs) {
-      const taskName = log.task_name ?? (log.description?.trim() || "Uncategorized");
-      const key = `${taskName}::${log.service_id ?? ""}`;
-      const existing = byKey.get(key);
-      const mins = log.duration_minutes ?? 0;
-      const amt = log.amount ?? 0;
-      if (existing) {
-        existing.logs.push(log);
-        existing.totalMins += mins;
-        existing.totalAmount += amt;
-        existing.missingRate = existing.missingRate || !!log.missing_rate;
-      } else {
-        byKey.set(key, {
-          logs: [log],
-          totalMins: mins,
-          totalAmount: amt,
-          missingRate: !!log.missing_rate,
-        });
-      }
-    }
-    return Array.from(byKey.entries()).map(([key, v]) => {
-      const first = v.logs[0];
-      return {
-        key,
-        taskName: first.task_name ?? (first.description?.trim() || "Uncategorized"),
-        serviceName: first.service_name ?? null,
-        logIds: v.logs.map((l) => l.id),
-        totalMins: v.totalMins,
-        totalAmount: roundCents(v.totalAmount),
-        missingRate: v.missingRate,
-      };
-    });
-  })();
-
   const isFixedProject = selectedProject?.billing_type === "fixed" && (selectedProject?.agreed_fee ?? 0) > 0;
   const fixedPrice = selectedProject?.agreed_fee ?? 0;
   const selectedMissingRateCount = isFixedProject
@@ -250,6 +203,25 @@ export function CreateInvoiceSlideOver({
     parsedTaxRate
   );
 
+  const hasValidManual = manualItems.some((m) => m.description.trim());
+  const canCreate =
+    !!clientId &&
+    !!projectId &&
+    (selected.size > 0 || hasValidManual) &&
+    !submitting;
+
+  const disabledReason = (() => {
+    if (submitting) return null;
+    if (!clientId) return "Select a client to continue.";
+    if (!projectId) return "Select a project to continue.";
+    if (selected.size === 0 && !hasValidManual) {
+      return "Select at least one log or add a manual line.";
+    }
+    return null;
+  })();
+
+  const numberPreview = formatInvoiceNumber(invoicePrefix, nextInvoiceNumber);
+
   async function handleSubmit() {
     const validManual = manualItems.filter((m) => {
       const qty = parseFloat(m.quantity);
@@ -294,10 +266,12 @@ export function CreateInvoiceSlideOver({
     const formData = new FormData();
     formData.set("client_id", clientId);
     formData.set("project_id", projectId);
+    formData.set("issued_at", issuedAt);
     formData.set("due_at", dueAt);
     formData.set("footer", footer);
     formData.set("terms_and_conditions", terms);
     formData.set("tax_rate", taxRateInput);
+    formData.set("group_by_task", groupByTask ? "true" : "false");
     formData.set("log_ids", JSON.stringify([...selected]));
     formData.set("polished_descriptions", JSON.stringify(polishedDescriptions));
     formData.set(
@@ -325,7 +299,7 @@ export function CreateInvoiceSlideOver({
       setError("Invoice created but could not navigate.");
       return;
     }
-    toast.success("Invoice created");
+    toast.success("Invoice created and locked");
     onClose();
     window.location.href = `/invoices/${result.invoiceId}`;
   }
@@ -339,6 +313,27 @@ export function CreateInvoiceSlideOver({
               {error}
             </p>
           )}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
+                Invoice number
+              </label>
+              <p className="rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 font-mono text-sm text-[var(--text-primary)]">
+                {numberPreview ?? `${invoicePrefix}—`}
+              </p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
+                Issue date
+              </label>
+              <input
+                type="date"
+                value={issuedAt}
+                onChange={(e) => setIssuedAt(e.target.value)}
+                className="w-full px-3 py-2 bg-[var(--bg-app)] border border-[var(--border)] rounded-lg text-[var(--text-primary)]"
+              />
+            </div>
+          </div>
           <div>
             <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
               Client
@@ -465,9 +460,24 @@ export function CreateInvoiceSlideOver({
             </div>
           )}
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)] mb-2">
-              {isFixedProject ? "Tasks completed (select to include — no time/price shown to client)" : "Logs to include (grouped by task in invoice)"}
-            </p>
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)]">
+                {isFixedProject
+                  ? "Tasks completed (select each to include)"
+                  : "Logs to include"}
+              </p>
+              {!isFixedProject && logs.length > 0 && (
+                <label className="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={groupByTask}
+                    onChange={(e) => setGroupByTask(e.target.checked)}
+                    className="w-3.5 h-3.5 rounded accent-accent"
+                  />
+                  Group by task on invoice
+                </label>
+              )}
+            </div>
             {loading ? (
               <p className="text-sm text-[var(--text-muted)]">Loading…</p>
             ) : logs.length === 0 && projectId ? (
@@ -476,40 +486,47 @@ export function CreateInvoiceSlideOver({
               </p>
             ) : (
               <div className="space-y-0 divide-y divide-[var(--border)]">
-                {groupedLogs.map((group) => {
-                  const allSelected = group.logIds.every((id) => selected.has(id));
+                {logs.map((log) => {
+                  const label =
+                    log.task_name ?? (log.description?.trim() || "Uncategorized");
+                  const dateLabel = log.started_at
+                    ? formatInstantAsLocalDate(log.started_at, timezone)
+                    : "";
                   return (
                     <label
-                      key={group.key}
+                      key={log.id}
                       className="flex items-center gap-3 py-3 cursor-pointer hover:bg-[var(--bg-card)]/50 px-1 -mx-1 rounded"
                     >
                       <input
                         type="checkbox"
-                        checked={allSelected}
-                        onChange={() => toggleGroup(group.logIds)}
+                        checked={selected.has(log.id)}
+                        onChange={() => toggle(log.id)}
                         className="w-[18px] h-[18px] rounded border-[var(--border)] accent-accent"
                       />
-                      <span className="flex-1 text-sm flex items-center gap-2">
-                        <span className="text-[var(--text-primary)] font-medium">
-                          {group.taskName}
+                      <span className="flex-1 text-sm min-w-0">
+                        <span className="text-[var(--text-primary)] font-medium block truncate">
+                          {label}
                         </span>
-                        {group.serviceName && (
-                          <span className="inline-flex rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-medium text-emerald-400">
-                            {group.serviceName}
-                          </span>
-                        )}
+                        <span className="text-[11px] text-[var(--text-muted)] flex flex-wrap gap-x-2">
+                          {dateLabel && <span>{dateLabel}</span>}
+                          {log.service_name && <span>{log.service_name}</span>}
+                          {log.description?.trim() &&
+                            log.description.trim() !== label && (
+                              <span className="truncate">{log.description.trim()}</span>
+                            )}
+                        </span>
                       </span>
                       {!isFixedProject && (
                         <span
-                          className={`font-mono text-xs ${
-                            group.missingRate
+                          className={`font-mono text-xs shrink-0 ${
+                            log.missing_rate
                               ? "text-amber-400"
                               : "text-[var(--text-secondary)]"
                           }`}
                         >
-                          {(group.totalMins / 60).toFixed(1)}h · $
-                          {group.totalAmount.toFixed(2)}
-                          {group.missingRate ? " · no rate" : ""}
+                          {(log.duration_minutes / 60).toFixed(1)}h · $
+                          {log.amount.toFixed(2)}
+                          {log.missing_rate ? " · no rate" : ""}
                         </span>
                       )}
                     </label>
@@ -524,6 +541,13 @@ export function CreateInvoiceSlideOver({
                 service rate and will bill at $0.00. Set a project rate or link a
                 service before creating the invoice.
               </div>
+            )}
+            {!isFixedProject && logs.length > 0 && (
+              <p className="mt-2 text-[11px] text-[var(--text-muted)]">
+                {groupByTask
+                  ? "Same-task logs will be combined into one line on the invoice."
+                  : "Each selected log will be its own line on the invoice."}
+              </p>
             )}
           </div>
           {!isFixedProject && (
@@ -650,9 +674,9 @@ export function CreateInvoiceSlideOver({
             </p>
           )}
           <div className="flex flex-col items-end gap-2 ml-auto">
-            {error && (
+            {(error || disabledReason) && (
               <p className="text-sm text-red-400 max-w-xs text-right" role="alert">
-                {error}
+                {error ?? disabledReason}
               </p>
             )}
             <div className="flex gap-3">
@@ -666,7 +690,8 @@ export function CreateInvoiceSlideOver({
               <button
                 type="button"
                 onClick={handleSubmit}
-                disabled={submitting || (selected.size === 0 && manualItems.every((m) => !m.description.trim()))}
+                disabled={!canCreate}
+                title={disabledReason ?? undefined}
                 className="px-4 py-2 bg-accent hover:bg-accent-hover text-white font-semibold rounded-lg text-sm disabled:opacity-50"
               >
                 {submitting ? "Creating…" : "Create & Lock"}

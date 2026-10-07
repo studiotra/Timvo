@@ -1,6 +1,10 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import {
+  getClientsForSelect,
+  getProjectsByClient,
+} from "@/app/actions/clients-projects";
 import { hourlyLogAmount, resolveHourlyRate, type RateSource } from "@/lib/rates";
 
 export type ClientOption = { id: string; name: string };
@@ -23,34 +27,36 @@ export type UnbilledLog = {
   rate: number;
   rate_source: RateSource;
   missing_rate: boolean;
+  started_at?: string | null;
   service_id?: string | null;
   service_name?: string | null;
   service_billing_type?: string;
   service_default_rate?: number;
 };
 
+/** Same client set as Logs / timer — includes org clients like "ABC (NARU)". */
 export async function getClientsForInvoice(): Promise<ClientOption[]> {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return [];
-  const { data } = await supabase
-    .from("clients")
-    .select("id, name")
-    .eq("user_id", user.id)
-    .order("name");
-  return (data ?? []).map((c) => ({ id: c.id, name: c.name }));
+  const clients = await getClientsForSelect();
+  return clients.map((c) => ({ id: c.id, name: c.name }));
 }
 
 export async function getProjectsForInvoice(clientId: string): Promise<ProjectOption[]> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return [];
+  if (!user || !clientId) return [];
+
+  // Resolve accessible project ids (own + org contractor assignments)
+  const accessible = await getProjectsByClient(clientId);
+  if (accessible.length === 0) return [];
+
+  const ids = accessible.map((p) => p.id);
   const { data } = await supabase
     .from("projects")
     .select("id, name, billing_type, agreed_fee, tax_rate, hourly_rate")
-    .eq("client_id", clientId)
+    .in("id", ids)
     .eq("status", "active")
     .order("name");
+
   return (data ?? []).map((p) => ({
     id: p.id,
     name: p.name,
@@ -149,6 +155,7 @@ export async function getUnbilledLogs(
       rate: isFixed ? (serviceRate ?? 0) : resolved.rate,
       rate_source: isFixed ? "service" : resolved.source,
       missing_rate: isFixed ? false : resolved.missing,
+      started_at: log.started_at ?? null,
       service_id: serviceId ?? null,
       service_name: serviceName,
       service_billing_type: svc?.billing_type ?? "hourly",
