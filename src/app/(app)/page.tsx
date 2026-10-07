@@ -5,7 +5,13 @@ import {
   getClientEffectiveRates,
 } from "@/app/actions/effective-rates";
 import { getIncomeSummary, getProjectedAnnual } from "@/app/actions/income-summary";
-import { formatDateOnly, getMonthRange, getWeekRange, localMondayBasedDayIndex } from "@/lib/dates";
+import {
+  formatDateOnly,
+  formatLogDisplayTitle,
+  getMonthRange,
+  getWeekRange,
+  localMondayBasedDayIndex,
+} from "@/lib/dates";
 import { fetchUserTimezone } from "@/lib/user-timezone";
 import { DashboardContent } from "./dashboard-content";
 
@@ -79,7 +85,9 @@ export default async function DashboardPage() {
   // Recent logs
   const { data: recentLogsRaw } = await supabase
     .from("time_logs")
-    .select("id, description, duration_minutes, is_billed, projects(name, hourly_rate)")
+    .select(
+      "id, description, duration_minutes, is_billed, projects(name, hourly_rate), tasks(name)"
+    )
     .eq("user_id", user.id)
     .order("started_at", { ascending: false })
     .limit(10);
@@ -87,6 +95,7 @@ export default async function DashboardPage() {
   const recentLogs =
     recentLogsRaw?.map((l) => {
       const proj = l.projects as { name?: string; hourly_rate?: number } | null;
+      const task = l.tasks as { name?: string } | null;
       const rate = Number(proj?.hourly_rate) || 0;
       const hours = (l.duration_minutes ?? 0) / 60;
       const amount = hours * rate;
@@ -95,6 +104,11 @@ export default async function DashboardPage() {
       return {
         id: l.id,
         description: l.description,
+        title: formatLogDisplayTitle({
+          description: l.description,
+          taskName: task?.name,
+          projectName,
+        }),
         duration_minutes: l.duration_minutes ?? 0,
         amount,
         projectName,

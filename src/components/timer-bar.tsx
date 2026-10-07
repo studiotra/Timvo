@@ -190,7 +190,7 @@ export function TimerBar() {
         >
           <option value="">Project</option>
           {projects.map((p) => (
-            <option key={p.id} value={p.id}>{p.name}</option>
+            <option key={p.id} value={p.id}>{p.displayName || p.name}</option>
           ))}
         </select>
         <div className="flex items-center gap-1">

@@ -26,6 +26,7 @@ type DashboardContentProps = {
   recentLogs?: Array<{
     id: string;
     description: string | null;
+    title?: string;
     duration_minutes: number;
     amount: number;
     projectName: string;
@@ -336,7 +337,7 @@ export function DashboardContent({
                     />
                     <div className="min-w-0 flex-1">
                       <div className="text-[12px] font-medium text-[var(--text-primary)]">
-                        {log.description || "Time"}
+                        {log.title || log.description || log.projectName || "Time"}
                       </div>
                       <div className="text-[10px] font-semibold text-[var(--text-muted)]">
                         {log.projectName}

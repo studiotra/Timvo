@@ -16,6 +16,7 @@ import {
   type GetTimeLogsFilters,
   type TimeLogRow,
 } from "@/app/actions/time-logs";
+import { formatProjectOptionLabel } from "@/lib/dates";
 import { revalidatePath } from "next/cache";
 
 export type { ClientOpt, ProjectOpt, TaskOpt };
@@ -69,7 +70,11 @@ export async function getOrgProjectsForTimer(clientId: string): Promise<
     getOrgClientsForSelect(),
   ]);
   const clientName = clients.find((c) => c.id === clientId)?.name ?? "";
-  return projs.map((p) => ({ ...p, clientName, displayName: p.name }));
+  return projs.map((p) => ({
+    ...p,
+    clientName,
+    displayName: formatProjectOptionLabel(p.name, clientName),
+  }));
 }
 
 export async function getOrgServicesForTimer() {

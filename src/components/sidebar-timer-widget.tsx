@@ -249,10 +249,18 @@ export function SidebarTimerWidget({ scope = "contractor" }: { scope?: TimerScop
           <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
           Active Session
         </div>
-        <div className="mb-2 truncate text-[11px] text-[var(--text-secondary)]">
-          {activeTimer.taskName ? `${activeTimer.taskName} · ` : ""}
+        <div className="mb-2 truncate text-[11px] text-[var(--text-secondary)]" title={
+          [
+            activeTimer.projectName,
+            activeTimer.clientName,
+            activeTimer.taskName,
+          ]
+            .filter(Boolean)
+            .join(" · ")
+        }>
           {activeTimer.projectName}
           {activeTimer.clientName ? ` · ${activeTimer.clientName}` : ""}
+          {activeTimer.taskName ? ` · ${activeTimer.taskName}` : ""}
         </div>
         <div className="mb-2.5 font-mono text-[22px] font-semibold tracking-tight text-[var(--text-primary)]">
           {formatTime(elapsed)}
@@ -304,7 +312,7 @@ export function SidebarTimerWidget({ scope = "contractor" }: { scope?: TimerScop
         <option value="">{projects.length === 0 ? "No projects" : "Select project"}</option>
         {projects.map((p) => (
           <option key={p.id} value={p.id}>
-            {p.name}
+            {p.displayName || p.name}
           </option>
         ))}
       </select>
