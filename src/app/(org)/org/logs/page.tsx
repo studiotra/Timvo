@@ -1,11 +1,16 @@
-import { Suspense } from "react";
 import { getOrgClientsForSelect, getOrgTimeLogs } from "@/app/actions/org-tracking";
+import {
+  parseLogsDisplayMode,
+  parseLogsMapGroup,
+  parseLogsViewMode,
+} from "@/lib/logs/search-params";
 import { LogsContent } from "@/app/(app)/logs/logs-content";
 
 type SearchParams = {
   view?: string;
   offset?: string;
   display?: string;
+  group?: string;
   client?: string;
   from?: string;
   to?: string;
@@ -17,10 +22,10 @@ export default async function OrgLogsPage({
   searchParams: Promise<SearchParams>;
 }) {
   const params = await searchParams;
-  const displayMode =
-    params.display === "calendar" || params.display === "map" ? params.display : "list";
-  const view = displayMode === "calendar" ? "week" : ((params.view || "week") as "week" | "month");
+  const displayMode = parseLogsDisplayMode(params.display);
+  const view = parseLogsViewMode(params.view);
   const offset = parseInt(params.offset || "0", 10);
+  const mapGroup = parseLogsMapGroup(params.group);
   const filters = {
     clientId: params.client || undefined,
     fromDate: params.from || undefined,
@@ -33,18 +38,19 @@ export default async function OrgLogsPage({
   ]);
 
   return (
-    <Suspense fallback={<div className="text-[var(--text-muted)]">Loading logs…</div>}>
-      <LogsContent
-        logs={logs}
-        clients={clients}
-        displayMode={displayMode}
-        basePath="/org/logs"
-        initialFilters={{
-          clientId: params.client ?? "",
-          fromDate: params.from ?? "",
-          toDate: params.to ?? "",
-        }}
-      />
-    </Suspense>
+    <LogsContent
+      logs={logs}
+      clients={clients}
+      displayMode={displayMode}
+      view={view}
+      offset={offset}
+      mapGroup={mapGroup}
+      basePath="/org/logs"
+      initialFilters={{
+        clientId: params.client ?? "",
+        fromDate: params.from ?? "",
+        toDate: params.to ?? "",
+      }}
+    />
   );
 }
