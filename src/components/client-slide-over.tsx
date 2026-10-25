@@ -23,22 +23,47 @@ function SubmitButton() {
   );
 }
 
+type ClientFormValues = Pick<
+  ClientListItem,
+  | "id"
+  | "name"
+  | "email"
+  | "tax_id"
+  | "currency"
+  | "address"
+  | "phone_number"
+  | "business_phone"
+  | "extension"
+  | "note"
+> & { status?: "active" | "archived"; project_count?: number };
+
 type ClientSlideOverProps = {
   open: boolean;
   onClose: () => void;
   onSuccess?: () => void;
-  client?: ClientListItem | null;
+  client?: ClientFormValues | null;
+  hideStatus?: boolean;
+  onSave?: (formData: FormData) => Promise<{ error?: string }>;
 };
 
-export function ClientSlideOver({ open, onClose, onSuccess, client }: ClientSlideOverProps) {
+export function ClientSlideOver({
+  open,
+  onClose,
+  onSuccess,
+  client,
+  hideStatus = false,
+  onSave,
+}: ClientSlideOverProps) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(formData: FormData) {
     setError(null);
-    const result = client
-      ? await updateClient(client.id, formData)
-      : await addClient(formData);
+    const result = onSave
+      ? await onSave(formData)
+      : client
+        ? await updateClient(client.id, formData)
+        : await addClient(formData);
     if (result.error) {
       setError(result.error);
       toast.error(result.error);
@@ -171,7 +196,7 @@ export function ClientSlideOver({ open, onClose, onSuccess, client }: ClientSlid
               ))}
             </select>
           </div>
-          {client && (
+          {client && !hideStatus && (
             <div>
               <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
                 Status

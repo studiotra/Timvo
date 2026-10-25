@@ -34,7 +34,7 @@ export default async function OrgLogsPage({
 
   const [logs, clients] = await Promise.all([
     getOrgTimeLogs(view, offset, Object.values(filters).some(Boolean) ? filters : undefined),
-    getOrgClientsForSelect(),
+    getOrgClientsForSelect({ includeArchived: true }),
   ]);
 
   return (

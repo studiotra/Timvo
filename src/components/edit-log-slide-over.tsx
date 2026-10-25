@@ -88,7 +88,15 @@ export function EditLogSlideOver({
   useEffect(() => {
     if (!open) return;
     const load = scope === "org" ? getOrgClientsForSelect : getClientsForSelect;
-    load().then(setClients);
+    load().then((opts) => {
+      if (log?.client_id && !opts.some((c) => c.id === log.client_id)) {
+        opts = [
+          { id: log.client_id, name: log.client_name || "Current client" },
+          ...opts,
+        ];
+      }
+      setClients(opts);
+    });
     getServicesForSelect().then((s) => {
       const opts = s.map((x) => ({ id: x.id, name: x.name }));
       // Keep the log's service visible even if options load later or it was archived

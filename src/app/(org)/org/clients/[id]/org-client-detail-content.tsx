@@ -4,22 +4,27 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { ClientSlideOver } from "@/components/client-slide-over";
+import { updateOrgClient, type OrgClientRow } from "@/app/actions/organizations";
 import { addOrgProject, type OrgProjectRow } from "@/app/actions/org-projects";
+import { canManageOrgClients } from "@/lib/org/roles";
+import { ArchivedBadge, OrgClientActions } from "../org-client-actions";
 import { ProjectContractorsPanel } from "./project-contractors-panel";
 
 export function OrgClientDetailContent({
-  clientId,
-  clientName,
-  clientEmail,
+  client,
+  role,
   projects,
 }: {
-  clientId: string;
-  clientName: string;
-  clientEmail: string | null;
+  client: OrgClientRow;
+  role: string;
   projects: OrgProjectRow[];
 }) {
   const router = useRouter();
+  const canManage = canManageOrgClients(role);
   const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const clientId = client.id;
 
   async function handleAddProject(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -40,12 +45,46 @@ export function OrgClientDetailContent({
       <Link href="/org/clients" className="text-sm text-[var(--text-secondary)] hover:text-accent">
         ← Clients
       </Link>
-      <h1 className="mt-4 mb-2 text-2xl font-bold text-[var(--text-primary)]">{clientName}</h1>
+      <div className="mt-4 mb-2 flex flex-wrap items-start justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <h1 className="text-2xl font-bold text-[var(--text-primary)]">{client.name}</h1>
+          {client.status === "archived" && <ArchivedBadge />}
+        </div>
+        {canManage && (
+          <OrgClientActions
+            client={client}
+            align="right"
+            onEdit={() => setEditing(true)}
+            onChanged={() => router.refresh()}
+            onDeleted={() => router.push("/org/clients")}
+          />
+        )}
+      </div>
       <p className="mb-6 text-sm text-[var(--text-secondary)]">
         End client — add projects and retainers, then assign contractor shared tracking on
         Assignments.
-        {clientEmail ? ` · ${clientEmail}` : ""}
+        {client.email ? ` · ${client.email}` : ""}
       </p>
+      <ClientSlideOver
+        open={editing}
+        onClose={() => setEditing(false)}
+        onSuccess={() => router.refresh()}
+        client={client}
+        hideStatus
+        onSave={async (formData) =>
+          updateOrgClient(client.id, {
+            name: String(formData.get("name") ?? ""),
+            email: (formData.get("email") as string) || null,
+            tax_id: (formData.get("tax_id") as string) || null,
+            currency: (formData.get("currency") as string) || "USD",
+            address: (formData.get("address") as string) || null,
+            phone_number: (formData.get("phone_number") as string) || null,
+            business_phone: (formData.get("business_phone") as string) || null,
+            extension: (formData.get("extension") as string) || null,
+            note: (formData.get("note") as string) || null,
+          })
+        }
+      />
 
       <form
         onSubmit={handleAddProject}

@@ -16,23 +16,28 @@ import {
   type GetTimeLogsFilters,
   type TimeLogRow,
 } from "@/app/actions/time-logs";
+import { isArchivedClientStatus } from "@/lib/clients/lifecycle";
 import { formatProjectOptionLabel } from "@/lib/dates";
 import { revalidatePath } from "next/cache";
 
 export type { ClientOpt, ProjectOpt, TaskOpt };
 
-export async function getOrgClientsForSelect(): Promise<ClientOpt[]> {
+export async function getOrgClientsForSelect(opts?: {
+  includeArchived?: boolean;
+}): Promise<ClientOpt[]> {
   const ctx = await getOrgContext();
   if (!ctx) return [];
 
   const supabase = await createClient();
   const { data } = await supabase
     .from("clients")
-    .select("id, name")
+    .select("id, name, status")
     .eq("organization_id", ctx.org.id)
     .order("name");
 
-  return (data ?? []).map((c) => ({ id: c.id, name: c.name, isOrg: true }));
+  return (data ?? [])
+    .filter((c) => opts?.includeArchived || !isArchivedClientStatus(c.status))
+    .map((c) => ({ id: c.id, name: c.name, isOrg: true }));
 }
 
 export async function getOrgProjectsByClient(clientId: string): Promise<ProjectOpt[]> {

@@ -2,7 +2,11 @@
 
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
-import { getOrgContext } from "@/app/actions/organizations";
+import { getOrgContext, type OrgClientRow } from "@/app/actions/organizations";
+import {
+  clientIdsWithInvoicesOrLogs,
+  isArchivedClientStatus,
+} from "@/lib/clients/lifecycle";
 import { revalidatePath } from "next/cache";
 
 export type OrgProjectRow = {
@@ -26,19 +30,43 @@ export type ProjectContractorRow = {
   billRate: number | null;
 };
 
-export async function getOrgClient(clientId: string) {
+export async function getOrgClient(clientId: string): Promise<OrgClientRow | null> {
   const ctx = await getOrgContext();
   if (!ctx) return null;
 
   const supabase = await createClient();
   const { data } = await supabase
     .from("clients")
-    .select("id, name, email")
+    .select(
+      "id, name, email, tax_id, currency, status, address, phone_number, business_phone, extension, note"
+    )
     .eq("id", clientId)
     .eq("organization_id", ctx.org.id)
     .maybeSingle();
 
-  return data;
+  if (!data) return null;
+
+  const admin = createAdminClient();
+  const [{ data: projects }, blockedIds] = await Promise.all([
+    admin.from("projects").select("id").eq("client_id", clientId),
+    clientIdsWithInvoicesOrLogs(admin, [clientId]),
+  ]);
+
+  return {
+    id: data.id,
+    name: data.name,
+    email: data.email,
+    tax_id: data.tax_id ?? null,
+    currency: data.currency ?? "USD",
+    status: isArchivedClientStatus(data.status) ? "archived" : "active",
+    address: data.address ?? null,
+    phone_number: data.phone_number ?? null,
+    business_phone: data.business_phone ?? null,
+    extension: data.extension ?? null,
+    note: data.note ?? null,
+    projectCount: projects?.length ?? 0,
+    canDelete: !blockedIds.has(data.id),
+  };
 }
 
 export async function listOrgProjects(clientId: string): Promise<OrgProjectRow[]> {

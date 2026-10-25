@@ -1,6 +1,10 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
+import {
+  clientDeleteBlockedMessage,
+  countClientInvoicesAndLogs,
+} from "@/lib/clients/lifecycle";
 import { revalidatePath } from "next/cache";
 
 export async function addClient(formData: FormData) {
@@ -57,7 +61,7 @@ export async function updateClient(id: string, formData: FormData) {
 
   if (!name?.trim()) return { error: "Name is required" };
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("clients")
     .update({
       name: name.trim(),
@@ -73,9 +77,11 @@ export async function updateClient(id: string, formData: FormData) {
       updated_at: new Date().toISOString(),
     })
     .eq("id", id)
-    .eq("user_id", user.id);
+    .eq("user_id", user.id)
+    .select("id");
 
   if (error) return { error: error.message };
+  if (!data?.length) return { error: "Client not found" };
   revalidatePath("/clients");
   revalidatePath(`/clients/${id}`);
   return { success: true };
@@ -86,13 +92,27 @@ export async function deleteClient(id: string) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "Unauthorized" };
 
-  const { error } = await supabase
+  const { data: owned } = await supabase
+    .from("clients")
+    .select("id")
+    .eq("id", id)
+    .eq("user_id", user.id)
+    .maybeSingle();
+  if (!owned) return { error: "Client not found" };
+
+  const usage = await countClientInvoicesAndLogs(supabase, id);
+  const blocked = clientDeleteBlockedMessage(usage.invoices, usage.logs);
+  if (blocked) return { error: blocked };
+
+  const { data, error } = await supabase
     .from("clients")
     .delete()
     .eq("id", id)
-    .eq("user_id", user.id);
+    .eq("user_id", user.id)
+    .select("id");
 
   if (error) return { error: error.message };
+  if (!data?.length) return { error: "Client not found" };
   revalidatePath("/clients");
   return { success: true };
 }

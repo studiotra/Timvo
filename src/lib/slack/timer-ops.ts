@@ -25,19 +25,24 @@ export async function listActiveProjectsForUser(
 ): Promise<SlackProject[]> {
   const { data } = await supabase
     .from("projects")
-    .select("id, name, status, clients!inner(id, name, user_id)")
+    .select("id, name, status, clients!inner(id, name, user_id, status)")
     .eq("clients.user_id", userId)
     .eq("status", "active")
     .order("name");
 
-  return (data ?? []).map((p) => {
-    const client = p.clients as unknown as { name?: string };
-    return {
-      id: p.id,
-      name: p.name,
-      clientName: client?.name ?? "",
-    };
-  });
+  return (data ?? [])
+    .filter((p) => {
+      const client = p.clients as unknown as { status?: string | null };
+      return client?.status !== "archived";
+    })
+    .map((p) => {
+      const client = p.clients as unknown as { name?: string };
+      return {
+        id: p.id,
+        name: p.name,
+        clientName: client?.name ?? "",
+      };
+    });
 }
 
 export async function listServicesForUser(
