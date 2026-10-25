@@ -18,6 +18,7 @@ import {
   resolveTaxRate,
   roundCents,
 } from "@/lib/invoices/money";
+import { buildInvoiceLogLabel } from "@/lib/invoices/line-labels";
 import { DEFAULT_INVOICE_PREFIX, normalizeInvoicePrefix } from "@/lib/invoices/number";
 import { resolveHourlyRate } from "@/lib/rates";
 import { fetchUserTimezone } from "@/lib/user-timezone";
@@ -141,18 +142,24 @@ export async function createInvoice(formData: FormData) {
     if (!logs || logs.length === 0) return { error: "No valid unbilled logs" };
 
     if (isFixedProject) {
-      const taskNames = new Map<string, string[]>();
+      const taskGroups = new Map<string, { label: string; ids: string[] }>();
       for (const log of logs) {
         const task = log.task as { name?: string } | null;
-        const name = polishedDescriptions[log.id] ?? task?.name ?? log.description ?? "Work completed";
-        const arr = taskNames.get(name) ?? [];
-        arr.push(log.id);
-        taskNames.set(name, arr);
+        const built = buildInvoiceLogLabel({
+          taskId: log.task_id,
+          taskName: task?.name,
+          description: log.description,
+          polished: polishedDescriptions[log.id],
+          fallback: "Work completed",
+        });
+        const g = taskGroups.get(built.groupKey) ?? { label: built.label, ids: [] };
+        g.ids.push(log.id);
+        taskGroups.set(built.groupKey, g);
       }
-      for (const [taskName, ids] of taskNames) {
+      for (const g of taskGroups.values()) {
         items.push({
-          time_log_ids: ids,
-          description: taskName,
+          time_log_ids: g.ids,
+          description: g.label,
           quantity: 1,
           unit_rate: 0,
           amount: 0,
@@ -191,16 +198,28 @@ export async function createInvoice(formData: FormData) {
       }
     }
 
-    type LogEntry = { id: string; mins: number; taskName: string; serviceId: string | null };
+    type LogEntry = {
+      id: string;
+      mins: number;
+      taskName: string;
+      groupKey: string;
+      serviceId: string | null;
+    };
     const byService = new Map<string, LogEntry[]>();
 
     for (const log of logs) {
       const task = log.task as { name?: string } | null;
       const mins = log.duration_minutes ?? 0;
-      const taskName = polishedDescriptions[log.id] ?? task?.name ?? log.description ?? "Time";
+      const built = buildInvoiceLogLabel({
+        taskId: log.task_id,
+        taskName: task?.name,
+        description: log.description,
+        polished: polishedDescriptions[log.id],
+      });
+      const taskName = built.label;
       const serviceId = log.task_id ? (tasksWithService[log.task_id] ?? null) : null;
 
-      const entry: LogEntry = { id: log.id, mins, taskName, serviceId };
+      const entry: LogEntry = { id: log.id, mins, taskName, groupKey: built.groupKey, serviceId };
       if (serviceId && groupByTask) {
         const arr = byService.get(serviceId) ?? [];
         arr.push(entry);
@@ -263,19 +282,18 @@ export async function createInvoice(formData: FormData) {
           amount: roundCents(rate),
         });
         if (groupByTask) {
-          const byTask = new Map<string, { ids: string[]; mins: number }>();
+          const byTask = new Map<string, { ids: string[]; mins: number; label: string }>();
           for (const e of entries) {
-            const k = e.taskName;
-            const x = byTask.get(k) ?? { ids: [], mins: 0 };
+            const x = byTask.get(e.groupKey) ?? { ids: [], mins: 0, label: e.taskName };
             x.ids.push(e.id);
             x.mins += e.mins;
-            byTask.set(k, x);
+            byTask.set(e.groupKey, x);
           }
-          for (const [taskName, g] of byTask) {
+          for (const g of byTask.values()) {
             const hours = roundCents(g.mins / 60);
             items.push({
               time_log_ids: g.ids,
-              description: `  ${taskName}`,
+              description: `  ${g.label}`,
               quantity: hours,
               unit_rate: 0,
               amount: 0,
@@ -294,19 +312,18 @@ export async function createInvoice(formData: FormData) {
           }
         }
       } else if (groupByTask) {
-        const byTask = new Map<string, { ids: string[]; mins: number }>();
+        const byTask = new Map<string, { ids: string[]; mins: number; label: string }>();
         for (const e of entries) {
-          const k = e.taskName;
-          const x = byTask.get(k) ?? { ids: [], mins: 0 };
+          const x = byTask.get(e.groupKey) ?? { ids: [], mins: 0, label: e.taskName };
           x.ids.push(e.id);
           x.mins += e.mins;
-          byTask.set(k, x);
+          byTask.set(e.groupKey, x);
         }
-        for (const [taskName, g] of byTask) {
+        for (const g of byTask.values()) {
           const hours = roundCents(g.mins / 60);
           items.push({
             time_log_ids: g.ids,
-            description: taskName,
+            description: g.label,
             quantity: hours,
             unit_rate: rate,
             amount: lineAmount(hours, rate),
@@ -416,17 +433,22 @@ export async function createInvoice(formData: FormData) {
   if (invErr) return { error: invErr.message };
   if (!inv) return { error: "Failed to create invoice" };
 
-  for (let i = 0; i < items.length; i++) {
-    const it = items[i];
-    await supabase.from("invoice_items").insert({
-      invoice_id: inv.id,
-      time_log_id: it.time_log_ids?.length ? it.time_log_ids[0] : null,
-      description: it.description,
-      quantity: it.quantity,
-      unit_rate: it.unit_rate,
-      amount: it.amount,
-      sort_order: i,
-    });
+  if (items.length > 0) {
+    const { error: itemsErr } = await supabase.from("invoice_items").insert(
+      items.map((it, i) => ({
+        invoice_id: inv.id,
+        time_log_id: it.time_log_ids?.length ? it.time_log_ids[0] : null,
+        description: it.description,
+        quantity: it.quantity,
+        unit_rate: it.unit_rate,
+        amount: it.amount,
+        sort_order: i,
+      }))
+    );
+    if (itemsErr) {
+      await supabase.from("invoices").delete().eq("id", inv.id).eq("user_id", user.id);
+      return { error: itemsErr.message };
+    }
   }
 
   if (logIds.length > 0) {
