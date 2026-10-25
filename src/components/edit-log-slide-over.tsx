@@ -9,10 +9,12 @@ import { type TimeLogRow } from "@/app/actions/time-logs";
 import {
   getClientsForSelect,
   getProjectsByClient,
+  getTasksByProject,
   getTasksByProjectAndService,
   createTask,
   type TaskOpt,
 } from "@/app/actions/clients-projects";
+import { isOptionalTaskFieldEnabled } from "@/lib/time-logs/task-groups";
 import { getOrgClientsForSelect, getOrgProjectsByClient, createOrgTask } from "@/app/actions/org-tracking";
 import { getServicesForSelect } from "@/app/actions/services";
 import { useTimezone } from "@/contexts/timezone-context";
@@ -88,7 +90,15 @@ export function EditLogSlideOver({
   useEffect(() => {
     if (!open) return;
     const load = scope === "org" ? getOrgClientsForSelect : getClientsForSelect;
-    load().then(setClients);
+    load().then((opts) => {
+      if (log?.client_id && !opts.some((c) => c.id === log.client_id)) {
+        opts = [
+          { id: log.client_id, name: log.client_name || "Current client" },
+          ...opts,
+        ];
+      }
+      setClients(opts);
+    });
     getServicesForSelect().then((s) => {
       const opts = s.map((x) => ({ id: x.id, name: x.name }));
       // Keep the log's service visible even if options load later or it was archived
@@ -153,15 +163,23 @@ export function EditLogSlideOver({
   }, [clientId, scope]);
 
   useEffect(() => {
-    if (!projectId || !serviceId) {
+    if (!projectId) {
       setTasks([]);
       return;
     }
-    getTasksByProjectAndService(projectId, serviceId).then((list) => {
+    const load = serviceId
+      ? getTasksByProjectAndService(projectId, serviceId)
+      : getTasksByProject(projectId);
+    load.then((list) => {
       setTasks(list);
-      setTaskId((prev) => (list.some((t) => t.id === prev) ? prev : ""));
+      setTaskId((prev) => {
+        if (!prev) return "";
+        if (list.some((t) => t.id === prev)) return prev;
+        if (log?.task_id === prev) return prev;
+        return "";
+      });
     });
-  }, [projectId, serviceId]);
+  }, [projectId, serviceId, log?.task_id]);
 
   async function handleAddTask() {
     if (!newTaskName.trim() || !projectId || !serviceId) return;
@@ -301,12 +319,22 @@ export function EditLogSlideOver({
             <div className="flex gap-2">
               <select
                 name="task_id"
-                disabled={!projectId || !serviceId}
+                disabled={!isOptionalTaskFieldEnabled(projectId)}
                 value={taskId}
-                onChange={(e) => setTaskId(e.target.value)}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setTaskId(next);
+                  const picked = tasks.find((t) => t.id === next);
+                  if (picked?.serviceId) setServiceId(picked.serviceId);
+                }}
                 className="flex-1 rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-[var(--text-primary)] focus:ring-2 focus:ring-accent disabled:opacity-50"
               >
                 <option value="">No task</option>
+                {taskId && !tasks.some((t) => t.id === taskId) && (
+                  <option value={taskId}>
+                    {log.task_name ?? "Current task"}
+                  </option>
+                )}
                 {tasks.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.name}

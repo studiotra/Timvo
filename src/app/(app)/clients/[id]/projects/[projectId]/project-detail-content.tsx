@@ -17,7 +17,14 @@ import {
 } from "@/app/actions/clients-projects";
 import type { ProjectListItem } from "@/types/database";
 import { getServicesForSelect } from "@/app/actions/services";
-import { formatDateOnly } from "@/lib/dates";
+import { EditLogSlideOver } from "@/components/edit-log-slide-over";
+import { deleteTimeLog, type TimeLogRow } from "@/app/actions/time-logs";
+import { formatDateOnly, formatInstantAsLocalDate } from "@/lib/dates";
+import { useTimezone } from "@/contexts/timezone-context";
+import {
+  timeLogActionFlags,
+  type ProjectLog,
+} from "@/lib/time-logs/task-groups";
 
 type TaskRow = {
   id: string | null;
@@ -28,6 +35,7 @@ type TaskRow = {
   isDone?: boolean;
   dueDate?: string | null;
   sortOrder?: number;
+  logs?: ProjectLog[];
 };
 type ServiceOpt = { id: string; name: string };
 
@@ -53,11 +61,14 @@ export function ProjectDetailContent({
   taskFeatures?: { extras: boolean };
 }) {
   const router = useRouter();
+  const timezone = useTimezone();
   const [slideOpen, setSlideOpen] = useState(false);
   const [addTaskOpen, setAddTaskOpen] = useState(false);
   const [manualLogOpen, setManualLogOpen] = useState(false);
   const [createInvoiceOpen, setCreateInvoiceOpen] = useState(false);
   const [services, setServices] = useState<ServiceOpt[]>([]);
+  const [editingLog, setEditingLog] = useState<TimeLogRow | null>(null);
+  const [deletingLogId, setDeletingLogId] = useState<string | null>(null);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [editingTaskName, setEditingTaskName] = useState("");
   const [editingTaskServiceId, setEditingTaskServiceId] = useState("");
@@ -165,6 +176,49 @@ export function ProjectDetailContent({
       return;
     }
     toast.success("Task deleted");
+    router.refresh();
+  }
+
+  function toTimeLogRow(log: ProjectLog): TimeLogRow {
+    return {
+      id: log.id,
+      project_id: project.id,
+      client_id: client.id,
+      client_name: client.name,
+      project_name: project.name,
+      task_id: log.task_id,
+      task_name: log.task_name,
+      service_id: log.service_id,
+      service_name:
+        log.service_name ??
+        (log.service_id
+          ? services.find((s) => s.id === log.service_id)?.name ?? null
+          : null),
+      started_at: log.started_at,
+      ended_at: log.ended_at,
+      duration_minutes: log.duration_minutes,
+      description: log.description,
+      is_billable: log.is_billable,
+      is_billed: log.is_billed,
+    };
+  }
+
+  function openEditLog(log: ProjectLog) {
+    setEditingLog(toTimeLogRow(log));
+  }
+
+  async function handleDeleteLog(log: ProjectLog) {
+    const flags = timeLogActionFlags(log);
+    if (!flags.canDelete) return;
+    if (!confirm("Delete this time log?")) return;
+    setDeletingLogId(log.id);
+    const result = await deleteTimeLog(log.id);
+    setDeletingLogId(null);
+    if (result.error) {
+      toast.error(result.error);
+      return;
+    }
+    toast.success("Time log deleted");
     router.refresh();
   }
 
@@ -359,6 +413,16 @@ export function ProjectDetailContent({
         initialProjectId={project.id}
       />
 
+      {editingLog && (
+        <EditLogSlideOver
+          key={editingLog.id}
+          log={editingLog}
+          open={!!editingLog}
+          onClose={() => setEditingLog(null)}
+          onSuccess={() => router.refresh()}
+        />
+      )}
+
       <div className="rounded-xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden">
         <div className="border-b border-[var(--border)] px-4 py-3 bg-[var(--bg-sidebar)]/50">
           <h3 className="text-sm font-semibold text-[var(--text-secondary)]">
@@ -388,8 +452,9 @@ export function ProjectDetailContent({
                 return (
                 <li
                   key={task.id ?? `derived-${task.name}-${i}`}
-                  className="flex items-center justify-between gap-2 group/task py-2"
+                  className="group/task py-2"
                 >
+                  <div className="flex items-center justify-between gap-2">
                   {editingTaskId != null && editingTaskId === task.id ? (
                     <div className="flex gap-2 flex-1 flex-wrap items-center">
                       <input
@@ -523,6 +588,61 @@ export function ProjectDetailContent({
                       ) : null}
                     </>
                   )}
+                  </div>
+                  {(task.logs ?? []).length > 0 ? (
+                    <ul className="mt-1 ml-1 space-y-1 border-l border-[var(--border)] pl-3">
+                      {(task.logs ?? []).map((log) => {
+                        const flags = timeLogActionFlags(log);
+                        return (
+                          <li
+                            key={log.id}
+                            className="flex items-center justify-between gap-2 py-1"
+                          >
+                            <span className="min-w-0 truncate text-xs text-[var(--text-secondary)]">
+                              {log.started_at
+                                ? formatDateOnly(
+                                    formatInstantAsLocalDate(
+                                      log.started_at,
+                                      timezone
+                                    )
+                                  )
+                                : "—"}
+                              {" · "}
+                              {(log.duration_minutes / 60).toFixed(1)}h
+                              {log.description?.trim()
+                                ? ` · ${log.description.trim()}`
+                                : ""}
+                              {log.is_billed ? " · billed" : ""}
+                            </span>
+                            <div className="flex shrink-0 items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => openEditLog(log)}
+                                className="text-xs text-accent hover:underline"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteLog(log)}
+                                disabled={
+                                  !flags.canDelete || deletingLogId === log.id
+                                }
+                                className="text-xs text-red-400 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
+                                title={
+                                  log.is_billed
+                                    ? "Cannot delete billed log"
+                                    : "Delete"
+                                }
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  ) : null}
                 </li>
               );
               })}

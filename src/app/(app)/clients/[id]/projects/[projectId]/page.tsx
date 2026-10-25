@@ -2,6 +2,10 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect, notFound } from "next/navigation";
 import { ProjectDetailContent } from "./project-detail-content";
 import { sortTaskRows } from "@/lib/tasks/fields";
+import {
+  groupLogsByTaskCategory,
+  type ProjectLog,
+} from "@/lib/time-logs/task-groups";
 
 export const dynamic = "force-dynamic";
 
@@ -80,33 +84,41 @@ export default async function ProjectDetailPage({
 
   const { data: timeLogs } = await supabase
     .from("time_logs")
-    .select("duration_minutes, task_id, description, task:task_id(id, name, service_id)")
+    .select(
+      "id, duration_minutes, task_id, description, started_at, ended_at, is_billable, is_billed, task:task_id(id, name, service_id)"
+    )
     .eq("project_id", projectId)
-    .eq("user_id", user.id);
+    .eq("user_id", user.id)
+    .order("started_at", { ascending: false });
 
-  const totalMinutes = (timeLogs ?? []).reduce((s, l) => s + (l.duration_minutes ?? 0), 0);
-
-  const byTaskId = new Map<string, { name: string; serviceId: string | null; minutes: number }>();
-  const byDescription = new Map<string, number>();
-  for (const log of timeLogs ?? []) {
+  const mappedLogs: ProjectLog[] = (timeLogs ?? []).map((log) => {
     const task = log.task as { id?: string; name?: string; service_id?: string } | null;
-    const mins = log.duration_minutes ?? 0;
-    if (task?.id) {
-      const existing = byTaskId.get(task.id);
-      if (existing) {
-        existing.minutes += mins;
-      } else {
-        byTaskId.set(task.id, {
-          name: task.name ?? "Task",
-          serviceId: task.service_id ?? null,
-          minutes: mins,
-        });
-      }
-    } else {
-      const desc = log.description?.trim() || "Uncategorized";
-      byDescription.set(desc, (byDescription.get(desc) ?? 0) + mins);
-    }
+    return {
+      id: log.id,
+      task_id: log.task_id ?? task?.id ?? null,
+      task_name: task?.name ?? null,
+      service_id: task?.service_id ?? null,
+      service_name: task?.service_id ? servicesMap[task.service_id] ?? null : null,
+      description: log.description ?? null,
+      duration_minutes: log.duration_minutes ?? 0,
+      started_at: log.started_at,
+      ended_at: log.ended_at ?? null,
+      is_billable: log.is_billable ?? true,
+      is_billed: log.is_billed ?? false,
+    };
+  });
+
+  const totalMinutes = mappedLogs.reduce((s, l) => s + (l.duration_minutes ?? 0), 0);
+
+  const taskNames: Record<string, string> = {};
+  for (const t of tasks ?? []) taskNames[t.id] = t.name;
+  for (const log of mappedLogs) {
+    if (log.task_id && log.task_name) taskNames[log.task_id] = log.task_name;
   }
+  const groups = groupLogsByTaskCategory(mappedLogs, taskNames);
+  const groupByTaskId = new Map(
+    groups.filter((g) => g.taskId).map((g) => [g.taskId as string, g])
+  );
 
   const mergedTasks: {
     id: string | null;
@@ -117,32 +129,35 @@ export default async function ProjectDetailPage({
     isDone: boolean;
     dueDate: string | null;
     sortOrder: number;
+    logs: ProjectLog[];
   }[] = [];
 
   for (const t of tasks ?? []) {
-    const agg = byTaskId.get(t.id);
+    const group = groupByTaskId.get(t.id);
     mergedTasks.push({
       id: t.id,
       name: t.name,
       serviceId: t.service_id ?? null,
       serviceName: t.service_id ? servicesMap[t.service_id] ?? null : null,
-      totalMinutes: agg?.minutes ?? 0,
+      totalMinutes: group?.totalMinutes ?? 0,
       isDone: !!t.is_done,
       dueDate: t.due_date ?? null,
       sortOrder: t.sort_order ?? 0,
+      logs: group?.logs ?? [],
     });
   }
 
-  for (const [desc, mins] of byDescription) {
+  for (const group of groups.filter((g) => g.taskId == null)) {
     mergedTasks.push({
       id: null,
-      name: desc,
+      name: group.name,
       serviceId: null,
       serviceName: null,
-      totalMinutes: mins,
+      totalMinutes: group.totalMinutes,
       isDone: false,
       dueDate: null,
       sortOrder: Number.MAX_SAFE_INTEGER,
+      logs: group.logs,
     });
   }
 

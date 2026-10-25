@@ -57,7 +57,7 @@ export function ClientsContent({
     : projects;
 
   async function handleDelete(id: string) {
-    if (!confirm("Delete this client and all their projects?")) return;
+    if (!confirm("Delete this client? This cannot be undone.")) return;
     setDeletingId(id);
     const result = await deleteClient(id);
     setDeletingId(null);

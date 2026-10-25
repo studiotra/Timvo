@@ -8,10 +8,12 @@ import { addManualLog } from "@/app/actions/time-logs";
 import {
   getClientsForSelect,
   getProjectsByClient,
+  getTasksByProject,
   getTasksByProjectAndService,
   createTask,
   type TaskOpt,
 } from "@/app/actions/clients-projects";
+import { isOptionalTaskFieldEnabled } from "@/lib/time-logs/task-groups";
 import {
   getOrgClientsForSelect,
   getOrgProjectsByClient,
@@ -177,12 +179,15 @@ export function ManualLogSlideOver({
   }, [clientId, scope]);
 
   useEffect(() => {
-    if (!projectId || !serviceId) {
+    if (!projectId) {
       setTasks([]);
       setTaskId("");
       return;
     }
-    getTasksByProjectAndService(projectId, serviceId).then(setTasks);
+    const load = serviceId
+      ? getTasksByProjectAndService(projectId, serviceId)
+      : getTasksByProject(projectId);
+    load.then(setTasks);
     setTaskId("");
   }, [projectId, serviceId]);
 
@@ -312,9 +317,14 @@ export function ManualLogSlideOver({
             <div className="flex gap-2">
               <select
                 name="task_id"
-                disabled={!projectId || !serviceId}
+                disabled={!isOptionalTaskFieldEnabled(projectId)}
                 value={taskId}
-                onChange={(e) => setTaskId(e.target.value)}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setTaskId(next);
+                  const picked = tasks.find((t) => t.id === next);
+                  if (picked?.serviceId) setServiceId(picked.serviceId);
+                }}
                 className="flex-1 rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-[var(--text-primary)] focus:ring-2 focus:ring-accent disabled:opacity-50"
               >
                 <option value="">No task</option>

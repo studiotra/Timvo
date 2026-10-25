@@ -23,17 +23,19 @@ export async function listDesktopClients(userId: string): Promise<DesktopClient[
 
   const { data: ownClients } = await admin
     .from("clients")
-    .select("id, name")
+    .select("id, name, status")
     .eq("user_id", userId)
     .is("organization_id", null)
     .order("name");
 
-  const own: DesktopClient[] = (ownClients ?? []).map((c) => ({
-    id: c.id,
-    name: c.name,
-    isOrg: false,
-    source: "solo" as const,
-  }));
+  const own: DesktopClient[] = (ownClients ?? [])
+    .filter((c) => c.status !== "archived")
+    .map((c) => ({
+      id: c.id,
+      name: c.name,
+      isOrg: false,
+      source: "solo" as const,
+    }));
 
   const { data: assignments } = await admin
     .from("project_contractors")
@@ -52,10 +54,11 @@ export async function listDesktopClients(userId: string): Promise<DesktopClient[
     if (clientIds.length) {
       const { data: clients } = await admin
         .from("clients")
-        .select("id, name, organization_id, organizations(name)")
+        .select("id, name, status, organization_id, organizations(name)")
         .in("id", clientIds);
       for (const client of clients ?? []) {
         if (!client.organization_id) continue;
+        if (client.status === "archived") continue;
         const org = client.organizations as unknown as { name: string } | null;
         orgClients.set(client.id, {
           id: client.id,
@@ -81,10 +84,11 @@ export async function listDesktopClients(userId: string): Promise<DesktopClient[
   if (orgIds.length) {
     const { data: staffClients } = await admin
       .from("clients")
-      .select("id, name, organization_id")
+      .select("id, name, status, organization_id")
       .in("organization_id", orgIds)
       .order("name");
     for (const c of staffClients ?? []) {
+      if (c.status === "archived") continue;
       orgClients.set(c.id, {
         id: c.id,
         name: c.name,

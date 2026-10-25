@@ -3,6 +3,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { isArchivedClientStatus } from "@/lib/clients/lifecycle";
 import {
   buildSortOrderUpdates,
   isMissingColumnError,
@@ -12,18 +13,22 @@ import {
 export type ClientOpt = { id: string; name: string; isOrg?: boolean };
 export type ProjectOpt = { id: string; name: string; client_id: string };
 
-export async function getClientsForSelect(): Promise<ClientOpt[]> {
+export async function getClientsForSelect(opts?: {
+  includeArchived?: boolean;
+}): Promise<ClientOpt[]> {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return [];
 
   const { data: ownClients } = await supabase
     .from("clients")
-    .select("id, name")
+    .select("id, name, status")
     .eq("user_id", user.id)
     .order("name");
 
-  const own = (ownClients ?? []).map((c) => ({ id: c.id, name: c.name, isOrg: false }));
+  const own = (ownClients ?? [])
+    .filter((c) => opts?.includeArchived || !isArchivedClientStatus(c.status))
+    .map((c) => ({ id: c.id, name: c.name, isOrg: false }));
 
   // Avoid nested projects→clients joins (RLS recursion). Resolve via project_contractors first.
   const { data: assignments } = await supabase
@@ -44,11 +49,12 @@ export async function getClientsForSelect(): Promise<ClientOpt[]> {
     if (clientIds.length) {
       const { data: clients } = await supabase
         .from("clients")
-        .select("id, name, organization_id, organizations(name)")
+        .select("id, name, status, organization_id, organizations(name)")
         .in("id", clientIds);
 
       for (const client of clients ?? []) {
         if (!client.organization_id) continue;
+        if (!opts?.includeArchived && isArchivedClientStatus(client.status)) continue;
         const org = client.organizations as unknown as { name: string } | null;
         orgClients.set(client.id, {
           id: client.id,

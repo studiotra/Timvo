@@ -12,8 +12,9 @@ import {
   type ProjectOption,
   type UnbilledLog,
 } from "@/app/actions/invoice-data";
-import { polishDescription } from "@/app/actions/ai-polish";
+import { isAiPolishAvailable, polishDescription } from "@/app/actions/ai-polish";
 import { addDaysToDateString, formatInstantAsLocalDate, localToday } from "@/lib/dates";
+import { polishSourceText } from "@/lib/invoices/line-labels";
 import { useTimezone } from "@/contexts/timezone-context";
 import {
   computeInvoiceMoney,
@@ -45,6 +46,8 @@ export function CreateInvoiceSlideOver({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [aiPolish, setAiPolish] = useState(false);
+  const [polishAvailable, setPolishAvailable] = useState(false);
+  const [polishNotice, setPolishNotice] = useState<string | null>(null);
   type ManualItem = { id: string; description: string; quantity: string; unit_rate: string };
   const [manualItems, setManualItems] = useState<ManualItem[]>([]);
   const [dateFrom, setDateFrom] = useState("");
@@ -81,7 +84,13 @@ export function CreateInvoiceSlideOver({
       setSelected(new Set());
       setManualItems([]);
       setError(null);
+      setPolishNotice(null);
+      setAiPolish(false);
       setGroupByTask(true);
+      isAiPolishAvailable().then((ok) => {
+        setPolishAvailable(ok);
+        if (!ok) setAiPolish(false);
+      });
       getDefaultInvoiceSettings().then((s) => {
         setFooter(s.default_footer ?? "");
         setTerms(s.default_terms ?? "");
@@ -253,17 +262,35 @@ export function CreateInvoiceSlideOver({
     }
     setSubmitting(true);
     setError(null);
+    setPolishNotice(null);
     const polishedDescriptions: Record<string, string> = {};
-    if (aiPolish) {
+    if (aiPolish && polishAvailable) {
       const selectedLogs = logs.filter((log) => selected.has(log.id));
-      const polished = await Promise.all(
-        selectedLogs.map(async (log) => ({
+      const toPolish = selectedLogs
+        .map((log) => ({
           id: log.id,
-          text: await polishDescription(log.description ?? "Time"),
+          text: polishSourceText(log.description, log.task_name),
         }))
-      );
-      for (const row of polished) {
-        polishedDescriptions[row.id] = row.text;
+        .filter((row): row is { id: string; text: string } => Boolean(row.text));
+      if (toPolish.length > 0) {
+        const polished = await Promise.all(
+          toPolish.map(async (row) => {
+            const result = await polishDescription(row.text);
+            return { id: row.id, ...result };
+          })
+        );
+        let polishFailed = false;
+        for (const row of polished) {
+          if (row.error) polishFailed = true;
+          if (row.changed && row.text.trim()) {
+            polishedDescriptions[row.id] = row.text.trim();
+          }
+        }
+        if (polishFailed) {
+          const notice = "AI Polish failed. Using original descriptions.";
+          setPolishNotice(notice);
+          toast.error(notice);
+        }
       }
     }
     const formData = new FormData();
@@ -658,17 +685,24 @@ export function CreateInvoiceSlideOver({
               </p>
             </div>
           )}
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={aiPolish}
-              onChange={(e) => setAiPolish(e.target.checked)}
-              className="w-4 h-4 rounded accent-accent"
-            />
-            <span className="text-sm text-[var(--text-secondary)]">
-              AI Polish descriptions (requires OpenAI API key)
-            </span>
-          </label>
+          {polishAvailable ? (
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={aiPolish}
+                onChange={(e) => setAiPolish(e.target.checked)}
+                className="w-4 h-4 rounded accent-accent"
+              />
+              <span className="text-sm text-[var(--text-secondary)]">
+                AI Polish descriptions
+              </span>
+            </label>
+          ) : null}
+          {polishNotice && (
+            <p className="text-xs text-amber-300" role="status">
+              {polishNotice}
+            </p>
+          )}
         </div>
         <div className="flex shrink-0 flex-wrap items-center justify-between gap-4 border-t border-[var(--border)] p-5">
           {(selected.size > 0 || manualItems.length > 0) && (

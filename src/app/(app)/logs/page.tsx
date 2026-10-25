@@ -37,7 +37,7 @@ export default async function LogsPage({
 
   const [logs, clients, organizations] = await Promise.all([
     getTimeLogs(view, offset, Object.values(filters).some(Boolean) ? filters : undefined),
-    getClientsForSelect(),
+    getClientsForSelect({ includeArchived: true }),
     getContractorOrganizations(),
   ]);
 

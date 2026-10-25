@@ -3,6 +3,13 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { getPrimaryOrganizationId } from "@/lib/auth/routing";
+import {
+  clientDeleteBlockedMessage,
+  clientIdsWithInvoicesOrLogs,
+  countClientInvoicesAndLogs,
+  isArchivedClientStatus,
+} from "@/lib/clients/lifecycle";
+import { canManageOrgClients } from "@/lib/org/roles";
 import { revalidatePath } from "next/cache";
 import { Resend } from "resend";
 import { randomBytes } from "crypto";
@@ -187,10 +194,17 @@ export async function getOrgContext() {
   return org ? { org, role: membership?.role ?? "viewer", userId: user.id } : null;
 }
 
+function revalidateOrgClientPaths(clientId?: string) {
+  revalidatePath("/org/clients");
+  revalidatePath("/org");
+  revalidatePath("/org/logs");
+  if (clientId) revalidatePath(`/org/clients/${clientId}`);
+}
+
 export async function createOrgClient(name: string, email?: string) {
   const ctx = await getOrgContext();
   if (!ctx) return { error: "Not in an organization" };
-  if (!["owner", "admin", "manager"].includes(ctx.role)) {
+  if (!canManageOrgClients(ctx.role)) {
     return { error: "You do not have permission to add clients" };
   }
 
@@ -202,54 +216,216 @@ export async function createOrgClient(name: string, email?: string) {
       email: email?.trim() || null,
       user_id: ctx.userId,
       organization_id: ctx.org.id,
+      status: "active",
     })
     .select("id")
     .single();
 
   if (error) return { error: error.message };
-  revalidatePath("/org/clients");
-  revalidatePath("/org");
+  revalidateOrgClientPaths(data.id);
   return { success: true, clientId: data.id };
 }
+
+export type OrgClientFields = {
+  name: string;
+  email?: string | null;
+  tax_id?: string | null;
+  currency?: string;
+  address?: string | null;
+  phone_number?: string | null;
+  business_phone?: string | null;
+  extension?: string | null;
+  note?: string | null;
+};
 
 export type OrgClientRow = {
   id: string;
   name: string;
   email: string | null;
+  tax_id: string | null;
+  currency: string;
+  status: "active" | "archived";
+  address: string | null;
+  phone_number: string | null;
+  business_phone: string | null;
+  extension: string | null;
+  note: string | null;
   projectCount: number;
+  canDelete: boolean;
 };
 
-export async function listOrgClients(): Promise<OrgClientRow[]> {
+const ORG_CLIENT_SELECT =
+  "id, name, email, tax_id, currency, status, address, phone_number, business_phone, extension, note";
+
+function mapOrgClientRow(
+  c: {
+    id: string;
+    name: string;
+    email: string | null;
+    tax_id?: string | null;
+    currency?: string | null;
+    status?: string | null;
+    address?: string | null;
+    phone_number?: string | null;
+    business_phone?: string | null;
+    extension?: string | null;
+    note?: string | null;
+  },
+  extra: { projectCount: number; canDelete: boolean }
+): OrgClientRow {
+  return {
+    id: c.id,
+    name: c.name,
+    email: c.email,
+    tax_id: c.tax_id ?? null,
+    currency: c.currency ?? "USD",
+    status: isArchivedClientStatus(c.status) ? "archived" : "active",
+    address: c.address ?? null,
+    phone_number: c.phone_number ?? null,
+    business_phone: c.business_phone ?? null,
+    extension: c.extension ?? null,
+    note: c.note ?? null,
+    projectCount: extra.projectCount,
+    canDelete: extra.canDelete,
+  };
+}
+
+export async function updateOrgClient(id: string, fields: OrgClientFields) {
+  const ctx = await getOrgContext();
+  if (!ctx) return { error: "Not in an organization" };
+  if (!canManageOrgClients(ctx.role)) {
+    return { error: "You do not have permission to edit clients" };
+  }
+
+  const name = fields.name.trim();
+  if (!name) return { error: "Name is required" };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("clients")
+    .update({
+      name,
+      email: fields.email?.trim() || null,
+      tax_id: fields.tax_id?.trim() || null,
+      currency: fields.currency?.trim() || "USD",
+      address: fields.address?.trim() || null,
+      phone_number: fields.phone_number?.trim() || null,
+      business_phone: fields.business_phone?.trim() || null,
+      extension: fields.extension?.trim() || null,
+      note: fields.note?.trim() || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id)
+    .eq("organization_id", ctx.org.id)
+    .select("id");
+
+  if (error) return { error: error.message };
+  if (!data?.length) return { error: "Client not found" };
+  revalidateOrgClientPaths(id);
+  return { success: true };
+}
+
+async function setOrgClientStatus(id: string, status: "active" | "archived") {
+  const ctx = await getOrgContext();
+  if (!ctx) return { error: "Not in an organization" };
+  if (!canManageOrgClients(ctx.role)) {
+    return { error: "You do not have permission to update clients" };
+  }
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("clients")
+    .update({ status, updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .eq("organization_id", ctx.org.id)
+    .select("id");
+
+  if (error) return { error: error.message };
+  if (!data?.length) return { error: "Client not found" };
+  revalidateOrgClientPaths(id);
+  return { success: true };
+}
+
+export async function archiveOrgClient(id: string) {
+  return setOrgClientStatus(id, "archived");
+}
+
+export async function unarchiveOrgClient(id: string) {
+  return setOrgClientStatus(id, "active");
+}
+
+export async function deleteOrgClient(id: string) {
+  const ctx = await getOrgContext();
+  if (!ctx) return { error: "Not in an organization" };
+  if (!canManageOrgClients(ctx.role)) {
+    return { error: "You do not have permission to delete clients" };
+  }
+
+  const supabase = await createClient();
+  const { data: client } = await supabase
+    .from("clients")
+    .select("id")
+    .eq("id", id)
+    .eq("organization_id", ctx.org.id)
+    .maybeSingle();
+  if (!client) return { error: "Client not found" };
+
+  const admin = createAdminClient();
+  const usage = await countClientInvoicesAndLogs(admin, id);
+  const blocked = clientDeleteBlockedMessage(usage.invoices, usage.logs);
+  if (blocked) return { error: blocked };
+
+  const { data, error } = await supabase
+    .from("clients")
+    .delete()
+    .eq("id", id)
+    .eq("organization_id", ctx.org.id)
+    .select("id");
+
+  if (error) return { error: error.message };
+  if (!data?.length) return { error: "Client not found" };
+  revalidateOrgClientPaths();
+  return { success: true };
+}
+
+export async function listOrgClients(opts?: {
+  includeArchived?: boolean;
+}): Promise<OrgClientRow[]> {
   const ctx = await getOrgContext();
   if (!ctx) return [];
 
   const supabase = await createClient();
   const { data: clients, error } = await supabase
     .from("clients")
-    .select("id, name, email")
+    .select(ORG_CLIENT_SELECT)
     .eq("organization_id", ctx.org.id)
     .order("name");
 
   if (error || !clients?.length) return [];
 
-  const clientIds = clients.map((c) => c.id);
+  const visible = opts?.includeArchived
+    ? clients
+    : clients.filter((c) => !isArchivedClientStatus(c.status));
+  if (!visible.length) return [];
+
+  const clientIds = visible.map((c) => c.id);
   const admin = createAdminClient();
-  const { data: projects } = await admin
-    .from("projects")
-    .select("client_id")
-    .in("client_id", clientIds);
+  const [{ data: projects }, blockedIds] = await Promise.all([
+    admin.from("projects").select("client_id").in("client_id", clientIds),
+    clientIdsWithInvoicesOrLogs(admin, clientIds),
+  ]);
 
   const projectCountByClient: Record<string, number> = {};
   for (const p of projects ?? []) {
     projectCountByClient[p.client_id] = (projectCountByClient[p.client_id] ?? 0) + 1;
   }
 
-  return clients.map((c) => ({
-    id: c.id,
-    name: c.name,
-    email: c.email,
-    projectCount: projectCountByClient[c.id] ?? 0,
-  }));
+  return visible.map((c) =>
+    mapOrgClientRow(c, {
+      projectCount: projectCountByClient[c.id] ?? 0,
+      canDelete: !blockedIds.has(c.id),
+    })
+  );
 }
 
 export async function inviteContractorByEmail(email: string) {
