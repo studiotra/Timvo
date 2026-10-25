@@ -15,6 +15,7 @@ export type OrgProjectRow = {
   status: string;
   billing_type: string;
   bill_rate: number | null;
+  agreed_fee: number | null;
   retainer_hours: number | null;
   retainer_amount: number | null;
   alert_threshold_pct: number | null;
@@ -86,7 +87,7 @@ export async function listOrgProjects(clientId: string): Promise<OrgProjectRow[]
   const { data: projects } = await admin
     .from("projects")
     .select(
-      "id, name, status, billing_type, bill_rate, retainer_hours, retainer_amount, alert_threshold_pct"
+      "id, name, status, billing_type, bill_rate, agreed_fee, retainer_hours, retainer_amount, alert_threshold_pct"
     )
     .eq("client_id", clientId)
     .order("name");
@@ -173,6 +174,7 @@ export async function listOrgProjects(clientId: string): Promise<OrgProjectRow[]
     status: p.status,
     billing_type: p.billing_type,
     bill_rate: p.bill_rate != null ? Number(p.bill_rate) : null,
+    agreed_fee: p.agreed_fee != null ? Number(p.agreed_fee) : null,
     retainer_hours: p.retainer_hours != null ? Number(p.retainer_hours) : null,
     retainer_amount: p.retainer_amount != null ? Number(p.retainer_amount) : null,
     alert_threshold_pct: p.alert_threshold_pct,
@@ -214,6 +216,58 @@ export async function addOrgProject(clientId: string, formData: FormData) {
 
   if (error) return { error: error.message };
   revalidatePath(`/org/clients/${clientId}`);
+  revalidatePath("/org/clients");
+  return { success: true };
+}
+
+export async function updateOrgProject(projectId: string, formData: FormData) {
+  const ctx = await getOrgContext();
+  if (!ctx) return { error: "Not in an organization" };
+  if (!["owner", "admin", "manager"].includes(ctx.role)) {
+    return { error: "Permission denied" };
+  }
+
+  const name = (formData.get("name") as string)?.trim();
+  if (!name) return { error: "Project name is required" };
+
+  const billing_type = (formData.get("billing_type") as "hourly" | "fixed") || "hourly";
+  const status = (formData.get("status") as "active" | "archived") || "active";
+  const billRateRaw = (formData.get("bill_rate") as string)?.trim();
+  const retainerHoursRaw = (formData.get("retainer_hours") as string)?.trim();
+  const retainerAmountRaw = (formData.get("retainer_amount") as string)?.trim();
+  const thresholdRaw = (formData.get("alert_threshold_pct") as string)?.trim();
+  const agreedFeeRaw = (formData.get("agreed_fee") as string)?.trim();
+
+  const supabase = await createClient();
+  const { data: project } = await supabase
+    .from("projects")
+    .select("id, client_id, clients!inner(organization_id)")
+    .eq("id", projectId)
+    .maybeSingle();
+
+  const client = project?.clients as unknown as { organization_id: string } | null;
+  if (!project || client?.organization_id !== ctx.org.id) {
+    return { error: "Project not found" };
+  }
+
+  const billRate = billRateRaw ? parseFloat(billRateRaw) : null;
+  const { error } = await supabase
+    .from("projects")
+    .update({
+      name,
+      billing_type,
+      status,
+      bill_rate: billRate,
+      hourly_rate: billRate,
+      retainer_hours: retainerHoursRaw ? parseFloat(retainerHoursRaw) : null,
+      retainer_amount: retainerAmountRaw ? parseFloat(retainerAmountRaw) : null,
+      alert_threshold_pct: thresholdRaw ? parseInt(thresholdRaw, 10) : 80,
+      agreed_fee: agreedFeeRaw ? parseFloat(agreedFeeRaw) : null,
+    })
+    .eq("id", projectId);
+
+  if (error) return { error: error.message };
+  revalidatePath(`/org/clients/${project.client_id}`);
   revalidatePath("/org/clients");
   return { success: true };
 }
