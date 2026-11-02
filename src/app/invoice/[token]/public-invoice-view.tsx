@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { formatDateOnly } from "@/lib/dates";
+import { canShowPublicPayButton } from "@/lib/invoices/client-link";
 import { invoiceNumberLabel } from "@/lib/invoices/number";
 
 type BusinessInfo = {
@@ -253,7 +254,8 @@ export function PublicInvoiceView({
           )}
         </div>
 
-        {invoice.status !== "paid" && invoice.stripe_payment_url && (
+        {canShowPublicPayButton(invoice.status, invoice.stripe_payment_url) &&
+          invoice.stripe_payment_url && (
           <div className="mt-8 text-center">
             <a
               href={invoice.stripe_payment_url}

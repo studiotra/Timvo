@@ -9,7 +9,7 @@ type Props = {
   invoiceId: string;
   status: "draft" | "sent" | "paid" | "overdue";
   paymentUrl: string | null;
-  /** True only after a successful Send/Resend email (view_token set). */
+  /** True when status is sent/overdue/paid — not based on view_token. */
   hasBeenEmailed?: boolean;
 };
 

@@ -2,7 +2,6 @@
 
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
-import { randomBytes } from "crypto";
 import { generateInvoicePdf } from "@/lib/generate-invoice-pdf";
 import { syncInvoiceToQuickBooks } from "@/lib/quickbooks/sync";
 import { sendInvoiceEmail } from "@/lib/invoices/email";
@@ -15,6 +14,10 @@ import {
 } from "@/lib/stripe/connect";
 import { computeInvoiceMoney, resolveTaxRate } from "@/lib/invoices/money";
 import { formatInvoiceNumber, normalizeInvoicePrefix } from "@/lib/invoices/number";
+import {
+  invoiceHasBeenEmailed,
+  resolveViewTokenForSend,
+} from "@/lib/invoices/client-link";
 
 type InvoiceBundle = {
   inv: {
@@ -135,10 +138,10 @@ async function dispatchInvoice(params: {
   const businessName =
     profile?.business_name?.trim() || profile?.full_name?.trim() || "Your Business";
 
-  const viewToken =
-    params.regenerateToken || !inv.view_token
-      ? randomBytes(24).toString("hex")
-      : inv.view_token;
+  const viewToken = resolveViewTokenForSend({
+    existingToken: inv.view_token,
+    regenerateToken: params.regenerateToken,
+  });
 
   let paymentUrl: string | null = null;
   let stripeSessionId: string | null = null;
@@ -285,9 +288,9 @@ export async function sendInvoice(invoiceId: string) {
   const bundle = await loadInvoiceBundle(supabase, invoiceId, user.id);
   if ("error" in bundle) return bundle;
 
-  // "Send" is for invoices that have never been emailed (no view_token),
-  // even if status was changed manually or marked overdue.
-  if (bundle.inv.view_token) {
+  // Send vs Resend is based on status (not view_token). Drafts may already
+  // have a client link token created before the first email.
+  if (invoiceHasBeenEmailed(bundle.inv.status)) {
     return { error: "Invoice already sent. Use Resend to email again." };
   }
 
@@ -295,7 +298,7 @@ export async function sendInvoice(invoiceId: string) {
     supabase,
     userId: user.id,
     bundle,
-    regenerateToken: true,
+    regenerateToken: false,
     markSent: false,
   });
 }
