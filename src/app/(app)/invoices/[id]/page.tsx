@@ -2,10 +2,13 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import { InvoiceDetailContent } from "./invoice-detail-content";
+import { InvoiceClientLink } from "@/components/invoice-client-link";
+import { ensureInvoiceViewToken } from "@/app/actions/ensure-invoice-view-token";
 import { markOverdueInvoices, resolveInvoiceDisplayStatus } from "@/lib/invoices/status";
 import { resolveDisplayMoney, resolveTaxRate } from "@/lib/invoices/money";
 import { fetchInvoiceOptionalFields } from "@/lib/invoices/optional-fields";
 import { normalizeInvoicePrefix } from "@/lib/invoices/number";
+import { invoiceHasBeenEmailed } from "@/lib/invoices/client-link";
 import { publicInvoiceUrl } from "@/lib/app-url";
 import { fetchUserTimezone } from "@/lib/user-timezone";
 
@@ -106,11 +109,15 @@ export default async function InvoiceDetailPage({
     timezone
   );
 
-  const clientViewUrl =
-    extras.viewToken &&
-    (displayStatus === "sent" || displayStatus === "overdue" || displayStatus === "paid")
-      ? publicInvoiceUrl(extras.viewToken)
-      : null;
+  // Auto-create a shareable client link for drafts (and any invoice missing a token).
+  let viewToken = extras.viewToken;
+  if (!viewToken) {
+    const ensured = await ensureInvoiceViewToken(id);
+    if ("viewToken" in ensured && ensured.viewToken) {
+      viewToken = ensured.viewToken;
+    }
+  }
+  const clientViewUrl = viewToken ? publicInvoiceUrl(viewToken) : null;
 
   return (
     <div className="max-w-3xl">
@@ -121,14 +128,7 @@ export default async function InvoiceDetailPage({
         ← Back to Invoices
       </Link>
 
-      {clientViewUrl && (
-        <p className="no-print mb-4 text-[12px] text-[var(--text-muted)]">
-          Client link:{" "}
-          <a href={clientViewUrl} target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:underline">
-            {clientViewUrl}
-          </a>
-        </p>
-      )}
+      {clientViewUrl && <InvoiceClientLink url={clientViewUrl} />}
 
       <InvoiceDetailContent
         businessInfo={businessInfo}
@@ -151,7 +151,7 @@ export default async function InvoiceDetailPage({
           invoice_prefix: normalizeInvoicePrefix(
             (profile as { invoice_prefix?: string | null } | null)?.invoice_prefix
           ),
-          has_been_emailed: !!extras.viewToken,
+          has_been_emailed: invoiceHasBeenEmailed(displayStatus),
         }}
         client={client}
         project={project}
