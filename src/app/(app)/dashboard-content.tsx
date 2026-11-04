@@ -169,6 +169,11 @@ export function DashboardContent({
           <div className="mt-2 font-mono text-2xl font-bold text-[var(--text-primary)]">
             ${projectedAnnual.toLocaleString("en-US", { minimumFractionDigits: 0 })}
           </div>
+          {incomeSummary != null && (
+            <div className="mt-1 text-[11px] text-[var(--text-muted)]">
+              {t("dashboard.ytd")}: ${incomeSummary.ytd.toLocaleString("en-US", { minimumFractionDigits: 0 })}
+            </div>
+          )}
           {annualGoal != null && (
             <div className="mt-1 text-[11px] text-[var(--text-muted)]">
               Goal: ${annualGoal.toLocaleString()}
