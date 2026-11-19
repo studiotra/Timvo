@@ -9,6 +9,7 @@ import { SlackSettings } from "@/app/(app)/settings/slack-settings";
 import { OrgProfileSettings } from "./org-profile-settings";
 import { OrgTeamSettings } from "./org-team-settings";
 import { OrgPersonalSettings } from "./org-personal-settings";
+import { ChangePasswordSection } from "@/components/change-password-section";
 
 export default async function OrgSettingsPage({
   searchParams,
@@ -71,6 +72,8 @@ export default async function OrgSettingsPage({
         timezone={profile?.timezone ?? null}
         locale={profile?.locale ?? null}
       />
+
+      <ChangePasswordSection email={user.email ?? ""} />
 
       <SlackSettings
         connection={slackConn}

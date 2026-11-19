@@ -7,6 +7,7 @@ import { StripeConnectSettings } from "./stripe-connect-settings";
 import { AgencyConnectionsSettings } from "@/components/agency-connections-settings";
 import { getContractorOrganizations } from "@/app/actions/organizations";
 import { t, parseLocale } from "@/lib/i18n";
+import { ChangePasswordSection } from "@/components/change-password-section";
 
 export default async function SettingsPage({
   searchParams,
@@ -60,6 +61,8 @@ export default async function SettingsPage({
           {t(locale, "settings.emailHint")}
         </p>
       </section>
+
+      <ChangePasswordSection email={user.email ?? ""} />
 
       <AgencyConnectionsSettings organizations={organizations} />
 
