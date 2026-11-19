@@ -52,6 +52,7 @@ export async function updateSession(request: NextRequest) {
     path.startsWith("/signup") ||
     path.startsWith("/auth") ||
     path.startsWith("/accept-invite") ||
+    path.startsWith("/accept-org-invite") ||
     path.startsWith("/reset-password") ||
     path.startsWith("/client-preview");
   const isMarketingPage =

@@ -1,6 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
-import { getOrgContext, listOrgMembers } from "@/app/actions/organizations";
+import {
+  getOrgContext,
+  listOrgMembers,
+  listPendingOrgMemberInvites,
+} from "@/app/actions/organizations";
 import { SlackSettings } from "@/app/(app)/settings/slack-settings";
 import { OrgProfileSettings } from "./org-profile-settings";
 import { OrgTeamSettings } from "./org-team-settings";
@@ -21,7 +25,7 @@ export default async function OrgSettingsPage({
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const [{ data: profile }, { data: slackConn }, members] = await Promise.all([
+  const [{ data: profile }, { data: slackConn }, members, pendingInvites] = await Promise.all([
     supabase
       .from("profiles")
       .select("full_name, locale, timezone")
@@ -33,6 +37,7 @@ export default async function OrgSettingsPage({
       .eq("user_id", user.id)
       .maybeSingle(),
     listOrgMembers(),
+    listPendingOrgMemberInvites(),
   ]);
 
   const canEditOrg = ["owner", "admin", "manager"].includes(ctx.role);
@@ -54,6 +59,7 @@ export default async function OrgSettingsPage({
 
       <OrgTeamSettings
         members={members}
+        pendingInvites={pendingInvites}
         currentUserId={ctx.userId}
         currentRole={ctx.role}
       />

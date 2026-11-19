@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ClientSlideOver } from "@/components/client-slide-over";
+import { SlideOver } from "@/components/slide-over";
 import { updateOrgClient, type OrgClientRow } from "@/app/actions/organizations";
 import { addOrgProject, updateOrgProject, type OrgProjectRow } from "@/app/actions/org-projects";
 import { canManageOrgClients } from "@/lib/org/roles";
@@ -25,7 +26,10 @@ export function OrgClientDetailContent({
   const [busy, setBusy] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
+  const [addFormKey, setAddFormKey] = useState(0);
   const clientId = client.id;
+  const closeAdd = useCallback(() => setAddOpen(false), []);
 
   async function handleAddProject(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -36,7 +40,8 @@ export function OrgClientDetailContent({
     if (result.error) toast.error(result.error);
     else {
       toast.success("Project added");
-      (e.target as HTMLFormElement).reset();
+      setAddOpen(false);
+      setAddFormKey((key) => key + 1);
       router.refresh();
     }
   }
@@ -101,73 +106,84 @@ export function OrgClientDetailContent({
         }
       />
 
-      <form
-        onSubmit={handleAddProject}
-        className="mb-8 space-y-3 rounded-xl border border-[var(--border)] bg-[var(--bg-card)] p-4"
-      >
-        <h2 className="text-sm font-semibold">Add project</h2>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <input
-            name="name"
-            required
-            placeholder="Project name"
-            className="rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-sm"
-          />
-          <select
-            name="billing_type"
-            className="rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-sm"
-          >
-            <option value="hourly">Hourly</option>
-            <option value="fixed">Fixed fee</option>
-          </select>
-          <input
-            name="bill_rate"
-            type="number"
-            step="0.01"
-            placeholder="Bill rate ($/hr)"
-            className="rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-sm"
-          />
-          <input
-            name="agreed_fee"
-            type="number"
-            step="0.01"
-            placeholder="Agreed fee (fixed)"
-            className="rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-sm"
-          />
-          <input
-            name="retainer_hours"
-            type="number"
-            step="0.1"
-            placeholder="Retainer hours"
-            className="rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-sm"
-          />
-          <input
-            name="retainer_amount"
-            type="number"
-            step="0.01"
-            placeholder="Retainer amount ($)"
-            className="rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-sm"
-          />
-          <input
-            name="alert_threshold_pct"
-            type="number"
-            min={0}
-            max={100}
-            defaultValue={80}
-            placeholder="Alert at % of retainer"
-            className="rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-sm"
-          />
-        </div>
-        <button
-          type="submit"
-          disabled={busy}
-          className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
-        >
-          Add project
-        </button>
-      </form>
+      <SlideOver open={addOpen} onClose={closeAdd} title="Add project">
+        <form key={addFormKey} onSubmit={handleAddProject} className="flex h-full min-h-0 flex-col">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
+            <input
+              name="name"
+              required
+              placeholder="Project name"
+              className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-sm"
+            />
+            <select
+              name="billing_type"
+              className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-sm"
+            >
+              <option value="hourly">Hourly</option>
+              <option value="fixed">Fixed fee</option>
+            </select>
+            <input
+              name="bill_rate"
+              type="number"
+              step="0.01"
+              placeholder="Bill rate ($/hr)"
+              className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-sm"
+            />
+            <input
+              name="agreed_fee"
+              type="number"
+              step="0.01"
+              placeholder="Agreed fee (fixed)"
+              className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-sm"
+            />
+            <input
+              name="retainer_hours"
+              type="number"
+              step="0.1"
+              placeholder="Retainer hours"
+              className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-sm"
+            />
+            <input
+              name="retainer_amount"
+              type="number"
+              step="0.01"
+              placeholder="Retainer amount ($)"
+              className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-sm"
+            />
+            <input
+              name="alert_threshold_pct"
+              type="number"
+              min={0}
+              max={100}
+              defaultValue={80}
+              placeholder="Alert at % of retainer"
+              className="w-full rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-3 py-2 text-sm"
+            />
+          </div>
+          <div className="border-t border-[var(--border)] p-5">
+            <button
+              type="submit"
+              disabled={busy}
+              className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              Add project
+            </button>
+          </div>
+        </form>
+      </SlideOver>
 
-      <h2 className="mb-3 text-sm font-semibold uppercase text-[var(--text-muted)]">Projects</h2>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h2 className="text-sm font-semibold uppercase text-[var(--text-muted)]">Projects</h2>
+        {canManage && (
+          <button
+            type="button"
+            onClick={() => setAddOpen(true)}
+            className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white"
+          >
+            Add project
+          </button>
+        )}
+      </div>
       {projects.length === 0 ? (
         <p className="text-[var(--text-muted)]">No projects yet.</p>
       ) : (
@@ -184,7 +200,12 @@ export function OrgClientDetailContent({
               >
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>
-                    <h3 className="font-semibold text-[var(--text-primary)]">{p.name}</h3>
+                    <Link
+                      href={`/org/clients/${clientId}/projects/${p.id}`}
+                      className="font-semibold text-[var(--text-primary)] hover:text-accent"
+                    >
+                      {p.name}
+                    </Link>
                     <p className="mt-1 text-xs text-[var(--text-muted)]">
                       {p.billing_type}
                       {p.bill_rate != null ? ` · $${p.bill_rate}/hr bill` : ""}
@@ -194,13 +215,15 @@ export function OrgClientDetailContent({
                   </div>
                   <div className="flex items-center gap-3">
                     <span className="text-xs capitalize text-[var(--text-secondary)]">{p.status}</span>
-                    <button
-                      type="button"
-                      onClick={() => setEditingId(editingId === p.id ? null : p.id)}
-                      className="text-xs font-semibold text-accent hover:underline"
-                    >
-                      {editingId === p.id ? "Cancel" : "Edit"}
-                    </button>
+                    {canManage && (
+                      <button
+                        type="button"
+                        onClick={() => setEditingId(editingId === p.id ? null : p.id)}
+                        className="text-xs font-semibold text-accent hover:underline"
+                      >
+                        {editingId === p.id ? "Cancel" : "Edit"}
+                      </button>
+                    )}
                   </div>
                 </div>
                 {editingId === p.id && (
@@ -305,7 +328,11 @@ export function OrgClientDetailContent({
                     </div>
                   </div>
                 )}
-                <ProjectContractorsPanel projectId={p.id} contractors={p.contractors} />
+                <ProjectContractorsPanel
+                  projectId={p.id}
+                  contractors={p.contractors}
+                  canManage={canManage}
+                />
               </div>
             );
           })}

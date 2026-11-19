@@ -897,10 +897,101 @@ export async function listOrgMembers(): Promise<OrgMemberRow[]> {
 
 const INVITEABLE_ROLES = ["admin", "manager", "viewer"] as const;
 
+const ORG_ROLE_LABELS: Record<(typeof INVITEABLE_ROLES)[number], string> = {
+  admin: "Admin",
+  manager: "Manager",
+  viewer: "Viewer",
+};
+
+function orgRoleLabel(role: string) {
+  return ORG_ROLE_LABELS[role as (typeof INVITEABLE_ROLES)[number]] ?? role;
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+export type OrgMemberInviteRow = {
+  id: string;
+  email: string;
+  role: string;
+  expiresAt: string;
+};
+
+export async function listPendingOrgMemberInvites(): Promise<OrgMemberInviteRow[]> {
+  const ctx = await getOrgContext();
+  if (!ctx) return [];
+  if (!["owner", "admin"].includes(ctx.role)) return [];
+
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("organization_member_invites")
+    .select("id, email, role, expires_at")
+    .eq("organization_id", ctx.org.id)
+    .eq("status", "pending")
+    .gt("expires_at", new Date().toISOString())
+    .order("created_at", { ascending: false });
+
+  return (data ?? []).map((row) => ({
+    id: row.id,
+    email: row.email,
+    role: row.role,
+    expiresAt: row.expires_at,
+  }));
+}
+
+async function sendOrgMemberInviteEmail(input: {
+  email: string;
+  role: string;
+  organizationName: string;
+  token: string;
+}): Promise<{ error?: string }> {
+  const inviteUrl = `${appBaseUrl()}/accept-org-invite?token=${input.token}`;
+  const roleLabel = orgRoleLabel(input.role);
+  const resendKey = process.env.RESEND_API_KEY;
+  const fromEmail = process.env.EMAIL_FROM ?? "onboarding@resend.dev";
+
+  if (!resendKey?.trim()) {
+    return {
+      error: "Invite saved, but email is not configured. Add RESEND_API_KEY.",
+    };
+  }
+
+  const resend = new Resend(resendKey);
+  const safeOrg = escapeHtml(input.organizationName);
+  const safeEmail = escapeHtml(input.email);
+  const safeRole = escapeHtml(roleLabel);
+  const { error: sendError } = await resend.emails.send({
+    from: fromEmail,
+    to: input.email,
+    subject: `Sign up to join ${input.organizationName} on Timvo as ${roleLabel}`,
+    html: `
+      <p>Hi,</p>
+      <p><strong>${safeOrg}</strong> invited you to Timvo as <strong>${safeRole}</strong>.</p>
+      <p>You don't have a Timvo account yet. Sign up with <strong>${safeEmail}</strong> to accept the invite and join as ${safeRole}.</p>
+      <p>
+        <a href="${inviteUrl}" style="display:inline-block;padding:12px 24px;background:#6366f1;color:white;text-decoration:none;border-radius:8px;font-weight:600;">Sign up and accept invite</a>
+      </p>
+      <p style="color:#6b7280;font-size:14px;">This link expires in ${ORG_INVITE_EXPIRY_DAYS} days.</p>
+      <p>— Timvo</p>
+    `,
+  });
+
+  if (sendError) {
+    console.error("Resend error:", sendError);
+    return { error: `Invite saved but email failed: ${sendError.message}` };
+  }
+  return {};
+}
+
 export async function inviteOrgMember(
   email: string,
   role: string
-): Promise<{ error?: string }> {
+): Promise<{ error?: string; invited?: boolean }> {
   const ctx = await getOrgContext();
   if (!ctx) return { error: "Not in an organization" };
   if (!["owner", "admin"].includes(ctx.role)) {
@@ -917,10 +1008,48 @@ export async function inviteOrgMember(
   const { data: listData } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
   const user = listData?.users?.find((u) => u.email?.toLowerCase() === trimmed);
   if (!user) {
-    return {
-      error:
-        "No Timvo account found for that email. They should sign up first, then you can add them.",
-    };
+    const { data: pending } = await admin
+      .from("organization_member_invites")
+      .select("id, token")
+      .eq("organization_id", ctx.org.id)
+      .eq("email", trimmed)
+      .eq("status", "pending")
+      .maybeSingle();
+
+    const token = pending?.token ?? randomBytes(32).toString("hex");
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + ORG_INVITE_EXPIRY_DAYS);
+
+    const { error: inviteError } = pending
+      ? await admin
+          .from("organization_member_invites")
+          .update({
+            role,
+            expires_at: expiresAt.toISOString(),
+            invited_by: ctx.userId,
+          })
+          .eq("id", pending.id)
+      : await admin.from("organization_member_invites").insert({
+          token,
+          email: trimmed,
+          organization_id: ctx.org.id,
+          role,
+          status: "pending",
+          invited_by: ctx.userId,
+          expires_at: expiresAt.toISOString(),
+        });
+
+    if (inviteError) return { error: inviteError.message };
+
+    const sent = await sendOrgMemberInviteEmail({
+      email: trimmed,
+      role,
+      organizationName: ctx.org.name,
+      token,
+    });
+    if (sent.error) return { error: sent.error };
+    revalidatePath("/org/settings");
+    return { invited: true };
   }
 
   const { data: existing } = await admin
@@ -949,6 +1078,136 @@ export async function inviteOrgMember(
     .neq("account_type", "organization");
 
   revalidatePath("/org/settings");
+  return {};
+}
+
+export async function getOrgMemberInviteByToken(token: string): Promise<{
+  email: string;
+  role: string;
+  roleLabel: string;
+  organizationName: string;
+} | null> {
+  if (!token.trim()) return null;
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("organization_member_invites")
+    .select("email, role, status, expires_at, organization_id")
+    .eq("token", token.trim())
+    .maybeSingle();
+
+  if (!data || data.status !== "pending") return null;
+  if (new Date(data.expires_at) < new Date()) return null;
+
+  const { data: org } = await admin
+    .from("organizations")
+    .select("name")
+    .eq("id", data.organization_id)
+    .maybeSingle();
+
+  return {
+    email: data.email,
+    role: data.role,
+    roleLabel: orgRoleLabel(data.role),
+    organizationName: org?.name ?? "your organization",
+  };
+}
+
+export async function createOrgMemberFromInvite(
+  token: string,
+  email: string,
+  password: string
+): Promise<{ error?: string }> {
+  const invite = await getOrgMemberInviteByToken(token);
+  if (!invite) return { error: "This invite is invalid or has expired" };
+  if (invite.email.toLowerCase() !== email.trim().toLowerCase()) {
+    return { error: `Sign up with the invited email (${invite.email})` };
+  }
+  if (password.length < 6) return { error: "Password must be at least 6 characters" };
+
+  const admin = createAdminClient();
+  const { error } = await admin.auth.admin.createUser({
+    email: invite.email,
+    password,
+    email_confirm: true,
+  });
+
+  if (error) {
+    const msg = error.message?.toLowerCase() ?? "";
+    if (msg.includes("already") || msg.includes("duplicate") || msg.includes("registered")) {
+      return {
+        error: "An account with this email already exists. Sign in to accept the invite.",
+      };
+    }
+    return { error: error.message };
+  }
+
+  await new Promise((r) => setTimeout(r, 800));
+  return {};
+}
+
+export async function acceptOrgMemberInvite(token: string): Promise<{ error?: string }> {
+  const admin = createAdminClient();
+  const { data: invite } = await admin
+    .from("organization_member_invites")
+    .select("id, email, role, status, expires_at, organization_id")
+    .eq("token", token.trim())
+    .maybeSingle();
+
+  if (!invite || invite.status !== "pending") {
+    return { error: "This invite is invalid or has already been used" };
+  }
+  if (new Date(invite.expires_at) < new Date()) {
+    return { error: "This invite has expired" };
+  }
+  if (!INVITEABLE_ROLES.includes(invite.role as (typeof INVITEABLE_ROLES)[number])) {
+    return { error: "Invalid role" };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user?.email) return { error: "Sign in to accept this invite" };
+  if (user.email.toLowerCase() !== invite.email.toLowerCase()) {
+    return { error: `Sign in as ${invite.email} to accept this invite` };
+  }
+
+  const { data: existing } = await admin
+    .from("organization_members")
+    .select("id")
+    .eq("organization_id", invite.organization_id)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (!existing) {
+    const { error } = await admin.from("organization_members").insert({
+      organization_id: invite.organization_id,
+      user_id: user.id,
+      role: invite.role,
+    });
+    if (error) return { error: error.message };
+  }
+
+  await admin
+    .from("profiles")
+    .update({
+      account_type: "organization",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", user.id)
+    .neq("account_type", "organization");
+
+  const { error: acceptError } = await admin
+    .from("organization_member_invites")
+    .update({
+      status: "accepted",
+      accepted_at: new Date().toISOString(),
+    })
+    .eq("id", invite.id);
+
+  if (acceptError) return { error: acceptError.message };
+  revalidatePath("/org/settings");
+  revalidatePath("/org", "layout");
   return {};
 }
 

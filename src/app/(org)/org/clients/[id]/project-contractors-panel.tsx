@@ -12,15 +12,18 @@ import {
 export function ProjectContractorsPanel({
   projectId,
   contractors,
+  canManage = false,
 }: {
   projectId: string;
   contractors: ProjectContractorRow[];
+  canManage?: boolean;
 }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [costRate, setCostRate] = useState("");
   const [billRate, setBillRate] = useState("");
   const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
 
   async function handleAssign(e: React.FormEvent) {
     e.preventDefault();
@@ -38,6 +41,7 @@ export function ProjectContractorsPanel({
       setEmail("");
       setCostRate("");
       setBillRate("");
+      setOpen(false);
       router.refresh();
     }
   }
@@ -55,13 +59,24 @@ export function ProjectContractorsPanel({
 
   return (
     <div className="mt-4 border-t border-[var(--border)] pt-4">
-      <h4 className="mb-2 text-xs font-semibold uppercase text-[var(--text-muted)]">
-        Assigned contractors
-      </h4>
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h4 className="text-xs font-semibold uppercase text-[var(--text-muted)]">
+          Assigned contractors
+        </h4>
+        {canManage && (
+          <button
+            type="button"
+            onClick={() => setOpen((value) => !value)}
+            className="text-xs font-semibold text-accent hover:underline"
+          >
+            {open ? "Close" : "Edit"}
+          </button>
+        )}
+      </div>
       {contractors.length === 0 ? (
-        <p className="mb-3 text-xs text-[var(--text-muted)]">No contractors assigned yet.</p>
+        <p className="text-xs text-[var(--text-muted)]">No contractors assigned yet.</p>
       ) : (
-        <ul className="mb-3 space-y-1">
+        <ul className="space-y-1">
           {contractors.map((c) => (
             <li
               key={c.id}
@@ -73,53 +88,65 @@ export function ProjectContractorsPanel({
                 {" · "}
                 {c.billRate != null ? `$${c.billRate}/hr bill` : "— bill"}
               </span>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => handleRemove(c.contractorUserId)}
-                className="text-red-400 hover:text-red-300 disabled:opacity-50"
-              >
-                Remove
-              </button>
+              {canManage && (
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => handleRemove(c.contractorUserId)}
+                  className="text-red-400 hover:text-red-300 disabled:opacity-50"
+                >
+                  Remove
+                </button>
+              )}
             </li>
           ))}
         </ul>
       )}
-      <form onSubmit={handleAssign} className="flex flex-wrap gap-2">
-        <input
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="contractor@email.com"
-          required
-          className="min-w-[180px] flex-1 rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-2 py-1.5 text-xs"
-        />
-        <input
-          type="number"
-          step="0.01"
-          min="0"
-          value={costRate}
-          onChange={(e) => setCostRate(e.target.value)}
-          placeholder="Cost $/hr"
-          className="w-24 rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-2 py-1.5 text-xs"
-        />
-        <input
-          type="number"
-          step="0.01"
-          min="0"
-          value={billRate}
-          onChange={(e) => setBillRate(e.target.value)}
-          placeholder="Bill $/hr"
-          className="w-24 rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-2 py-1.5 text-xs"
-        />
-        <button
-          type="submit"
-          disabled={busy}
-          className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
+      {canManage && (
+        <div
+          className={`grid transition-[grid-template-rows] duration-300 ease-out ${
+            open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+          }`}
         >
-          Assign
-        </button>
-      </form>
+          <div className="overflow-hidden" inert={open ? undefined : true}>
+            <form onSubmit={handleAssign} className="flex flex-wrap gap-2 pt-3">
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="contractor@email.com"
+                required
+                className="min-w-[180px] flex-1 rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-2 py-1.5 text-xs"
+              />
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={costRate}
+                onChange={(e) => setCostRate(e.target.value)}
+                placeholder="Cost $/hr"
+                className="w-24 rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-2 py-1.5 text-xs"
+              />
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={billRate}
+                onChange={(e) => setBillRate(e.target.value)}
+                placeholder="Bill $/hr"
+                className="w-24 rounded-lg border border-[var(--border)] bg-[var(--bg-app)] px-2 py-1.5 text-xs"
+              />
+              <button
+                type="submit"
+                disabled={busy}
+                className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs font-semibold disabled:opacity-50"
+              >
+                Assign
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

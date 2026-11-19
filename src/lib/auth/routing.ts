@@ -8,6 +8,7 @@ export function isContractorAppRoute(path: string): boolean {
     path.startsWith("/signup") ||
     path.startsWith("/auth") ||
     path.startsWith("/accept-invite") ||
+    path.startsWith("/accept-org-invite") ||
     path.startsWith("/reset-password") ||
     path.startsWith("/client-preview") ||
     path.startsWith("/welcome") ||

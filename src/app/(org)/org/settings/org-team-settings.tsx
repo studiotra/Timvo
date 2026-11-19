@@ -7,6 +7,7 @@ import {
   inviteOrgMember,
   removeOrgMember,
   updateOrgMemberRole,
+  type OrgMemberInviteRow,
   type OrgMemberRow,
 } from "@/app/actions/organizations";
 
@@ -18,10 +19,12 @@ const ROLE_OPTIONS = [
 
 export function OrgTeamSettings({
   members,
+  pendingInvites = [],
   currentUserId,
   currentRole,
 }: {
   members: OrgMemberRow[];
+  pendingInvites?: OrgMemberInviteRow[];
   currentUserId: string;
   currentRole: string;
 }) {
@@ -40,7 +43,12 @@ export function OrgTeamSettings({
     setBusy(false);
     if (result.error) toast.error(result.error);
     else {
-      toast.success("Team member added");
+      const label = ROLE_OPTIONS.find((r) => r.value === role)?.label ?? role;
+      toast.success(
+        result.invited
+          ? `Invite sent. They can sign up and join as ${label}.`
+          : "Team member added"
+      );
       setEmail("");
       router.refresh();
     }
@@ -76,8 +84,9 @@ export function OrgTeamSettings({
       </div>
       <div className="space-y-4 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-4">
         <p className="text-[13px] text-[var(--text-secondary)]">
-          Invite staff who already have a Timvo account. Managers can track time, review
-          timesheets, and manage clients.
+          Add a teammate by email. If they already use Timvo, they are added right away. If
+          they don&apos;t have an account, they get an email to sign up and join as the role
+          you choose. Managers can track time, review timesheets, and manage clients.
         </p>
 
         {canManage && (
@@ -109,6 +118,22 @@ export function OrgTeamSettings({
               {busy ? "Adding…" : "Add member"}
             </button>
           </form>
+        )}
+
+        {pendingInvites.length > 0 && (
+          <ul className="space-y-2">
+            {pendingInvites.map((invite) => (
+              <li
+                key={invite.id}
+                className="flex items-center justify-between gap-2 rounded-lg border border-dashed border-[var(--border)] px-3 py-2"
+              >
+                <p className="truncate text-sm text-[var(--text-primary)]">{invite.email}</p>
+                <p className="shrink-0 text-xs text-[var(--text-muted)]">
+                  Invited as {ROLE_OPTIONS.find((r) => r.value === invite.role)?.label ?? invite.role} · waiting to sign up
+                </p>
+              </li>
+            ))}
+          </ul>
         )}
 
         <ul className="space-y-2">

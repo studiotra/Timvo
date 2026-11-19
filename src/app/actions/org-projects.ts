@@ -600,3 +600,233 @@ export async function getOrgProfitabilityReport(): Promise<ProfitabilityRow[]> {
     }))
     .sort((a, b) => a.label.localeCompare(b.label));
 }
+
+export type OrgProjectTaskRow = {
+  name: string;
+  serviceName: string | null;
+  totalMinutes: number;
+};
+
+export type OrgProjectContractorDetail = {
+  userId: string;
+  fullName: string | null;
+  businessName: string | null;
+  email: string;
+  tasks: OrgProjectTaskRow[];
+};
+
+export type OrgProjectDetail = {
+  id: string;
+  name: string;
+  status: string;
+  billingType: string;
+  billRate: number | null;
+  agreedFee: number | null;
+  retainerHours: number | null;
+  usedHours: number;
+  alertThresholdPct: number | null;
+  clientId: string;
+  clientName: string;
+  contractors: OrgProjectContractorDetail[];
+};
+
+export async function getOrgProjectDetail(
+  clientId: string,
+  projectId: string
+): Promise<OrgProjectDetail | null> {
+  const ctx = await getOrgContext();
+  if (!ctx) return null;
+
+  const admin = createAdminClient();
+  const { data: project } = await admin
+    .from("projects")
+    .select(
+      "id, name, status, billing_type, bill_rate, agreed_fee, retainer_hours, alert_threshold_pct, client_id, clients!inner(id, name, organization_id)"
+    )
+    .eq("id", projectId)
+    .eq("client_id", clientId)
+    .maybeSingle();
+
+  const client = project?.clients as unknown as {
+    id: string;
+    name: string;
+    organization_id: string;
+  } | null;
+  if (!project || !client || client.organization_id !== ctx.org.id) return null;
+
+  const { data: mappings } = await admin
+    .from("project_share_mappings")
+    .select("project_share_id")
+    .eq("organization_id", ctx.org.id)
+    .eq("target_project_id", projectId);
+
+  const shareIds = (mappings ?? []).map((m) => m.project_share_id);
+  const { data: shares } = shareIds.length
+    ? await admin
+        .from("project_shares")
+        .select("project_id, shared_by")
+        .in("id", shareIds)
+        .eq("status", "active")
+    : { data: [] as { project_id: string; shared_by: string }[] };
+
+  const projectsByUser = new Map<string, Set<string>>();
+  const logProjectIds = new Set<string>([projectId]);
+  for (const share of shares ?? []) {
+    logProjectIds.add(share.project_id);
+    const set = projectsByUser.get(share.shared_by) ?? new Set<string>();
+    set.add(share.project_id);
+    projectsByUser.set(share.shared_by, set);
+  }
+
+  const { data: assignments } = await admin
+    .from("project_contractors")
+    .select("contractor_user_id")
+    .eq("project_id", projectId);
+
+  const userIds = new Set<string>([
+    ...(assignments ?? []).map((a) => a.contractor_user_id),
+    ...projectsByUser.keys(),
+  ]);
+
+  const { data: logs } = await admin
+    .from("time_logs")
+    .select(
+      "user_id, project_id, duration_minutes, task_id, description, task:task_id(name, service_id)"
+    )
+    .in("project_id", [...logProjectIds]);
+
+  type LogRow = {
+    user_id: string;
+    project_id: string;
+    duration_minutes: number | null;
+    task_id: string | null;
+    description: string | null;
+    task: { name?: string; service_id?: string | null } | { name?: string; service_id?: string | null }[] | null;
+  };
+
+  for (const log of (logs ?? []) as LogRow[]) {
+    if (log.user_id) userIds.add(log.user_id);
+  }
+
+  const ids = [...userIds];
+  const [{ data: profiles }, emailPairs, { data: taskRows }] = await Promise.all([
+    ids.length
+      ? admin.from("profiles").select("id, full_name, business_name").in("id", ids)
+      : Promise.resolve({ data: [] as { id: string; full_name: string | null; business_name: string | null }[] }),
+    Promise.all(
+      ids.map(async (id) => {
+        try {
+          const { data, error } = await admin.auth.admin.getUserById(id);
+          if (error) return [id, ""] as const;
+          return [id, data.user?.email ?? ""] as const;
+        } catch {
+          return [id, ""] as const;
+        }
+      })
+    ),
+    admin
+      .from("tasks")
+      .select("id, name, project_id, service_id")
+      .in("project_id", [...logProjectIds]),
+  ]);
+
+  const profileById = new Map((profiles ?? []).map((p) => [p.id, p]));
+  const emailById = new Map(emailPairs);
+
+  type TaskAcc = { name: string; serviceId: string | null; totalMinutes: number };
+  const tasksByUser = new Map<string, Map<string, TaskAcc>>();
+
+  function bucket(userId: string) {
+    let map = tasksByUser.get(userId);
+    if (!map) {
+      map = new Map();
+      tasksByUser.set(userId, map);
+    }
+    return map;
+  }
+
+  for (const task of taskRows ?? []) {
+    if (task.project_id === projectId) continue;
+    for (const [userId, projectIds] of projectsByUser) {
+      if (!projectIds.has(task.project_id)) continue;
+      bucket(userId).set(task.id, {
+        name: task.name,
+        serviceId: task.service_id,
+        totalMinutes: 0,
+      });
+    }
+  }
+
+  let usedMinutes = 0;
+  for (const log of (logs ?? []) as LogRow[]) {
+    const taskJoin = Array.isArray(log.task) ? log.task[0] : log.task;
+    const key = log.task_id ?? `derived:${(log.description ?? "").trim() || "Uncategorized"}`;
+    const map = bucket(log.user_id);
+    const existing = map.get(key);
+    const minutes = log.duration_minutes ?? 0;
+    usedMinutes += minutes;
+    if (existing) {
+      existing.totalMinutes += minutes;
+    } else {
+      map.set(key, {
+        name: taskJoin?.name?.trim() || log.description?.trim() || "Uncategorized",
+        serviceId: taskJoin?.service_id ?? null,
+        totalMinutes: minutes,
+      });
+    }
+  }
+
+  const serviceIds = new Set<string>();
+  for (const task of taskRows ?? []) {
+    if (task.service_id) serviceIds.add(task.service_id);
+  }
+  for (const tasks of tasksByUser.values()) {
+    for (const task of tasks.values()) {
+      if (task.serviceId) serviceIds.add(task.serviceId);
+    }
+  }
+  const { data: services } = serviceIds.size
+    ? await admin.from("services").select("id, name").in("id", [...serviceIds])
+    : { data: [] as { id: string; name: string }[] };
+  const serviceName = new Map((services ?? []).map((s) => [s.id, s.name]));
+
+  const contractors: OrgProjectContractorDetail[] = ids.map((userId) => {
+    const profile = profileById.get(userId);
+    const tasks = [...(tasksByUser.get(userId)?.values() ?? [])]
+      .map((task) => ({
+        name: task.name,
+        serviceName: task.serviceId ? serviceName.get(task.serviceId) ?? null : null,
+        totalMinutes: task.totalMinutes,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    return {
+      userId,
+      fullName: profile?.full_name?.trim() || null,
+      businessName: profile?.business_name?.trim() || null,
+      email: emailById.get(userId) || "Unknown",
+      tasks,
+    };
+  });
+
+  contractors.sort((a, b) => {
+    const aLabel = a.fullName || a.email;
+    const bLabel = b.fullName || b.email;
+    return aLabel.localeCompare(bLabel);
+  });
+
+  return {
+    id: project.id,
+    name: project.name,
+    status: project.status,
+    billingType: project.billing_type,
+    billRate: project.bill_rate != null ? Number(project.bill_rate) : null,
+    agreedFee: project.agreed_fee != null ? Number(project.agreed_fee) : null,
+    retainerHours: project.retainer_hours != null ? Number(project.retainer_hours) : null,
+    usedHours: usedMinutes / 60,
+    alertThresholdPct:
+      project.alert_threshold_pct != null ? Number(project.alert_threshold_pct) : null,
+    clientId: client.id,
+    clientName: client.name,
+    contractors,
+  };
+}
