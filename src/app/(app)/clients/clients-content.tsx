@@ -111,6 +111,7 @@ export function ClientsContent({
         }}
         onSuccess={onRefresh}
         client={editing}
+        showRetainerSchedule
       />
 
       <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 sm:gap-4">

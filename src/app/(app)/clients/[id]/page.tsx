@@ -24,7 +24,7 @@ export default async function ClientDetailPage({
   const { data: client } = await supabase
     .from("clients")
     .select(
-      "id, name, email, tax_id, currency, status, address, phone_number, business_phone, extension, note"
+      "id, name, email, tax_id, currency, status, address, phone_number, business_phone, extension, note, invoice_schedule_enabled, invoice_cadence, invoice_anchor_date, invoice_time, invoice_schedule_mode, invoice_reminder_days"
     )
     .eq("id", id)
     .eq("user_id", user.id)

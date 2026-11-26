@@ -5,7 +5,21 @@ import {
   clientDeleteBlockedMessage,
   countClientInvoicesAndLogs,
 } from "@/lib/clients/lifecycle";
+import { parseRetainerScheduleForm } from "@/lib/invoices/retainer-schedule";
 import { revalidatePath } from "next/cache";
+
+function scheduleColumns(formData: FormData) {
+  const parsed = parseRetainerScheduleForm(formData);
+  if ("skip" in parsed && parsed.skip) return { error: null as string | null, columns: null };
+  if ("error" in parsed) return { error: parsed.error, columns: null };
+  return {
+    error: null as string | null,
+    columns: {
+      ...parsed.value,
+      invoice_schedule_updated_at: new Date().toISOString(),
+    },
+  };
+}
 
 export async function addClient(formData: FormData) {
   const supabase = await createClient();
@@ -23,6 +37,8 @@ export async function addClient(formData: FormData) {
   const note = (formData.get("note") as string) || null;
 
   if (!name?.trim()) return { error: "Name is required" };
+  const schedule = scheduleColumns(formData);
+  if (schedule.error) return { error: schedule.error };
 
   const { error } = await supabase.from("clients").insert({
     user_id: user.id,
@@ -36,6 +52,7 @@ export async function addClient(formData: FormData) {
     business_phone: business_phone?.trim() || null,
     extension: extension?.trim() || null,
     note: note?.trim() || null,
+    ...(schedule.columns ?? {}),
   });
 
   if (error) return { error: error.message };
@@ -60,6 +77,8 @@ export async function updateClient(id: string, formData: FormData) {
   const note = (formData.get("note") as string) || null;
 
   if (!name?.trim()) return { error: "Name is required" };
+  const schedule = scheduleColumns(formData);
+  if (schedule.error) return { error: schedule.error };
 
   const { data, error } = await supabase
     .from("clients")
@@ -75,6 +94,7 @@ export async function updateClient(id: string, formData: FormData) {
       extension: extension?.trim() || null,
       note: note?.trim() || null,
       updated_at: new Date().toISOString(),
+      ...(schedule.columns ?? {}),
     })
     .eq("id", id)
     .eq("user_id", user.id)

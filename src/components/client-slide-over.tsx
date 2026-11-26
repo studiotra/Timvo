@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { SlideOver } from "./slide-over";
 import { addClient, updateClient } from "@/app/actions/clients";
 import type { ClientListItem } from "@/types/database";
+import { RetainerInvoiceScheduleFields } from "./retainer-invoice-schedule-fields";
 
 import { CURRENCIES } from "@/lib/currencies";
 
@@ -35,6 +36,12 @@ type ClientFormValues = Pick<
   | "business_phone"
   | "extension"
   | "note"
+  | "invoice_schedule_enabled"
+  | "invoice_cadence"
+  | "invoice_anchor_date"
+  | "invoice_time"
+  | "invoice_schedule_mode"
+  | "invoice_reminder_days"
 > & { status?: "active" | "archived"; project_count?: number };
 
 type ClientSlideOverProps = {
@@ -43,6 +50,7 @@ type ClientSlideOverProps = {
   onSuccess?: () => void;
   client?: ClientFormValues | null;
   hideStatus?: boolean;
+  showRetainerSchedule?: boolean;
   onSave?: (formData: FormData) => Promise<{ error?: string }>;
 };
 
@@ -52,6 +60,7 @@ export function ClientSlideOver({
   onSuccess,
   client,
   hideStatus = false,
+  showRetainerSchedule = false,
   onSave,
 }: ClientSlideOverProps) {
   const router = useRouter();
@@ -81,7 +90,7 @@ export function ClientSlideOver({
       onClose={onClose}
       title={client ? "Edit Client" : "Add Client"}
     >
-      <form action={handleSubmit} className="flex h-full min-h-0 flex-col">
+      <form key={client?.id ?? "new"} action={handleSubmit} className="flex h-full min-h-0 flex-col">
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
           <div>
             <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">
@@ -196,6 +205,7 @@ export function ClientSlideOver({
               ))}
             </select>
           </div>
+          {showRetainerSchedule && <RetainerInvoiceScheduleFields client={client} />}
           {client && !hideStatus && (
             <div>
               <label className="block text-sm font-medium text-[var(--text-secondary)] mb-1.5">

@@ -10,6 +10,7 @@ import { TimvoLogo } from "./timvo-logo";
 import { SidebarTimerWidget } from "./sidebar-timer-widget";
 import { Menu, X } from "lucide-react";
 import { isDesktopShell } from "@/lib/desktop/shell";
+import { resetPostHog } from "@/components/posthog-identify";
 
 const navItems = [
   { href: "/org", label: "Dashboard", icon: "🏠" },
@@ -46,6 +47,7 @@ export function OrgShell({ children, orgName, hasContractorDashboard }: OrgShell
   }, [pathname]);
 
   async function handleSignOut() {
+    resetPostHog();
     await supabase.auth.signOut();
     router.push("/login");
     router.refresh();

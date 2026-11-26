@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/retainer-alerts",
       "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/cron/retainer-invoices",
+      "schedule": "*/15 * * * *"
     }
   ]
 }

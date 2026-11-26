@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { ClientPortalShell } from "./client-portal-shell";
+import { PostHogIdentify } from "@/components/posthog-identify";
 
 export default async function ClientPortalLayout({
   children,
@@ -44,6 +45,7 @@ export default async function ClientPortalLayout({
 
   return (
     <div className="min-h-screen bg-[var(--bg-app)]">
+      <PostHogIdentify userId={user.id} email={user.email} accountType="client" />
       <ClientPortalShell
         invitorBusinessName={invitorBusinessName}
         hasBusinessDashboard={!!ownedClient}

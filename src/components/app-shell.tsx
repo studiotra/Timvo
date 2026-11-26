@@ -14,6 +14,7 @@ import { SidebarTimerWidget } from "./sidebar-timer-widget";
 import { ThemeToggle } from "./theme-toggle";
 import { TimvoLogo } from "./timvo-logo";
 import { isDesktopShell } from "@/lib/desktop/shell";
+import { resetPostHog } from "@/components/posthog-identify";
 import { Menu, X } from "lucide-react";
 
 const navItems = [
@@ -57,6 +58,7 @@ export function AppShell({ children, logoUrl, displayName = "?" }: AppShellProps
   }, [pathname]);
 
   async function handleSignOut() {
+    resetPostHog();
     await supabase.auth.signOut();
     router.push("/login");
     router.refresh();

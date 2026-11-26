@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { AppShell } from "@/components/app-shell";
 import { OrgLinkBanner } from "@/components/org-link-banner";
+import { RetainerInvoiceReminders } from "@/components/retainer-invoice-reminders";
 import { OnboardingGate } from "@/components/onboarding/onboarding-gate";
 import { LocaleProvider } from "@/contexts/locale-context";
 import { TimezoneProvider } from "@/contexts/timezone-context";
@@ -8,6 +9,7 @@ import { isPortalOnlyUser, isOrganizationPrimaryUser } from "@/lib/auth/routing"
 import { getUnacknowledgedOrgLinks } from "@/app/actions/organizations";
 import { parseLocale } from "@/lib/i18n";
 import { redirect } from "next/navigation";
+import { PostHogIdentify } from "@/components/posthog-identify";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -47,8 +49,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <LocaleProvider locale={locale}>
       <TimezoneProvider timezone={profile?.timezone}>
+        {user ? (
+          <PostHogIdentify userId={user.id} email={user.email} accountType="contractor" />
+        ) : null}
         <OnboardingGate show={showOnboarding} variant="contractor" displayName={displayName}>
           <AppShell logoUrl={profile?.logo_url ?? null} displayName={displayName}>
+            <RetainerInvoiceReminders />
             <OrgLinkBanner links={unackedLinks} />
             {children}
           </AppShell>

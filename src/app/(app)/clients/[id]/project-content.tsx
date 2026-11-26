@@ -13,6 +13,7 @@ import type { ContractorOrgOption } from "@/app/actions/organizations";
 import type { ProjectShareStatus } from "@/app/actions/project-shares";
 import type { ClientSummary } from "@/lib/clients/summary";
 import { formatCurrencyAmount } from "@/lib/clients/summary";
+import { describeRetainerSchedule } from "@/lib/invoices/retainer-schedule";
 
 type ProjectWithCreated = ProjectListItem & { created_at?: string };
 type ProjectEffectiveRate = {
@@ -69,6 +70,12 @@ export function ProjectContent({
     business_phone?: string | null;
     extension?: string | null;
     note?: string | null;
+    invoice_schedule_enabled?: boolean | null;
+    invoice_cadence?: "weekly" | "biweekly" | "monthly" | "bimonthly" | null;
+    invoice_anchor_date?: string | null;
+    invoice_time?: string | null;
+    invoice_schedule_mode?: "auto" | "reminder" | null;
+    invoice_reminder_days?: number | null;
   };
   projects: ProjectWithCreated[];
   organizations?: ContractorOrgOption[];
@@ -113,6 +120,14 @@ export function ProjectContent({
   }, [filteredProjects, sortBy]);
 
   const existingNames = projects.map((p) => p.name);
+  const retainerSchedule = describeRetainerSchedule({
+    enabled: client.invoice_schedule_enabled,
+    cadence: client.invoice_cadence,
+    anchor: client.invoice_anchor_date,
+    time: client.invoice_time,
+    mode: client.invoice_schedule_mode,
+    reminderDays: client.invoice_reminder_days,
+  });
 
   async function handleDelete(projectId: string) {
     if (!confirm("Delete this project?")) return;
@@ -156,6 +171,9 @@ export function ProjectContent({
             </div>
             {client.note && (
               <p className="mt-2 text-xs italic text-[var(--text-muted)]">{client.note}</p>
+            )}
+            {retainerSchedule && (
+              <p className="mt-2 text-xs text-[var(--text-secondary)]">{retainerSchedule}</p>
             )}
           </div>
         </div>
@@ -225,7 +243,14 @@ export function ProjectContent({
           extension: client.extension ?? null,
           note: client.note ?? null,
           project_count: projects.length,
+          invoice_schedule_enabled: client.invoice_schedule_enabled,
+          invoice_cadence: client.invoice_cadence,
+          invoice_anchor_date: client.invoice_anchor_date,
+          invoice_time: client.invoice_time,
+          invoice_schedule_mode: client.invoice_schedule_mode,
+          invoice_reminder_days: client.invoice_reminder_days,
         }}
+        showRetainerSchedule
       />
 
       <ProjectSlideOver

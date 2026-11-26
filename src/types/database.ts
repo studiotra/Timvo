@@ -11,13 +11,34 @@ export type Client = {
   business_phone?: string | null;
   extension?: string | null;
   note?: string | null;
+  invoice_schedule_enabled?: boolean | null;
+  invoice_cadence?: "weekly" | "biweekly" | "monthly" | "bimonthly" | null;
+  invoice_anchor_date?: string | null;
+  invoice_time?: string | null;
+  invoice_schedule_mode?: "auto" | "reminder" | null;
+  invoice_reminder_days?: number | null;
   created_at: string;
   updated_at: string;
 };
 
 export type ClientListItem = Pick<
   Client,
-  "id" | "name" | "email" | "tax_id" | "currency" | "address" | "phone_number" | "business_phone" | "extension" | "note"
+  | "id"
+  | "name"
+  | "email"
+  | "tax_id"
+  | "currency"
+  | "address"
+  | "phone_number"
+  | "business_phone"
+  | "extension"
+  | "note"
+  | "invoice_schedule_enabled"
+  | "invoice_cadence"
+  | "invoice_anchor_date"
+  | "invoice_time"
+  | "invoice_schedule_mode"
+  | "invoice_reminder_days"
 > & { status?: "active" | "archived"; project_count: number };
 
 export type Project = {

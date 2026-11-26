@@ -4,6 +4,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import { TimvoLogo } from "@/components/timvo-logo";
+import { resetPostHog } from "@/components/posthog-identify";
 
 type Props = { invitorBusinessName?: string; hasBusinessDashboard?: boolean };
 
@@ -15,6 +16,7 @@ export function ClientPortalShell({
   const supabase = createClient();
 
   async function handleSignOut() {
+    resetPostHog();
     await supabase.auth.signOut();
     router.push("/login");
     router.refresh();

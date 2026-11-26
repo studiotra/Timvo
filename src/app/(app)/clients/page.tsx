@@ -22,7 +22,7 @@ async function loadClientsPageData(userId: string): Promise<{
   const { data: clientsData } = await supabase
     .from("clients")
     .select(
-      "id, name, email, tax_id, currency, status, address, phone_number, business_phone, extension, note, created_at"
+      "id, name, email, tax_id, currency, status, address, phone_number, business_phone, extension, note, created_at, invoice_schedule_enabled, invoice_cadence, invoice_anchor_date, invoice_time, invoice_schedule_mode, invoice_reminder_days"
     )
     .eq("user_id", userId)
     .order("name");

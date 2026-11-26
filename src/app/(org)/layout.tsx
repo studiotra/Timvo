@@ -5,6 +5,7 @@ import { OnboardingGate } from "@/components/onboarding/onboarding-gate";
 import { TimezoneProvider } from "@/contexts/timezone-context";
 import { isOrganizationMember } from "@/lib/auth/routing";
 import { getOrgContext } from "@/app/actions/organizations";
+import { PostHogIdentify } from "@/components/posthog-identify";
 
 export default async function OrgLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -45,6 +46,7 @@ export default async function OrgLayout({ children }: { children: React.ReactNod
 
   return (
     <TimezoneProvider timezone={profile?.timezone}>
+      <PostHogIdentify userId={user.id} email={user.email} accountType="organization" />
       <OnboardingGate show={showOnboarding} variant="org" displayName={displayName}>
         <OrgShell orgName={ctx.org.name} hasContractorDashboard={Boolean(soloClient)}>
           {children}
